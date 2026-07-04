@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -46,7 +48,12 @@ func main() {
 	}
 
 	contents := services.NewContentService(db)
-	app := handlers.New(contents, users, options, plugin.Default)
+	metas := services.NewMetaService(db)
+	if err := metas.EnsureDefaultCategory(ctx); err != nil {
+		log.Fatal(err)
+	}
+	comments := services.NewCommentService(db)
+	app := handlers.New(contents, metas, comments, users, options, plugin.Default)
 
 	log.Printf("goblog listening on %s", cfg.Addr)
 	log.Printf("admin: http://localhost%s/admin (default %s/%s)", cfg.Addr, cfg.AdminUser, cfg.AdminPassword)
@@ -65,8 +72,11 @@ type config struct {
 }
 
 func loadConfig() config {
-	driver := env("GOBLOG_DB_DRIVER", "sqlite")
+	driver := os.Getenv("GOBLOG_DB_DRIVER")
 	dsn := os.Getenv("GOBLOG_DB_DSN")
+	if driver == "" {
+		driver = chooseDriver()
+	}
 	if dsn == "" && (driver == "sqlite" || driver == "sqlite3") {
 		dsn = filepath.Join("data", "goblog.db")
 	}
@@ -78,6 +88,28 @@ func loadConfig() config {
 		AdminUser:     env("GOBLOG_ADMIN_USER", "admin"),
 		AdminPassword: env("GOBLOG_ADMIN_PASSWORD", "admin123"),
 		AdminMail:     env("GOBLOG_ADMIN_MAIL", "admin@example.com"),
+	}
+}
+
+func chooseDriver() string {
+	defaultDSN := filepath.Join("data", "goblog.db")
+	if _, err := os.Stat(defaultDSN); err == nil {
+		return "sqlite"
+	}
+	info, err := os.Stdin.Stat()
+	if err != nil || (info.Mode()&os.ModeCharDevice) == 0 {
+		return "sqlite"
+	}
+	fmt.Print("首次启动，请选择数据库后端 [sqlite/mariadb/mysql]，默认 sqlite: ")
+	reader := bufio.NewReader(os.Stdin)
+	line, _ := reader.ReadString('\n')
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "mariadb":
+		return "mariadb"
+	case "mysql":
+		return "mysql"
+	default:
+		return "sqlite"
 	}
 }
 

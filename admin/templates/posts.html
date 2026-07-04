@@ -6,12 +6,29 @@
   </div>
   <mdui-button href="/admin/posts/new"><mdui-icon-add slot="icon"></mdui-icon-add>写文章</mdui-button>
 </div>
+<form method="get" class="filter-bar">
+  <mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field>
+  <select name="status">
+    <option value="all">全部状态</option>
+    <option value="publish" {{if eq .Status "publish"}}selected{{end}}>已发布</option>
+    <option value="draft" {{if eq .Status "draft"}}selected{{end}}>草稿</option>
+    <option value="waiting" {{if eq .Status "waiting"}}selected{{end}}>待审核</option>
+    <option value="hidden" {{if eq .Status "hidden"}}selected{{end}}>隐藏</option>
+    <option value="private" {{if eq .Status "private"}}selected{{end}}>私密</option>
+  </select>
+  <select name="category">
+    <option value="0">所有分类</option>
+    {{range .Categories}}<option value="{{.MID}}" {{if eq $.Category .MID}}selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  <mdui-button type="submit" variant="outlined">筛选</mdui-button>
+</form>
 <section class="table-panel">
   <table>
     <thead>
       <tr>
         <th>标题</th>
         <th>状态</th>
+        <th>评论</th>
         <th>修改时间</th>
         <th></th>
       </tr>
@@ -24,9 +41,11 @@
           <span class="muted">/post/{{.Slug}}</span>
         </td>
         <td>{{statusLabel .Status}}</td>
+        <td><a href="/admin/comments?cid={{.CID}}">{{.CommentsNum}}</a></td>
         <td>{{date .Modified}}</td>
         <td>
           <div class="row-actions">
+            <mdui-button-icon href="{{contentPublicURL .}}" title="查看"><mdui-icon-rss-feed></mdui-icon-rss-feed></mdui-button-icon>
             <mdui-button-icon href="/admin/posts/{{.CID}}/edit" title="编辑"><mdui-icon-edit></mdui-icon-edit></mdui-button-icon>
             <form method="post" action="/admin/posts/{{.CID}}/delete">
               <mdui-button-icon type="submit" title="删除"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon>
@@ -35,10 +54,9 @@
         </td>
       </tr>
     {{else}}
-      <tr><td colspan="4" class="muted">还没有文章。</td></tr>
+      <tr><td colspan="5" class="muted">还没有文章。</td></tr>
     {{end}}
     </tbody>
   </table>
 </section>
 {{end}}
-

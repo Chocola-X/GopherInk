@@ -1,0 +1,6 @@
+{{define "content"}}
+<div class="page-head"><div><h1>主题</h1><p class="muted">Go 版主题通过编译注册，当前列出已编译主题。</p></div></div>
+{{if .Saved}}<div class="notice">主题已切换。</div>{{end}}
+<section class="grid">{{range .Themes}}<form method="post" class="stat-panel"><input type="hidden" name="theme" value="{{.}}"><strong>{{.}}</strong><p class="muted">已编译主题</p><mdui-button type="submit" variant="outlined">启用</mdui-button></form>{{end}}</section>
+{{end}}
+

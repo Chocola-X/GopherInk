@@ -1,0 +1,10 @@
+{{define "content"}}
+<div class="page-head"><div><h1>永久链接</h1></div></div>{{template "options_tabs" .}}{{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
+<form method="post" class="form-panel field-stack">
+  <mdui-text-field name="permalink_post" label="文章路径" value="{{index .Options "permalink_post"}}" helper="当前前台实现固定兼容 /post/{slug}"></mdui-text-field>
+  <mdui-text-field name="permalink_page" label="页面路径" value="{{index .Options "permalink_page"}}" helper="当前前台实现固定兼容 /page/{slug}"></mdui-text-field>
+  <mdui-text-field name="permalink_category" label="分类路径" value="{{index .Options "permalink_category"}}"></mdui-text-field>
+  <div class="form-actions"><mdui-button type="submit">保存设置</mdui-button></div>
+</form>
+{{end}}{{define "options_tabs"}}<div class="subnav"><a href="/admin/options/general">基本</a><a href="/admin/options/reading">阅读</a><a href="/admin/options/discussion">评论</a><a href="/admin/options/permalink">永久链接</a></div>{{end}}
+

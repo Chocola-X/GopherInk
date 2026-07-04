@@ -1,0 +1,13 @@
+{{define "content"}}
+<div class="page-head"><div><h1>{{.Title}}</h1></div><mdui-button variant="outlined" href="{{if eq .Type "tag"}}/admin/tags{{else}}/admin/categories{{end}}">返回</mdui-button></div>
+<form method="post" action="{{.Action}}" class="form-panel field-stack">
+  <mdui-text-field name="name" label="名称" value="{{.Meta.Name}}" required></mdui-text-field>
+  <mdui-text-field name="slug" label="缩略名" value="{{.Meta.Slug}}"></mdui-text-field>
+  <mdui-text-field name="description" label="描述" value="{{.Meta.Description}}"></mdui-text-field>
+  {{if eq .Type "category"}}
+  <label class="muted" for="parent">父级分类</label>
+  <select id="parent" name="parent"><option value="0">不选择</option>{{range .Categories}}{{if ne .MID $.Meta.MID}}<option value="{{.MID}}" {{if eq $.Meta.Parent .MID}}selected{{end}}>{{.Name}}</option>{{end}}{{end}}</select>
+  {{end}}
+  <div class="form-actions"><mdui-button type="submit">保存</mdui-button></div>
+</form>
+{{end}}

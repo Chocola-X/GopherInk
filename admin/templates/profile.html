@@ -1,0 +1,13 @@
+{{define "content"}}
+<div class="page-head"><div><h1>个人设置</h1><p class="muted">更新个人资料和密码。</p></div></div>
+{{if .Saved}}<div class="notice">已保存。</div>{{end}}
+<form method="post" class="form-panel field-stack">
+  <mdui-text-field label="用户名" value="{{.User.Name}}" disabled></mdui-text-field>
+  <mdui-text-field name="screenName" label="昵称" value="{{.User.ScreenName}}"></mdui-text-field>
+  <mdui-text-field name="mail" label="邮箱" value="{{.User.Mail}}"></mdui-text-field>
+  <mdui-text-field name="url" label="个人主页" value="{{.User.URL}}"></mdui-text-field>
+  <mdui-text-field name="password" label="新密码" type="password" helper="留空表示不修改"></mdui-text-field>
+  <div class="form-actions"><mdui-button type="submit">保存</mdui-button></div>
+</form>
+{{end}}
+

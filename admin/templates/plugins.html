@@ -1,0 +1,5 @@
+{{define "content"}}
+<div class="page-head"><div><h1>插件</h1><p class="muted">插件通过 init() 编译注册，启停需要调整匿名导入后重新构建。</p></div></div>
+<section class="table-panel"><table><thead><tr><th>名称</th><th>版本</th><th>说明</th></tr></thead><tbody>{{range .Plugins}}<tr><td>{{.Name}}</td><td>{{.Version}}</td><td>{{.Description}}</td></tr>{{else}}<tr><td colspan="3" class="muted">暂无插件。</td></tr>{{end}}</tbody></table></section>
+{{end}}
+

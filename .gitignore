@@ -1,3 +1,5 @@
-refer/
+refer/*
+!refer/
+!refer/goblog_typecho_feature_map.md
 data/*.db
 /goblog

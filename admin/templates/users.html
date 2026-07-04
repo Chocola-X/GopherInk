@@ -1,0 +1,12 @@
+{{define "content"}}
+<div class="page-head"><div><h1>用户</h1><p class="muted">管理后台用户和用户组。</p></div><mdui-button href="/admin/users/new"><mdui-icon-add slot="icon"></mdui-icon-add>新增用户</mdui-button></div>
+<form method="get" class="filter-bar"><mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field><mdui-button type="submit" variant="outlined">筛选</mdui-button></form>
+<section class="table-panel"><table>
+  <thead><tr><th>用户名</th><th>昵称</th><th>邮箱</th><th>用户组</th><th>最后登录</th><th></th></tr></thead>
+  <tbody>{{range .Users}}<tr>
+    <td><strong>{{.Name}}</strong></td><td>{{.ScreenName}}</td><td>{{.Mail}}</td><td>{{roleLabel .Role}}</td><td>{{date .Logged}}</td>
+    <td><div class="row-actions"><mdui-button-icon href="/admin/users/{{.UID}}/edit" title="编辑"><mdui-icon-edit></mdui-icon-edit></mdui-button-icon><form method="post" action="/admin/users/{{.UID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon></form></div></td>
+  </tr>{{else}}<tr><td colspan="6" class="muted">没有用户。</td></tr>{{end}}</tbody>
+</table></section>
+{{end}}
+

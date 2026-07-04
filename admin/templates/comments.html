@@ -1,0 +1,30 @@
+{{define "content"}}
+<div class="page-head"><div><h1>评论</h1><p class="muted">审核、编辑、回复和删除评论。</p></div></div>
+<form method="get" class="filter-bar">
+  <mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field>
+  <select name="status">
+    <option value="approved" {{if or (eq .Status "") (eq .Status "approved")}}selected{{end}}>已通过</option>
+    <option value="waiting" {{if eq .Status "waiting"}}selected{{end}}>待审核</option>
+    <option value="spam" {{if eq .Status "spam"}}selected{{end}}>垃圾</option>
+  </select>
+  {{if .CID}}<input type="hidden" name="cid" value="{{.CID}}">{{end}}
+  <mdui-button type="submit" variant="outlined">筛选</mdui-button>
+</form>
+<section class="table-panel"><table>
+  <thead><tr><th>作者</th><th>内容</th><th>状态</th><th>日期</th><th></th></tr></thead>
+  <tbody>{{range .Comments}}<tr>
+    <td><strong>{{.Author}}</strong><br><span class="muted">{{.Mail}} {{.IP}}</span></td>
+    <td>{{.Text}}<br><span class="muted">于 {{.Title}}</span></td>
+    <td>{{.Status}}</td><td>{{date .Created}}</td>
+    <td><div class="row-actions">
+      <form method="post" action="/admin/comments/{{.COID}}/mark"><input type="hidden" name="status" value="approved"><mdui-button type="submit" variant="text">通过</mdui-button></form>
+      <form method="post" action="/admin/comments/{{.COID}}/mark"><input type="hidden" name="status" value="waiting"><mdui-button type="submit" variant="text">待审</mdui-button></form>
+      <form method="post" action="/admin/comments/{{.COID}}/mark"><input type="hidden" name="status" value="spam"><mdui-button type="submit" variant="text">垃圾</mdui-button></form>
+      <mdui-button-icon href="/admin/comments/{{.COID}}/edit" title="编辑"><mdui-icon-edit></mdui-icon-edit></mdui-button-icon>
+      <mdui-button href="/admin/comments/{{.COID}}/reply" variant="text">回复</mdui-button>
+      <form method="post" action="/admin/comments/{{.COID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon></form>
+    </div></td>
+  </tr>{{else}}<tr><td colspan="5" class="muted">没有评论。</td></tr>{{end}}</tbody>
+</table></section>
+{{end}}
+

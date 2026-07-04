@@ -1,0 +1,17 @@
+{{define "content"}}
+<div class="page-head"><div><h1>{{.Title}}</h1></div><mdui-button variant="outlined" href="/admin/comments">返回</mdui-button></div>
+<form method="post" action="{{.Action}}" class="form-panel field-stack">
+  <mdui-text-field name="author" label="作者" value="{{if .Reply}}admin{{else}}{{.Comment.Author}}{{end}}" required></mdui-text-field>
+  <mdui-text-field name="mail" label="邮箱" value="{{if not .Reply}}{{.Comment.Mail}}{{end}}"></mdui-text-field>
+  <mdui-text-field name="url" label="网址" value="{{if not .Reply}}{{.Comment.URL}}{{end}}"></mdui-text-field>
+  <label class="muted" for="status">状态</label>
+  <select id="status" name="status">
+    <option value="approved" {{if eq .Comment.Status "approved"}}selected{{end}}>已通过</option>
+    <option value="waiting" {{if eq .Comment.Status "waiting"}}selected{{end}}>待审核</option>
+    <option value="spam" {{if eq .Comment.Status "spam"}}selected{{end}}>垃圾</option>
+  </select>
+  <mdui-text-field name="text" label="内容" rows="8" autosize>{{if .Reply}}{{else}}{{.Comment.Text}}{{end}}</mdui-text-field>
+  <div class="form-actions"><mdui-button type="submit">保存</mdui-button></div>
+</form>
+{{end}}
+

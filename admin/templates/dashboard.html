@@ -9,12 +9,28 @@
 <section class="grid">
   <div class="stat-panel">
     <span class="muted">文章</span>
-    <strong class="stat-value">{{.PostCount}}</strong>
+    <strong class="stat-value">{{.Stats.Posts}}</strong>
+  </div>
+  <div class="stat-panel">
+    <span class="muted">页面</span>
+    <strong class="stat-value">{{.Stats.Pages}}</strong>
+  </div>
+  <div class="stat-panel">
+    <span class="muted">评论</span>
+    <strong class="stat-value">{{.Stats.Comments}}</strong>
   </div>
   <div class="stat-panel">
     <span class="muted">已编译插件</span>
     <strong class="stat-value">{{.PluginCount}}</strong>
   </div>
+</section>
+<section class="form-panel" style="margin-top:16px">
+  <h2>快捷入口</h2>
+  <p>
+    <mdui-button href="/admin/pages/new" variant="outlined">写页面</mdui-button>
+    <mdui-button href="/admin/categories" variant="outlined">管理分类</mdui-button>
+    <mdui-button href="/admin/comments" variant="outlined">管理评论</mdui-button>
+  </p>
 </section>
 <section class="form-panel" style="margin-top:16px">
   <h2>插件</h2>
@@ -27,4 +43,3 @@
   {{end}}
 </section>
 {{end}}
-

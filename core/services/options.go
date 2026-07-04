@@ -43,10 +43,24 @@ func (s *OptionService) Set(ctx context.Context, name, value string) error {
 
 func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 	defaults := map[string]string{
-		"site_title":       "GoBlog",
-		"site_description": "一个极简的 Go 博客",
-		"base_url":         "http://localhost:8080",
-		"active_theme":     "default",
+		"site_title":                  "GoBlog",
+		"site_description":            "一个极简的 Go 博客",
+		"site_keywords":               "",
+		"base_url":                    "http://localhost:8080",
+		"active_theme":                "default",
+		"default_category":            "1",
+		"allow_register":              "0",
+		"post_date_format":            "2006-01-02",
+		"page_size":                   "10",
+		"posts_list_size":             "10",
+		"feed_full_text":              "0",
+		"comments_require_moderation": "0",
+		"comments_require_mail":       "1",
+		"comments_show_url":           "1",
+		"comments_order":              "ASC",
+		"permalink_post":              "/post/{slug}",
+		"permalink_page":              "/page/{slug}",
+		"permalink_category":          "/category/{slug}",
 	}
 	for key, value := range defaults {
 		current, err := s.Get(ctx, key)

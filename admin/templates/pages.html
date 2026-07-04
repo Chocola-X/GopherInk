@@ -1,0 +1,37 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <h1>页面</h1>
+    <p class="muted">管理独立页面、父级页面和排序。</p>
+  </div>
+  <mdui-button href="/admin/pages/new"><mdui-icon-add slot="icon"></mdui-icon-add>写页面</mdui-button>
+</div>
+<form method="get" class="filter-bar">
+  <mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field>
+  <mdui-button type="submit" variant="outlined">筛选</mdui-button>
+</form>
+<section class="table-panel">
+  <table>
+    <thead><tr><th>标题</th><th>状态</th><th>排序</th><th>评论</th><th>日期</th><th></th></tr></thead>
+    <tbody>
+    {{range .Pages}}
+      <tr>
+        <td><strong>{{.Title}}</strong><br><span class="muted">/page/{{.Slug}}</span></td>
+        <td>{{statusLabel .Status}}</td>
+        <td>{{.SortOrder}}</td>
+        <td><a href="/admin/comments?cid={{.CID}}">{{.CommentsNum}}</a></td>
+        <td>{{date .Modified}}</td>
+        <td><div class="row-actions">
+          <mdui-button-icon href="{{contentPublicURL .}}" title="查看"><mdui-icon-rss-feed></mdui-icon-rss-feed></mdui-button-icon>
+          <mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="编辑"><mdui-icon-edit></mdui-icon-edit></mdui-button-icon>
+          <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon></form>
+        </div></td>
+      </tr>
+    {{else}}
+      <tr><td colspan="6" class="muted">还没有页面。</td></tr>
+    {{end}}
+    </tbody>
+  </table>
+</section>
+{{end}}
+

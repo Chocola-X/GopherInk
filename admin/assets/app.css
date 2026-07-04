@@ -79,6 +79,56 @@ body {
   gap: 16px;
 }
 
+.filter-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.filter-bar select,
+.field-stack select,
+.field-stack input[type="number"],
+select {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgb(var(--mdui-color-outline));
+  border-radius: 6px;
+  color: rgb(var(--mdui-color-on-surface));
+  background: rgb(var(--mdui-color-surface));
+}
+
+.fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+  padding: 14px;
+  border: 1px solid rgb(var(--mdui-color-outline-variant));
+  border-radius: 8px;
+}
+
+.fieldset legend {
+  padding: 0 6px;
+  color: rgb(var(--mdui-color-on-surface-variant));
+}
+
+.subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.subnav a {
+  padding: 8px 12px;
+  border: 1px solid rgb(var(--mdui-color-outline-variant));
+  border-radius: 6px;
+  color: rgb(var(--mdui-color-primary));
+  text-decoration: none;
+  background: rgb(var(--mdui-color-surface));
+}
+
 .form-actions {
   display: flex;
   align-items: center;
@@ -150,8 +200,11 @@ mdui-icon-rss-feed {
     flex-direction: column;
   }
 
+  .filter-bar {
+    grid-template-columns: 1fr;
+  }
+
   .admin-main {
     padding: 20px 14px 44px;
   }
 }
-

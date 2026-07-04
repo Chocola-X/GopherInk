@@ -1,0 +1,11 @@
+{{define "content"}}
+<div class="page-head"><div><h1>阅读设置</h1></div></div>{{template "options_tabs" .}}{{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
+<form method="post" class="form-panel field-stack">
+  <mdui-text-field name="post_date_format" label="文章日期格式" value="{{index .Options "post_date_format"}}"></mdui-text-field>
+  <mdui-text-field name="posts_list_size" label="文章列表数目" type="number" value="{{index .Options "posts_list_size"}}"></mdui-text-field>
+  <mdui-text-field name="page_size" label="每页文章数目" type="number" value="{{index .Options "page_size"}}"></mdui-text-field>
+  <label class="muted" for="feed_full_text">聚合全文输出</label><select id="feed_full_text" name="feed_full_text"><option value="0" {{if eq (index .Options "feed_full_text") "0"}}selected{{end}}>仅输出摘要</option><option value="1" {{if eq (index .Options "feed_full_text") "1"}}selected{{end}}>全文输出</option></select>
+  <div class="form-actions"><mdui-button type="submit">保存设置</mdui-button></div>
+</form>
+{{end}}{{define "options_tabs"}}<div class="subnav"><a href="/admin/options/general">基本</a><a href="/admin/options/reading">阅读</a><a href="/admin/options/discussion">评论</a><a href="/admin/options/permalink">永久链接</a></div>{{end}}
+

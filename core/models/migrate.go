@@ -20,8 +20,14 @@ func Migrate(ctx context.Context, db *sql.DB, driver string) error {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	ensureColumn(ctx, db, `ALTER TABLE gb_contents ADD COLUMN sortOrder int(10) default '0'`)
+	ensureColumn(ctx, db, `ALTER TABLE gb_users ADD COLUMN role varchar(16) default 'visitor'`)
 
 	return nil
+}
+
+func ensureColumn(ctx context.Context, db *sql.DB, stmt string) {
+	_, _ = db.ExecContext(ctx, stmt)
 }
 
 func sqliteSchema() []string {

@@ -4,6 +4,7 @@ import "time"
 
 const (
 	ContentTypePost    = "post"
+	ContentTypePage    = "page"
 	ContentStatusPost  = "publish"
 	ContentStatusDraft = "draft"
 )
