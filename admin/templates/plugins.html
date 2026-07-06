@@ -1,5 +1,37 @@
 {{define "content"}}
-<div class="page-head"><div><h1>插件</h1><p class="muted">插件通过 init() 编译注册，启停需要调整匿名导入后重新构建。</p></div></div>
-<section class="table-panel"><table><thead><tr><th>名称</th><th>版本</th><th>说明</th></tr></thead><tbody>{{range .Plugins}}<tr><td>{{.Name}}</td><td>{{.Version}}</td><td>{{.Description}}</td></tr>{{else}}<tr><td colspan="3" class="muted">暂无插件。</td></tr>{{end}}</tbody></table></section>
+<div class="page-head">
+  <div>
+    <h1>插件</h1>
+    <p class="muted">插件通过 Go 编译期引入，后台控制已编译插件的启停和配置。</p>
+  </div>
+</div>
+{{if .Saved}}<div class="notice">插件状态已保存。</div>{{end}}
+<section class="table-panel">
+  <table>
+    <thead><tr><th>插件</th><th>版本</th><th>作者</th><th>状态</th><th>操作</th></tr></thead>
+    <tbody>
+      {{range .Plugins}}
+      <tr>
+        <td><strong>{{.Name}}</strong><div class="muted">{{.Description}}</div>{{if .RequireGoBlog}}<div class="muted">要求 GoBlog {{.RequireGoBlog}}+</div>{{end}}</td>
+        <td>{{.Version}}</td>
+        <td>{{.Author}}</td>
+        <td>{{if .Active}}已启用{{else}}未启用{{end}}{{if not .Compatible}}<div class="muted">依赖不满足</div>{{end}}</td>
+        <td>
+          <div class="row-actions">
+            {{if .HasConfig}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/config">设置</mdui-button>{{end}}
+            {{if .HasPersonal}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/personal">个人设置</mdui-button>{{end}}
+            {{if .Active}}
+            <form method="post" action="/admin/plugins/{{.Name}}/deactivate"><mdui-button type="submit" variant="outlined">停用</mdui-button></form>
+            {{else}}
+            <form method="post" action="/admin/plugins/{{.Name}}/activate"><mdui-button type="submit" {{if not .Compatible}}disabled{{end}}>启用</mdui-button></form>
+            {{end}}
+          </div>
+        </td>
+      </tr>
+      {{else}}
+      <tr><td colspan="5" class="muted">暂无插件。</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+</section>
 {{end}}
-

@@ -1,6 +1,29 @@
 {{define "content"}}
-<div class="page-head"><div><h1>主题</h1><p class="muted">Go 版主题通过编译注册，当前列出已编译主题。</p></div></div>
+<div class="page-head">
+  <div>
+    <h1>主题</h1>
+    <p class="muted">主题通过 Go 编译期注册，可提供配置、自定义字段和模板函数。</p>
+  </div>
+</div>
 {{if .Saved}}<div class="notice">主题已切换。</div>{{end}}
-<section class="grid">{{range .Themes}}<form method="post" class="stat-panel"><input type="hidden" name="theme" value="{{.}}"><strong>{{.}}</strong><p class="muted">已编译主题</p><mdui-button type="submit" variant="outlined">启用</mdui-button></form>{{end}}</section>
+<section class="grid">
+  {{range .Themes}}
+  <article class="stat-panel">
+    {{if .Screenshot}}<img class="theme-shot" src="{{.Screenshot}}" alt="">{{end}}
+    <strong>{{.Name}}</strong>
+    <p class="muted">{{.Description}}</p>
+    <p class="muted">版本 {{.Version}} {{if .Author}}/ {{.Author}}{{end}}</p>
+    <div class="row-actions">
+      <form method="post" action="/admin/themes">
+        <input type="hidden" name="theme" value="{{.Name}}">
+        <mdui-button type="submit" {{if eq $.ActiveTheme .Name}}disabled{{end}}>{{if eq $.ActiveTheme .Name}}已启用{{else}}启用{{end}}</mdui-button>
+      </form>
+      {{if .ConfigSchema}}<mdui-button variant="outlined" href="/admin/themes/{{.Name}}/config">设置</mdui-button>{{end}}
+      <mdui-button variant="outlined" href="/admin/themes/{{.Name}}/files">文件</mdui-button>
+    </div>
+  </article>
+  {{else}}
+  <div class="stat-panel muted">暂无主题。</div>
+  {{end}}
+</section>
 {{end}}
-

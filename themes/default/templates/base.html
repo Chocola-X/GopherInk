@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="/theme/default/theme.css">
   <script src="/theme/default/mdui.global.js"></script>
   <script type="module" src="/theme/default/mdui-icons.js"></script>
+  {{.FrontendHead}}
 </head>
 <body>
   <div class="background"><div class="background-filter"></div></div>
@@ -90,6 +91,7 @@
     </aside>
     <footer class="site-footer">Powered by GoBlog</footer>
   </div>
+  {{.FrontendFooter}}
 </body>
 </html>
 {{end}}

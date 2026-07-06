@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <h1>主题文件：{{.Theme.Name}}</h1>
+    <p class="muted">仅外部主题目录可编辑，保存时会创建 .bak 备份。</p>
+  </div>
+  <mdui-button variant="outlined" href="/admin/themes">返回</mdui-button>
+</div>
+{{if .Saved}}<div class="notice">文件已保存。</div>{{end}}
+{{if .ReadOnly}}
+<section class="form-panel">
+  <p class="muted">当前主题为内置 embed 主题或未配置可编辑目录，不能直接在线编辑。</p>
+</section>
+{{else}}
+<section class="form-panel field-stack">
+  <div class="row-actions">
+    {{range .Files}}<mdui-button variant="{{if eq $.File .}}filled{{else}}outlined{{end}}" href="/admin/themes/{{$.Theme.Name}}/files?file={{.}}">{{.}}</mdui-button>{{end}}
+  </div>
+  <form method="post" action="/admin/themes/{{.Theme.Name}}/files?file={{.File}}" class="field-stack">
+    <mdui-text-field name="body" label="{{.File}}" rows="24" autosize>{{.Body}}</mdui-text-field>
+    <div class="form-actions">
+      <mdui-button type="submit"><mdui-icon-save slot="icon"></mdui-icon-save>保存</mdui-button>
+    </div>
+  </form>
+</section>
+{{end}}
+{{end}}

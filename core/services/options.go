@@ -17,8 +17,12 @@ func NewOptionService(db *sql.DB) *OptionService {
 }
 
 func (s *OptionService) Get(ctx context.Context, name string) (string, error) {
+	return s.GetForUser(ctx, name, 0)
+}
+
+func (s *OptionService) GetForUser(ctx context.Context, name string, userID int64) (string, error) {
 	var value string
-	err := s.db.QueryRowContext(ctx, `SELECT value FROM gb_options WHERE name = ? AND user = 0`, name).Scan(&value)
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM gb_options WHERE name = ? AND user = ?`, name, userID).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -26,18 +30,22 @@ func (s *OptionService) Get(ctx context.Context, name string) (string, error) {
 }
 
 func (s *OptionService) Set(ctx context.Context, name, value string) error {
+	return s.SetForUser(ctx, name, value, 0)
+}
+
+func (s *OptionService) SetForUser(ctx context.Context, name, value string, userID int64) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
+		INSERT INTO gb_options (name, user, value) VALUES (?, ?, ?)
 		ON CONFLICT(name, user) DO UPDATE SET value = excluded.value
-	`, name, value)
+	`, name, userID, value)
 	if err == nil {
 		return nil
 	}
 
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
+		INSERT INTO gb_options (name, user, value) VALUES (?, ?, ?)
 		ON DUPLICATE KEY UPDATE value = VALUES(value)
-	`, name, value)
+	`, name, userID, value)
 	return err
 }
 
@@ -88,6 +96,7 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 		"permalink_post":                "/post/{slug}",
 		"permalink_page":                "/page/{slug}",
 		"permalink_category":            "/category/{slug}",
+		"active_plugins":                `["sitemap"]`,
 	}
 	for key, value := range defaults {
 		current, err := s.Get(ctx, key)

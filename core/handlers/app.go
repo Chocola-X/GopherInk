@@ -66,6 +66,7 @@ func New(contents *services.ContentService, metas *services.MetaService, comment
 
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
+	a.syncActivePlugins(context.Background())
 
 	adminAssets, _ := fs.Sub(admin.FS, "assets")
 	mux.Handle("/admin/assets/", http.StripPrefix("/admin/assets/", http.FileServer(http.FS(adminAssets))))
@@ -102,7 +103,9 @@ func (a *App) Handler() http.Handler {
 		"/admin/options/discussion": a.adminOptionsDiscussion,
 		"/admin/options/permalink":  a.adminOptionsPermalink,
 		"/admin/themes":             a.adminThemes,
+		"/admin/themes/":            a.adminThemeRoutes,
 		"/admin/plugins":            a.adminPlugins,
+		"/admin/plugins/":           a.adminPluginRoutes,
 		"/admin/medias":             a.adminMedias,
 		"/admin/medias/":            a.adminMediaRoutes,
 		"/admin/backup":             a.adminBackup,
@@ -114,10 +117,14 @@ func (a *App) Handler() http.Handler {
 		mux.HandleFunc(route, a.requireAdmin(handler))
 	}
 
-	runtime := &plugin.Runtime{ListPublished: a.Contents.ListPublishedPlugin, Option: a.Options.Get}
+	runtime := &plugin.Runtime{ListPublished: a.Contents.ListPublishedPlugin, Option: a.Options.Get, Config: a.pluginConfig}
 	for _, route := range a.Plugins.Routes() {
 		route := route
 		mux.HandleFunc(route.Pattern, func(w http.ResponseWriter, r *http.Request) {
+			if route.Plugin != "" && !a.Plugins.IsActive(route.Plugin) {
+				http.NotFound(w, r)
+				return
+			}
 			if route.Method != "" && r.Method != route.Method {
 				methodNotAllowed(w, route.Method)
 				return
@@ -382,6 +389,7 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 		selectedCategories, _ := a.Metas.CategoriesForContent(r.Context(), id)
 		selectedTags, _ := a.Metas.TagsForContent(r.Context(), id)
 		fields, _ := a.Contents.FieldsForContent(r.Context(), id)
+		fields = mergeThemeFields(a.themeContentFields(r.Context(), typ), fields)
 		revisions, _ := a.Contents.Revisions(r.Context(), id)
 		mediaLibrary, _ := a.editorMediaLibrary(r)
 		a.renderAdmin(w, r, "content_form.html", map[string]any{
@@ -420,12 +428,28 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 			}
 		}
 		uid, _ := a.currentUserID(r)
+		savePayload := plugin.ContentSavePayload{ID: id, AuthorID: uid, Input: input}
+		if payload, err := a.Plugins.ApplyActive(r.Context(), plugin.HookContentBeforeSave, savePayload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		} else if next, ok := payload.(plugin.ContentSavePayload); ok {
+			savePayload = next
+			if nextInput, ok := next.Input.(services.SaveContentInput); ok {
+				input = nextInput
+			}
+		}
 		if id == 0 {
 			id, err = a.Contents.Create(r.Context(), input, uid)
 		} else {
 			err = a.Contents.Update(r.Context(), id, input)
 		}
 		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		savePayload.ID = id
+		savePayload.Input = input
+		if _, err := a.Plugins.ApplyActive(r.Context(), plugin.HookContentAfterSave, savePayload); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -465,6 +489,7 @@ func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ stri
 	if fields == nil {
 		fields, _ = a.Contents.FieldsForContent(r.Context(), id)
 	}
+	fields = mergeThemeFields(a.themeContentFields(r.Context(), typ), fields)
 	revisions, _ := a.Contents.Revisions(r.Context(), id)
 	mediaLibrary, _ := a.editorMediaLibrary(r)
 	a.renderAdmin(w, r, "content_form.html", map[string]any{
@@ -992,21 +1017,299 @@ func (a *App) adminThemes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := a.Options.Set(r.Context(), "active_theme", r.FormValue("theme")); err != nil {
+		name := r.FormValue("theme")
+		if _, ok := a.Plugins.Theme(name); !ok {
+			http.Error(w, "theme not found", http.StatusBadRequest)
+			return
+		}
+		if err := a.Options.Set(r.Context(), "active_theme", name); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		http.Redirect(w, r, "/admin/themes?saved=1", http.StatusSeeOther)
 		return
 	}
-	a.renderAdmin(w, r, "themes.html", map[string]any{"Title": "主题", "Themes": []string{"default"}, "Saved": r.URL.Query().Get("saved") == "1"})
+	active, _ := a.Options.Get(r.Context(), "active_theme")
+	a.renderAdmin(w, r, "themes.html", map[string]any{"Title": "主题", "Themes": a.Plugins.Themes(), "ActiveTheme": active, "Saved": r.URL.Query().Get("saved") == "1"})
+}
+
+func (a *App) adminThemeRoutes(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "administrator") {
+		return
+	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/admin/themes/"), "/"), "/")
+	if len(parts) < 2 {
+		http.NotFound(w, r)
+		return
+	}
+	name := parts[0]
+	switch parts[1] {
+	case "config":
+		a.adminThemeConfig(w, r, name)
+	case "files":
+		a.adminThemeFiles(w, r, name)
+	default:
+		http.NotFound(w, r)
+	}
 }
 
 func (a *App) adminPlugins(w http.ResponseWriter, r *http.Request) {
 	if !a.requireRole(w, r, "administrator") {
 		return
 	}
-	a.renderAdmin(w, r, "plugins.html", map[string]any{"Title": "插件", "Plugins": a.Plugins.Plugins()})
+	a.syncActivePlugins(r.Context())
+	a.renderAdmin(w, r, "plugins.html", map[string]any{"Title": "插件", "Plugins": a.pluginViews(r.Context()), "Saved": r.URL.Query().Get("saved") == "1"})
+}
+
+func (a *App) adminPluginRoutes(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "administrator") {
+		return
+	}
+	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/admin/plugins/"), "/"), "/")
+	if len(parts) < 2 {
+		http.NotFound(w, r)
+		return
+	}
+	name := parts[0]
+	switch parts[1] {
+	case "activate", "deactivate":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		a.adminPluginToggle(w, r, name, parts[1] == "activate")
+	case "config":
+		a.adminPluginConfig(w, r, name, false)
+	case "personal":
+		a.adminPluginConfig(w, r, name, true)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+type pluginView struct {
+	Name          string
+	Version       string
+	Author        string
+	Description   string
+	Homepage      string
+	RequireGoBlog string
+	Active        bool
+	Compatible    bool
+	HasConfig     bool
+	HasPersonal   bool
+}
+
+func (a *App) pluginViews(ctx context.Context) []pluginView {
+	active := a.activePluginSet(ctx)
+	plugins := a.Plugins.Plugins()
+	out := make([]pluginView, 0, len(plugins))
+	for _, p := range plugins {
+		info := a.Plugins.PluginInfo(p)
+		view := pluginView{
+			Name:          info.Name,
+			Version:       info.Version,
+			Author:        info.Author,
+			Description:   info.Description,
+			Homepage:      info.Homepage,
+			RequireGoBlog: info.RequireGoBlog,
+			Active:        active[info.Name],
+			Compatible:    plugin.Compatible(info.RequireGoBlog, plugin.GoBlogVersion),
+		}
+		if provider, ok := p.(plugin.ConfigProvider); ok && len(provider.ConfigSchema()) > 0 {
+			view.HasConfig = true
+		}
+		if provider, ok := p.(plugin.PersonalConfigProvider); ok && len(provider.PersonalConfigSchema()) > 0 {
+			view.HasPersonal = true
+		}
+		out = append(out, view)
+	}
+	return out
+}
+
+func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name string, enable bool) {
+	p, ok := a.Plugins.Plugin(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	info := a.Plugins.PluginInfo(p)
+	if enable && !plugin.Compatible(info.RequireGoBlog, plugin.GoBlogVersion) {
+		http.Error(w, "插件要求更高版本的 GoBlog", http.StatusBadRequest)
+		return
+	}
+	active := a.activePluginSet(r.Context())
+	runtime := &plugin.Runtime{ListPublished: a.Contents.ListPublishedPlugin, Option: a.Options.Get, Config: a.pluginConfig}
+	if enable {
+		if activator, ok := p.(plugin.Activator); ok {
+			if err := activator.Activate(r.Context(), runtime); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		active[name] = true
+	} else {
+		if deactivator, ok := p.(plugin.Deactivator); ok {
+			if err := deactivator.Deactivate(r.Context(), runtime); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		delete(active, name)
+	}
+	if err := a.saveActivePluginSet(r.Context(), active); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	a.syncActivePlugins(r.Context())
+	http.Redirect(w, r, "/admin/plugins?saved=1", http.StatusSeeOther)
+}
+
+func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name string, personal bool) {
+	p, ok := a.Plugins.Plugin(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var schema []plugin.FieldSchema
+	title := "插件设置：" + name
+	userID := int64(0)
+	if personal {
+		provider, ok := p.(plugin.PersonalConfigProvider)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		schema = provider.PersonalConfigSchema()
+		title = "插件个人设置：" + name
+		userID, _ = a.currentUserID(r)
+	} else {
+		provider, ok := p.(plugin.ConfigProvider)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		schema = provider.ConfigSchema()
+	}
+	key := pluginOptionKey(name)
+	if personal {
+		key = pluginPersonalOptionKey(name)
+	}
+	a.schemaForm(w, r, schemaFormConfig{
+		Title:     title,
+		Template:  "schema_form.html",
+		BackURL:   "/admin/plugins",
+		OptionKey: key,
+		UserID:    userID,
+		Schema:    schema,
+		SavedURL:  r.URL.Path + "?saved=1",
+		Saved:     r.URL.Query().Get("saved") == "1",
+	})
+}
+
+func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name string) {
+	theme, ok := a.Plugins.Theme(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if len(theme.ConfigSchema) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	a.schemaForm(w, r, schemaFormConfig{
+		Title:     "主题设置：" + name,
+		Template:  "schema_form.html",
+		BackURL:   "/admin/themes",
+		OptionKey: themeOptionKey(name),
+		Schema:    theme.ConfigSchema,
+		SavedURL:  r.URL.Path + "?saved=1",
+		Saved:     r.URL.Query().Get("saved") == "1",
+	})
+}
+
+func (a *App) adminThemeFiles(w http.ResponseWriter, r *http.Request, name string) {
+	theme, ok := a.Plugins.Theme(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if theme.EditableDir == "" || theme.Embedded {
+		a.renderAdmin(w, r, "theme_files.html", map[string]any{"Title": "主题文件", "Theme": theme, "ReadOnly": true})
+		return
+	}
+	rel := strings.TrimSpace(r.URL.Query().Get("file"))
+	files, _ := editableThemeFiles(theme.EditableDir)
+	if rel == "" && len(files) > 0 {
+		rel = files[0]
+	}
+	full, ok := safeThemeEditPath(theme.EditableDir, rel)
+	if !ok || !editableThemeExt(rel) {
+		http.Error(w, "invalid theme file", http.StatusBadRequest)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		body, err := os.ReadFile(full)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		a.renderAdmin(w, r, "theme_files.html", map[string]any{"Title": "主题文件", "Theme": theme, "Files": files, "File": rel, "Body": string(body), "Saved": r.URL.Query().Get("saved") == "1"})
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		backup := full + "." + time.Now().Format("20060102150405") + ".bak"
+		if old, err := os.ReadFile(full); err == nil {
+			_ = os.WriteFile(backup, old, 0o644)
+		}
+		if err := os.WriteFile(full, []byte(r.FormValue("body")), 0o644); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, r.URL.Path+"?file="+neturl.QueryEscape(rel)+"&saved=1", http.StatusSeeOther)
+	default:
+		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
+	}
+}
+
+type schemaFormConfig struct {
+	Title     string
+	Template  string
+	BackURL   string
+	OptionKey string
+	UserID    int64
+	Schema    []plugin.FieldSchema
+	SavedURL  string
+	Saved     bool
+}
+
+func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormConfig) {
+	switch r.Method {
+	case http.MethodGet:
+		values, err := a.optionJSONForUser(r.Context(), cfg.OptionKey, cfg.UserID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		a.applySchemaDefaults(cfg.Schema, values)
+		a.renderAdmin(w, r, cfg.Template, map[string]any{"Title": cfg.Title, "BackURL": cfg.BackURL, "Schema": cfg.Schema, "Values": values, "Saved": cfg.Saved})
+	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		values := valuesFromSchema(r, cfg.Schema)
+		if err := a.setOptionJSONForUser(r.Context(), cfg.OptionKey, values, cfg.UserID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, cfg.SavedURL, http.StatusSeeOther)
+	default:
+		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
+	}
 }
 
 func (a *App) adminAutosave(w http.ResponseWriter, r *http.Request) {
@@ -1184,11 +1487,17 @@ func (a *App) adminMediaRoutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		meta := parseAttachmentMeta(item)
+		payload := plugin.AttachmentPayload{Content: item, Meta: meta}
+		if _, err := a.Plugins.ApplyActive(r.Context(), plugin.HookAttachmentBeforeDelete, payload); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if err := a.Contents.Delete(r.Context(), id); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		a.removeAttachmentFile(meta)
+		_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookAttachmentAfterDelete, payload)
 		http.Redirect(w, r, "/admin/medias", http.StatusSeeOther)
 	case "replace":
 		if r.Method != http.MethodPost {
@@ -1245,12 +1554,17 @@ func (a *App) deleteContentWithAttachmentPolicy(ctx context.Context, cid int64) 
 	if policy == "record" || policy == "file" {
 		for _, attachment := range attachments {
 			meta := parseAttachmentMeta(attachment)
+			payload := plugin.AttachmentPayload{Content: attachment, Meta: meta}
+			if _, err := a.Plugins.ApplyActive(ctx, plugin.HookAttachmentBeforeDelete, payload); err != nil {
+				return err
+			}
 			if err := a.Contents.Delete(ctx, attachment.CID); err != nil {
 				return err
 			}
 			if policy == "file" {
 				a.removeAttachmentFile(meta)
 			}
+			_, _ = a.Plugins.ApplyActive(ctx, plugin.HookAttachmentAfterDelete, payload)
 		}
 	}
 	if err := a.Contents.Delete(ctx, cid); err != nil {
@@ -1415,9 +1729,14 @@ func (a *App) renderPostContent(w http.ResponseWriter, r *http.Request, post mod
 	fields, _ := a.Contents.FieldMap(r.Context(), post.CID)
 	prev, next, _ := a.Contents.Adjacent(r.Context(), post)
 	related, _ := a.relatedPosts(r.Context(), post, categories, tags, 5)
+	contentHTML, err := a.renderContentHTML(r.Context(), post, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	a.renderTheme(w, r, "post.html", map[string]any{
 		"Post":          post,
-		"ContentHTML":   render.ContentHTML(post.Text, a.option(r.Context(), "content_render_mode", "markdown")),
+		"ContentHTML":   contentHTML,
 		"Comments":      comments,
 		"CommentPager":  commentPager,
 		"ReplyTo":       r.URL.Query().Get("reply"),
@@ -1449,9 +1768,14 @@ func (a *App) frontPage(w http.ResponseWriter, r *http.Request) {
 func (a *App) renderPageContent(w http.ResponseWriter, r *http.Request, pageData models.Content, extra ...map[string]any) {
 	comments, commentPager, _ := a.commentsForPost(r, pageData)
 	fields, _ := a.Contents.FieldMap(r.Context(), pageData.CID)
+	contentHTML, err := a.renderContentHTML(r.Context(), pageData, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	data := map[string]any{
 		"Post":          pageData,
-		"ContentHTML":   render.ContentHTML(pageData.Text, a.option(r.Context(), "content_render_mode", "markdown")),
+		"ContentHTML":   contentHTML,
 		"Comments":      comments,
 		"CommentPager":  commentPager,
 		"ReplyTo":       r.URL.Query().Get("reply"),
@@ -1486,9 +1810,14 @@ func (a *App) frontPreview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fields, _ := a.Contents.FieldMap(r.Context(), item.CID)
+	contentHTML, err := a.renderContentHTML(r.Context(), item, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	a.renderTheme(w, r, "post.html", map[string]any{
 		"Post":         item,
-		"ContentHTML":  render.ContentHTML(item.Text, a.option(r.Context(), "content_render_mode", "markdown")),
+		"ContentHTML":  contentHTML,
 		"Fields":       fields,
 		"Comments":     []commentView{},
 		"CommentPager": commentPagination{},
@@ -1705,10 +2034,21 @@ func (a *App) frontComment(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, redirectTo+"?comment_error=invalid", http.StatusSeeOther)
 		return
 	}
+	commentPayload := plugin.CommentSavePayload{Input: input, Content: post}
+	if payload, err := a.Plugins.ApplyActive(r.Context(), plugin.HookCommentBeforeSave, commentPayload); err != nil {
+		http.Redirect(w, r, redirectTo+"?comment_error=blocked", http.StatusSeeOther)
+		return
+	} else if next, ok := payload.(plugin.CommentSavePayload); ok {
+		commentPayload = next
+		if nextInput, ok := next.Input.(services.SaveCommentInput); ok {
+			input = nextInput
+		}
+	}
 	if err := a.Comments.Save(r.Context(), input, 0); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookCommentAfterSave, commentPayload)
 	http.SetCookie(w, &http.Cookie{Name: "comment_author", Value: author, Path: "/", MaxAge: 86400 * 365})
 	http.SetCookie(w, &http.Cookie{Name: "comment_mail", Value: mail, Path: "/", MaxAge: 86400 * 365})
 	http.Redirect(w, r, redirectTo+"?comment_ok=1#comments", http.StatusSeeOther)
@@ -2170,6 +2510,15 @@ func (a *App) saveUpload(ctx context.Context, src io.Reader, original string, pa
 	if name == "" {
 		name = "file"
 	}
+	uploadPayload := plugin.UploadPayload{Name: name, ParentID: parent}
+	if payload, err := a.Plugins.ApplyActive(ctx, plugin.HookUploadBeforeSave, uploadPayload); err != nil {
+		return meta, err
+	} else if next, ok := payload.(plugin.UploadPayload); ok {
+		if strings.TrimSpace(next.Name) != "" {
+			name = sanitizeFilename(next.Name)
+		}
+		parent = next.ParentID
+	}
 	if dangerousUpload(name) || !allowedUploadExt(name, a.option(ctx, "upload_allowed_exts", "")) {
 		return meta, fmt.Errorf("不允许上传该文件类型")
 	}
@@ -2211,6 +2560,12 @@ func (a *App) saveUpload(ctx context.Context, src io.Reader, original string, pa
 		meta.Height = cfg.Height
 	} else if strings.HasPrefix(mimeType, "image/") {
 		meta.IsImage = true
+	}
+	uploadPayload.Name = name
+	uploadPayload.ParentID = parent
+	uploadPayload.Meta = meta
+	if _, err := a.Plugins.ApplyActive(ctx, plugin.HookUploadAfterSave, uploadPayload); err != nil {
+		return meta, err
 	}
 	return meta, nil
 }
@@ -2972,6 +3327,8 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 		"contentPublicURL": contentPublicURL,
 		"fieldError":       fieldError,
 		"fieldValue":       fieldValue,
+		"schemaValue":      schemaValue,
+		"schemaChecked":    schemaChecked,
 	}
 	tmpl, err := template.New("base.html").Funcs(funcs).ParseFS(admin.FS, "templates/base.html", "templates/"+page)
 	if err != nil {
@@ -2979,6 +3336,14 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 		return
 	}
 	a.enrichData(r.Context(), data)
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookAdminMenu, []plugin.AdminMenuItem{}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else {
+		if items, ok := out.([]plugin.AdminMenuItem); ok {
+			data["AdminMenu"] = items
+		}
+	}
 	data["CSRF"] = a.csrfToken(r)
 	if user, ok := a.currentUser(r); ok {
 		data["CurrentUser"] = user
@@ -2992,6 +3357,41 @@ func (a *App) renderTheme(w http.ResponseWriter, r *http.Request, page string, d
 	a.renderThemeStatus(w, r, page, data, http.StatusOK)
 }
 
+func (a *App) renderContentHTML(ctx context.Context, content models.Content, data map[string]any) (template.HTML, error) {
+	payload := plugin.ContentRenderPayload{Content: content, Data: data}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentBeforeRender, payload); err != nil {
+		return "", err
+	} else {
+		if next, ok := out.(plugin.ContentRenderPayload); ok {
+			payload = next
+			if changed, ok := next.Content.(models.Content); ok {
+				content = changed
+			}
+		}
+	}
+	payload.Content = content
+	payload.HTML = render.ContentHTML(content.Text, a.option(ctx, "content_render_mode", "markdown"))
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentAfterRender, payload); err != nil {
+		return "", err
+	} else {
+		if next, ok := out.(plugin.ContentRenderPayload); ok {
+			return next.HTML, nil
+		}
+	}
+	return payload.HTML, nil
+}
+
+func (a *App) excerpt(ctx context.Context, text string, limit int) string {
+	output := render.Excerpt(text, limit)
+	payload := plugin.ExcerptPayload{Text: text, Limit: limit, Output: output}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookExcerpt, payload); err == nil {
+		if next, ok := out.(plugin.ExcerptPayload); ok {
+			return next.Output
+		}
+	}
+	return output
+}
+
 func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page string, data map[string]any, status int) {
 	theme, ok := a.activeTheme(r.Context())
 	if !ok {
@@ -2999,8 +3399,10 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 		return
 	}
 	funcs := template.FuncMap{
-		"date":    formatDate,
-		"excerpt": render.Excerpt,
+		"date": formatDate,
+		"excerpt": func(text string, limit int) string {
+			return a.excerpt(r.Context(), text, limit)
+		},
 		"contentURL": func(c models.Content) string {
 			return a.contentURL(r.Context(), c)
 		},
@@ -3035,6 +3437,15 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	}
 	a.enrichData(r.Context(), data)
 	a.enrichThemeData(r.Context(), data)
+	if themeConfig, err := a.themeConfig(r.Context(), theme.Name); err == nil {
+		data["ThemeConfig"] = themeConfig
+	}
+	if theme.AdjustData != nil {
+		if err := theme.AdjustData(r.Context(), data); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	data["CSRF"] = a.csrfToken(r)
 	data["CommentCSRF"] = a.csrfTokenFor(r, "comment")
 	if site, ok := data["Site"].(map[string]string); ok {
@@ -3055,6 +3466,18 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 			data["FeedPath"] = "/feed.xml"
 		}
 	}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFrontendHead, ""); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if head, ok := out.(string); ok {
+		data["FrontendHead"] = template.HTML(head)
+	}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFrontendFooter, ""); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if footer, ok := out.(string); ok {
+		data["FrontendFooter"] = template.HTML(footer)
+	}
 	w.WriteHeader(status)
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -3066,7 +3489,16 @@ func (a *App) activeTheme(ctx context.Context) (plugin.Theme, bool) {
 	if name == "" {
 		name = "default"
 	}
-	return a.Plugins.Theme(name)
+	theme, ok := a.Plugins.Theme(name)
+	if ok {
+		return theme, true
+	}
+	theme, ok = a.Plugins.Theme("default")
+	if ok {
+		_ = a.Options.Set(ctx, "active_theme", "default")
+		return theme, true
+	}
+	return plugin.Theme{}, false
 }
 
 func (a *App) enrichData(ctx context.Context, data map[string]any) {
@@ -3868,6 +4300,222 @@ func validatePermalinkOptions(r *http.Request) error {
 func permalinkShape(pattern string) string {
 	re := regexp.MustCompile(`\{[^}]+\}`)
 	return re.ReplaceAllString(cleanPublicPath(pattern), "{}")
+}
+
+func pluginOptionKey(name string) string {
+	return "plugin:" + name
+}
+
+func pluginPersonalOptionKey(name string) string {
+	return "plugin:" + name + ":personal"
+}
+
+func themeOptionKey(name string) string {
+	return "theme:" + name
+}
+
+func (a *App) pluginConfig(ctx context.Context, name string) (map[string]string, error) {
+	return a.optionJSONForUser(ctx, pluginOptionKey(name), 0)
+}
+
+func (a *App) themeConfig(ctx context.Context, name string) (map[string]string, error) {
+	return a.optionJSONForUser(ctx, themeOptionKey(name), 0)
+}
+
+func (a *App) optionJSONForUser(ctx context.Context, key string, userID int64) (map[string]string, error) {
+	raw, err := a.Options.GetForUser(ctx, key, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	if strings.TrimSpace(raw) == "" {
+		return out, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (a *App) setOptionJSONForUser(ctx context.Context, key string, values map[string]string, userID int64) error {
+	data, err := json.Marshal(values)
+	if err != nil {
+		return err
+	}
+	return a.Options.SetForUser(ctx, key, string(data), userID)
+}
+
+func (a *App) applySchemaDefaults(schema []plugin.FieldSchema, values map[string]string) {
+	for _, field := range schema {
+		if _, ok := values[field.Name]; !ok && field.Default != "" {
+			values[field.Name] = field.Default
+		}
+	}
+}
+
+func valuesFromSchema(r *http.Request, schema []plugin.FieldSchema) map[string]string {
+	out := make(map[string]string, len(schema))
+	for _, field := range schema {
+		if field.Type == plugin.FieldCheckbox {
+			if r.FormValue(field.Name) == "1" {
+				out[field.Name] = "1"
+			} else {
+				out[field.Name] = "0"
+			}
+			continue
+		}
+		out[field.Name] = strings.TrimSpace(r.FormValue(field.Name))
+	}
+	return out
+}
+
+func schemaValue(values map[string]string, name string) string {
+	if values == nil {
+		return ""
+	}
+	return values[name]
+}
+
+func schemaChecked(values map[string]string, name string) bool {
+	return checked(schemaValue(values, name))
+}
+
+func (a *App) activePluginSet(ctx context.Context) map[string]bool {
+	raw, _ := a.Options.Get(ctx, "active_plugins")
+	var names []string
+	if strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &names)
+	}
+	active := make(map[string]bool, len(names))
+	for _, name := range names {
+		if name != "" {
+			active[name] = true
+		}
+	}
+	return active
+}
+
+func (a *App) saveActivePluginSet(ctx context.Context, active map[string]bool) error {
+	names := make([]string, 0, len(active))
+	for name, enabled := range active {
+		if enabled {
+			names = append(names, name)
+		}
+	}
+	data, err := json.Marshal(names)
+	if err != nil {
+		return err
+	}
+	return a.Options.Set(ctx, "active_plugins", string(data))
+}
+
+func (a *App) syncActivePlugins(ctx context.Context) {
+	active := a.activePluginSet(ctx)
+	names := make([]string, 0, len(active))
+	for name, enabled := range active {
+		if enabled {
+			names = append(names, name)
+		}
+	}
+	a.Plugins.SetActivePlugins(names)
+}
+
+func (a *App) themeContentFields(ctx context.Context, typ string) []plugin.FieldSchema {
+	theme, ok := a.activeTheme(ctx)
+	if !ok {
+		return nil
+	}
+	fields := make([]plugin.FieldSchema, 0, len(theme.ContentFields))
+	for _, field := range theme.ContentFields {
+		if len(field.ForTypes) == 0 || containsString(field.ForTypes, typ) {
+			fields = append(fields, field)
+		}
+	}
+	return fields
+}
+
+func mergeThemeFields(schema []plugin.FieldSchema, fields []models.Field) []models.Field {
+	if len(schema) == 0 {
+		return fields
+	}
+	seen := map[string]bool{}
+	for _, field := range fields {
+		seen[field.Name] = true
+	}
+	out := append([]models.Field(nil), fields...)
+	for _, item := range schema {
+		if item.Name == "" || seen[item.Name] {
+			continue
+		}
+		out = append(out, models.Field{Name: item.Name, Type: "str", StrValue: item.Default})
+	}
+	return out
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func editableThemeExt(rel string) bool {
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".html", ".css", ".js", ".txt", ".md", ".json":
+		return true
+	default:
+		return false
+	}
+}
+
+func safeThemeEditPath(root, rel string) (string, bool) {
+	if root == "" || rel == "" || filepath.IsAbs(rel) {
+		return "", false
+	}
+	cleanRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", false
+	}
+	full, err := filepath.Abs(filepath.Join(cleanRoot, filepath.FromSlash(rel)))
+	if err != nil {
+		return "", false
+	}
+	if full != cleanRoot && !strings.HasPrefix(full, cleanRoot+string(filepath.Separator)) {
+		return "", false
+	}
+	info, err := os.Stat(full)
+	if err != nil || info.IsDir() {
+		return "", false
+	}
+	return full, true
+}
+
+func editableThemeFiles(root string) ([]string, error) {
+	var files []string
+	cleanRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	err = filepath.WalkDir(cleanRoot, func(pathValue string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(cleanRoot, pathValue)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if editableThemeExt(rel) {
+			files = append(files, rel)
+		}
+		return nil
+	})
+	return files, err
 }
 
 func wantsJSON(r *http.Request) bool {

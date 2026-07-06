@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"goblog/core/models"
@@ -1247,6 +1248,171 @@ func TestPermalinkConflictValidation(t *testing.T) {
 	if err := validatePermalinkOptions(req); err == nil {
 		t.Fatal("expected conflict with archive route")
 	}
+}
+
+func TestPluginActivationFiltersRoutesAndHooks(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	mgr := plugin.NewManager()
+	mgr.Register(phase6Plugin{})
+	app.Plugins = mgr
+	ctx := context.Background()
+	if err := app.Options.Set(ctx, "active_plugins", `[]`); err != nil {
+		t.Fatal(err)
+	}
+	handler := app.Handler()
+
+	req := httptest.NewRequest(http.MethodGet, "/phase6", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("inactive route status = %d, want 404", rec.Code)
+	}
+	app.syncActivePlugins(ctx)
+	payload, err := app.Plugins.ApplyActive(ctx, plugin.HookExcerpt, plugin.ExcerptPayload{Text: "body", Limit: 10, Output: "body"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := payload.(plugin.ExcerptPayload).Output; got != "body" {
+		t.Fatalf("inactive hook output = %q", got)
+	}
+
+	form := url.Values{"_csrf": {adminToken(secret, adminID)}}
+	req = httptest.NewRequest(http.MethodPost, "/admin/plugins/phase6/activate", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("activate status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/phase6", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "phase6" {
+		t.Fatalf("active route = %d %q", rec.Code, rec.Body.String())
+	}
+	payload, err = app.Plugins.ApplyActive(ctx, plugin.HookExcerpt, plugin.ExcerptPayload{Text: "body", Limit: 10, Output: "body"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := payload.(plugin.ExcerptPayload).Output; got != "phase6:body" {
+		t.Fatalf("active hook output = %q", got)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/plugins/phase6/deactivate", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("deactivate status = %d, want 303", rec.Code)
+	}
+	req = httptest.NewRequest(http.MethodGet, "/phase6", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("deactivated route status = %d, want 404", rec.Code)
+	}
+}
+
+func TestPluginConfigSavesJSON(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	mgr := plugin.NewManager()
+	mgr.Register(phase6Plugin{})
+	app.Plugins = mgr
+
+	form := url.Values{"_csrf": {adminToken(secret, adminID)}, "message": {"hello"}, "enabled": {"1"}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/plugins/phase6/config", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("plugin config status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	values, err := app.pluginConfig(context.Background(), "phase6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["message"] != "hello" || values["enabled"] != "1" {
+		t.Fatalf("plugin config = %#v", values)
+	}
+}
+
+func TestThemeConfigInjectedIntoTemplates(t *testing.T) {
+	app, _, _ := newSecurityTestApp(t)
+	mgr := plugin.NewManager()
+	mgr.RegisterTheme(plugin.Theme{
+		Name: "custom",
+		Templates: fstest.MapFS{
+			"templates/base.html":  {Data: []byte(`{{define "base"}}{{index .ThemeConfig "headline"}}{{template "content" .}}{{end}}`)},
+			"templates/index.html": {Data: []byte(`{{define "content"}} index{{end}}`)},
+		},
+		ConfigSchema: []plugin.FieldSchema{{Name: "headline", Label: "Headline", Type: plugin.FieldText}},
+	})
+	app.Plugins = mgr
+	ctx := context.Background()
+	if err := app.Options.Set(ctx, "active_theme", "custom"); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.setOptionJSONForUser(ctx, themeOptionKey("custom"), map[string]string{"headline": "Configured"}, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("theme render status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if strings.TrimSpace(rec.Body.String()) != "Configured index" {
+		t.Fatalf("theme output = %q", rec.Body.String())
+	}
+}
+
+func TestThemeFileEditorRejectsPathTraversal(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "theme.css"), []byte("body{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mgr := plugin.NewManager()
+	mgr.RegisterTheme(plugin.Theme{Name: "editable", EditableDir: root})
+	app.Plugins = mgr
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/themes/editable/files?file=../secret.txt", nil)
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("path traversal status = %d, want 400", rec.Code)
+	}
+}
+
+type phase6Plugin struct{}
+
+func (phase6Plugin) Name() string        { return "phase6" }
+func (phase6Plugin) Version() string     { return "1.0.0" }
+func (phase6Plugin) Description() string { return "phase 06 test plugin" }
+func (phase6Plugin) Info() plugin.PluginInfo {
+	return plugin.PluginInfo{Name: "phase6", Version: "1.0.0", Author: "test", Description: "phase 06 test plugin"}
+}
+func (phase6Plugin) ConfigSchema() []plugin.FieldSchema {
+	return []plugin.FieldSchema{
+		{Name: "message", Label: "Message", Type: plugin.FieldText, Default: "default"},
+		{Name: "enabled", Label: "Enabled", Type: plugin.FieldCheckbox, Default: "0"},
+	}
+}
+func (phase6Plugin) Init(m *plugin.Manager) {
+	m.RegisterRoute(http.MethodGet, "/phase6", func(_ *plugin.Runtime, w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("phase6"))
+	})
+	m.RegisterHook(plugin.HookExcerpt, func(ctx context.Context, payload any) (any, error) {
+		value := payload.(plugin.ExcerptPayload)
+		value.Output = "phase6:" + value.Output
+		return value, nil
+	})
 }
 
 func newSecurityTestApp(t *testing.T) (*App, string, int64) {

@@ -1,0 +1,44 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <h1>{{.Title}}</h1>
+    <p class="muted">配置会保存到 options 表，刷新后持续生效。</p>
+  </div>
+  <mdui-button variant="outlined" href="{{.BackURL}}">返回</mdui-button>
+</div>
+{{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
+<form method="post" class="form-panel field-stack">
+  {{range .Schema}}
+    {{if eq .Type "textarea"}}
+      <mdui-text-field name="{{.Name}}" label="{{.Label}}" rows="5" autosize helper="{{.Description}}">{{schemaValue $.Values .Name}}</mdui-text-field>
+    {{else if eq .Type "password"}}
+      <mdui-text-field type="password" name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
+    {{else if eq .Type "number"}}
+      <mdui-text-field type="number" name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
+    {{else if eq .Type "checkbox"}}
+      <mdui-checkbox name="{{.Name}}" value="1" {{if schemaChecked $.Values .Name}}checked{{end}}>{{.Label}}</mdui-checkbox>
+      {{if .Description}}<span class="muted">{{.Description}}</span>{{end}}
+    {{else if eq .Type "radio"}}
+      <div class="field-stack">
+        <span class="muted">{{.Label}}</span>
+        <mdui-radio-group name="{{.Name}}" value="{{schemaValue $.Values .Name}}">
+          {{range .Options}}<mdui-radio value="{{.Value}}">{{.Label}}</mdui-radio>{{end}}
+        </mdui-radio-group>
+        {{if .Description}}<span class="muted">{{.Description}}</span>{{end}}
+      </div>
+    {{else if eq .Type "select"}}
+      <mdui-select name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}">
+        {{range .Options}}<mdui-menu-item value="{{.Value}}">{{.Label}}</mdui-menu-item>{{end}}
+      </mdui-select>
+      {{if .Description}}<span class="muted">{{.Description}}</span>{{end}}
+    {{else}}
+      <mdui-text-field name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
+    {{end}}
+  {{else}}
+    <span class="muted">没有可配置项目。</span>
+  {{end}}
+  <div class="form-actions">
+    <mdui-button type="submit"><mdui-icon-save slot="icon"></mdui-icon-save>保存</mdui-button>
+  </div>
+</form>
+{{end}}

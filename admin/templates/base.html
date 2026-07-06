@@ -46,6 +46,7 @@
         <mdui-list-item href="/admin/users"><mdui-icon-person slot="icon"></mdui-icon-person>用户</mdui-list-item>
         <mdui-list-item href="/admin/themes"><mdui-icon-palette slot="icon"></mdui-icon-palette>主题</mdui-list-item>
         <mdui-list-item href="/admin/plugins"><mdui-icon-extension slot="icon"></mdui-icon-extension>插件</mdui-list-item>
+        {{range .AdminMenu}}<mdui-list-item href="{{.URL}}"><mdui-icon-extension slot="icon"></mdui-icon-extension>{{.Label}}</mdui-list-item>{{end}}
         <mdui-list-item href="/admin/options/general"><mdui-icon-settings slot="icon"></mdui-icon-settings>设置</mdui-list-item>
         <mdui-list-item href="/admin/backup"><mdui-icon-download slot="icon"></mdui-icon-download>备份</mdui-list-item>
         <mdui-list-item href="/admin/profile"><mdui-icon-person slot="icon"></mdui-icon-person>个人设置</mdui-list-item>
