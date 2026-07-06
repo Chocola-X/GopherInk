@@ -9,33 +9,46 @@
   <link rel="stylesheet" href="/admin/assets/app.css">
   <script src="/admin/assets/vendor/mdui.global.js"></script>
   <script type="module" src="/admin/assets/vendor/mdui-icons.js"></script>
+  <script defer src="/admin/assets/app.js"></script>
 </head>
 <body>
 {{if eq .Title "登录"}}
   <main class="login-main">{{template "content" .}}</main>
 {{else}}
   <mdui-layout class="admin-shell">
-    <mdui-top-app-bar>
+    <div class="admin-bg"></div>
+    <mdui-top-app-bar class="admin-appbar">
+      <mdui-button-icon class="drawer-toggle" title="菜单"><mdui-icon-menu></mdui-icon-menu></mdui-button-icon>
       <mdui-top-app-bar-title>{{index .Site "site_title"}}</mdui-top-app-bar-title>
+      <mdui-button-icon href="/" title="查看网站"><mdui-icon-rss-feed></mdui-icon-rss-feed></mdui-button-icon>
       <form method="post" action="/admin/logout">
         <mdui-button-icon type="submit" title="退出"><mdui-icon-logout></mdui-icon-logout></mdui-button-icon>
       </form>
     </mdui-top-app-bar>
-    <mdui-navigation-drawer open>
-      <mdui-list>
+    <mdui-navigation-drawer open class="admin-drawer">
+      <div class="admin-profile-card">
+        <div class="admin-profile-cover"></div>
+        <img src="/theme/default/cuckoo-logo.jpg" alt="">
+        <strong>{{index .Site "site_title"}}</strong>
+        <span>{{index .Site "site_description"}}</span>
+      </div>
+      <mdui-list class="admin-nav">
+        <div class="nav-section">内容</div>
         <mdui-list-item href="/admin"><mdui-icon-home slot="icon"></mdui-icon-home>控制台</mdui-list-item>
         <mdui-list-item href="/admin/posts"><mdui-icon-article slot="icon"></mdui-icon-article>文章</mdui-list-item>
         <mdui-list-item href="/admin/pages"><mdui-icon-article slot="icon"></mdui-icon-article>页面</mdui-list-item>
-        <mdui-list-item href="/admin/comments">评论</mdui-list-item>
-        <mdui-list-item href="/admin/categories">分类</mdui-list-item>
-        <mdui-list-item href="/admin/tags">标签</mdui-list-item>
-        <mdui-list-item href="/admin/users">用户</mdui-list-item>
-        <mdui-list-item href="/admin/themes">主题</mdui-list-item>
-        <mdui-list-item href="/admin/plugins">插件</mdui-list-item>
+        <mdui-list-item href="/admin/comments"><mdui-icon-comment slot="icon"></mdui-icon-comment>评论</mdui-list-item>
+        <mdui-list-item href="/admin/categories"><mdui-icon-category slot="icon"></mdui-icon-category>分类</mdui-list-item>
+        <mdui-list-item href="/admin/tags"><mdui-icon-tag slot="icon"></mdui-icon-tag>标签</mdui-list-item>
+        <div class="nav-section">系统</div>
+        <mdui-list-item href="/admin/users"><mdui-icon-person slot="icon"></mdui-icon-person>用户</mdui-list-item>
+        <mdui-list-item href="/admin/themes"><mdui-icon-palette slot="icon"></mdui-icon-palette>主题</mdui-list-item>
+        <mdui-list-item href="/admin/plugins"><mdui-icon-extension slot="icon"></mdui-icon-extension>插件</mdui-list-item>
         <mdui-list-item href="/admin/options/general"><mdui-icon-settings slot="icon"></mdui-icon-settings>设置</mdui-list-item>
-        <mdui-list-item href="/admin/profile">个人设置</mdui-list-item>
+        <mdui-list-item href="/admin/profile"><mdui-icon-person slot="icon"></mdui-icon-person>个人设置</mdui-list-item>
       </mdui-list>
     </mdui-navigation-drawer>
+    <button class="drawer-scrim" type="button" aria-label="收起菜单"></button>
     <mdui-layout-main>
       <main class="admin-main">{{template "content" .}}</main>
     </mdui-layout-main>

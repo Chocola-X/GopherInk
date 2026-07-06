@@ -11,18 +11,64 @@
   <script type="module" src="/theme/default/mdui-icons.js"></script>
 </head>
 <body>
-  <div class="site">
-    <header class="site-header">
-      <a class="brand" href="/">
-        <h1>{{index .Site "site_title"}}</h1>
-        <div class="site-desc">{{index .Site "site_description"}}</div>
-      </a>
-      <a href="/sitemap.xml" class="meta"><mdui-icon-rss-feed></mdui-icon-rss-feed> sitemap</a>
-    </header>
-    <main>{{template "content" .}}</main>
+  <div class="background"><div class="background-filter"></div></div>
+  <header class="appbar">
+    <a class="icon-button" href="#drawer" aria-label="菜单"><mdui-icon-menu></mdui-icon-menu></a>
+    <a href="/" class="appbar-title">{{index .Site "site_title"}}</a>
+    <div class="appbar-spacer"></div>
+    <a class="icon-button" href="/sitemap.xml" aria-label="Sitemap"><mdui-icon-rss-feed></mdui-icon-rss-feed></a>
+  </header>
+
+  <aside id="drawer" class="drawer">
+    <a class="drawer-close" href="#" aria-label="关闭">×</a>
+    <div class="drawer-profile">
+      <img src="/theme/default/cuckoo-logo.jpg" alt="">
+      <strong>{{index .Site "site_title"}}</strong>
+      <span>{{index .Site "site_description"}}</span>
+    </div>
+    <nav class="drawer-nav">
+      <a href="/"><mdui-icon-home></mdui-icon-home>首页</a>
+      {{range .Pages}}<a href="/page/{{.Slug}}"><mdui-icon-article></mdui-icon-article>{{.Title}}</a>{{end}}
+      <a href="/sitemap.xml"><mdui-icon-rss-feed></mdui-icon-rss-feed>Sitemap</a>
+    </nav>
+  </aside>
+
+  <div class="site-shell">
+    <main class="site-main">{{template "content" .}}</main>
+    <aside class="site-sidebar">
+      <section class="sidebar-card profile-card">
+        <div class="profile-cover"></div>
+        <img src="/theme/default/cuckoo-logo.jpg" alt="">
+        <h2>{{index .Site "site_title"}}</h2>
+        <p>{{index .Site "site_description"}}</p>
+      </section>
+      <section class="sidebar-card">
+        <h3>页面</h3>
+        <div class="sidebar-list">
+          {{range .Pages}}<a href="/page/{{.Slug}}">{{.Title}}</a>{{else}}<span class="muted">暂无页面</span>{{end}}
+        </div>
+      </section>
+      <section class="sidebar-card">
+        <h3>最新文章</h3>
+        <div class="sidebar-list">
+          {{range .RecentPosts}}<a href="/post/{{.Slug}}">{{.Title}}</a>{{else}}<span class="muted">暂无文章</span>{{end}}
+        </div>
+      </section>
+      <section class="sidebar-card">
+        <h3>标签云</h3>
+        <div class="tag-cloud">
+          {{range .Tags}}<span>{{.Name}}</span>{{else}}<span class="muted">暂无标签</span>{{end}}
+        </div>
+      </section>
+      <section class="sidebar-card">
+        <h3>最新回复</h3>
+        <div class="sidebar-list">
+          {{range .RecentComments}}<a href="/post/{{.Slug}}">{{.Author}}：{{excerpt .Text 28}}</a>{{else}}<span class="muted">暂无回复</span>{{end}}
+        </div>
+      </section>
+    </aside>
     <footer class="site-footer">Powered by GoBlog</footer>
   </div>
 </body>
 </html>
 {{end}}
-

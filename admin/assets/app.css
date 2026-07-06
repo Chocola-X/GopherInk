@@ -9,6 +9,108 @@ body {
   min-height: 100vh;
 }
 
+.admin-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: url("/theme/default/cuckoo-bg.jpg") center / cover no-repeat fixed;
+}
+
+.admin-bg::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: rgba(248, 250, 252, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.admin-appbar {
+  z-index: 30;
+  color: #fff;
+  background: rgba(17, 24, 39, 0.42);
+  backdrop-filter: blur(12px);
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.35);
+}
+
+.admin-drawer {
+  z-index: 40;
+  --mdui-color-surface: 255, 255, 255;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
+}
+
+.drawer-scrim {
+  position: fixed;
+  inset: 64px 0 0 0;
+  z-index: 25;
+  display: block;
+  border: 0;
+  padding: 0;
+  pointer-events: none;
+  cursor: default;
+  background: transparent;
+}
+
+body.admin-drawer-modal .drawer-scrim {
+  pointer-events: auto;
+}
+
+.admin-profile-card {
+  margin: 14px;
+  overflow: hidden;
+  border-radius: 8px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+}
+
+.admin-profile-cover {
+  height: 86px;
+  background: url("/theme/default/cuckoo-sidebar.jpg") center / cover no-repeat;
+}
+
+.admin-profile-card img {
+  width: 74px;
+  height: 74px;
+  margin-top: -37px;
+  border: 3px solid rgba(255, 255, 255, 0.92);
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.2);
+}
+
+.admin-profile-card strong,
+.admin-profile-card span {
+  display: block;
+  padding: 0 12px;
+}
+
+.admin-profile-card strong {
+  margin-top: 6px;
+}
+
+.admin-profile-card span {
+  margin: 4px 0 14px;
+  color: rgb(var(--mdui-color-on-surface-variant));
+  font-size: 13px;
+}
+
+.admin-nav {
+  padding: 4px 10px 18px;
+}
+
+.nav-section {
+  padding: 14px 14px 6px;
+  color: rgb(var(--mdui-color-on-surface-variant));
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-nav mdui-list-item {
+  margin: 3px 0;
+  border-radius: 8px;
+}
+
 .admin-main {
   max-width: 1120px;
   margin: 0 auto;
@@ -26,9 +128,11 @@ body {
 .form-panel,
 .table-panel,
 .stat-panel {
-  border: 1px solid rgb(var(--mdui-color-outline-variant));
+  border: 1px solid rgba(var(--mdui-color-outline-variant), 0.72);
   border-radius: 8px;
-  background: rgb(var(--mdui-color-surface));
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(12px);
 }
 
 .login-panel {
@@ -126,7 +230,7 @@ select {
   border-radius: 6px;
   color: rgb(var(--mdui-color-primary));
   text-decoration: none;
-  background: rgb(var(--mdui-color-surface));
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .form-actions {
@@ -160,6 +264,10 @@ th {
   font-weight: 600;
 }
 
+tbody tr:hover {
+  background: rgba(var(--mdui-color-primary), 0.05);
+}
+
 .row-actions {
   display: flex;
   align-items: center;
@@ -187,11 +295,34 @@ mdui-icon-edit,
 mdui-icon-delete,
 mdui-icon-settings,
 mdui-icon-logout,
+mdui-icon-menu,
+mdui-icon-comment,
+mdui-icon-category,
+mdui-icon-tag,
+mdui-icon-person,
+mdui-icon-palette,
+mdui-icon-extension,
 mdui-icon-rss-feed {
   display: inline-flex;
   width: 20px;
   height: 20px;
   vertical-align: middle;
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-bg::after {
+    background: rgba(15, 23, 42, 0.66);
+  }
+
+  .admin-drawer,
+  .admin-profile-card,
+  .login-panel,
+  .form-panel,
+  .table-panel,
+  .stat-panel,
+  .subnav a {
+    background: rgba(31, 41, 55, 0.86);
+  }
 }
 
 @media (max-width: 720px) {

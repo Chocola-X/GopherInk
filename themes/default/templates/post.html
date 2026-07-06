@@ -1,8 +1,12 @@
 {{define "content"}}
-<article class="post">
-  <h1>{{.Post.Title}}</h1>
-  <div class="meta">{{date .Post.Created}}</div>
+<article class="post-detail">
+  <header class="post-hero">
+    <div class="post-card-filter"></div>
+    <div>
+      <h1>{{.Post.Title}}</h1>
+      <div class="meta">{{date .Post.Created}} · {{.Post.CommentsNum}} 条评论</div>
+    </div>
+  </header>
   <div class="content">{{.ContentHTML}}</div>
 </article>
 {{end}}
-

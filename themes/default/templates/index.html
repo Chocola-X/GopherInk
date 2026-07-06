@@ -1,14 +1,18 @@
 {{define "content"}}
 <section class="post-list">
   {{range .Posts}}
-  <article class="post-item">
-    <h2><a href="/post/{{.Slug}}">{{.Title}}</a></h2>
-    <div class="meta">{{date .Created}}</div>
-    <p>{{excerpt .Text 160}}</p>
-  </article>
+  <a class="post-card" href="/post/{{.Slug}}">
+    <div class="post-card-media">
+      <div class="post-card-filter"></div>
+      <div class="post-card-text">
+        <h2>{{.Title}}</h2>
+        <div class="meta">{{date .Created}} · {{.CommentsNum}} 条评论</div>
+        <p>{{excerpt .Text 150}}</p>
+      </div>
+    </div>
+  </a>
   {{else}}
-  <p class="empty">还没有发布文章。</p>
+  <section class="empty-card">还没有发布文章。</section>
   {{end}}
 </section>
 {{end}}
-

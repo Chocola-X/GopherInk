@@ -762,6 +762,7 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 		return
 	}
 	a.enrichData(r.Context(), data)
+	a.enrichThemeData(r.Context(), data)
 	w.WriteHeader(status)
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -780,6 +781,31 @@ func (a *App) enrichData(ctx context.Context, data map[string]any) {
 	options, err := a.Options.All(ctx)
 	if err == nil {
 		data["Site"] = options
+	}
+}
+
+func (a *App) enrichThemeData(ctx context.Context, data map[string]any) {
+	if _, ok := data["RecentPosts"]; !ok {
+		if posts, err := a.Contents.ListPublished(ctx, 5, 0); err == nil {
+			data["RecentPosts"] = posts
+		}
+	}
+	if _, ok := data["Pages"]; !ok {
+		if pages, err := a.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePage, Status: models.ContentStatusPost, Limit: 20}); err == nil {
+			data["Pages"] = pages
+		}
+	}
+	if _, ok := data["Tags"]; !ok {
+		if tags, err := a.Metas.List(ctx, "tag"); err == nil {
+			data["Tags"] = tags
+		}
+	}
+	if _, ok := data["RecentComments"]; !ok {
+		if comments, err := a.Comments.List(ctx, "approved", "", 0); err == nil && len(comments) > 5 {
+			data["RecentComments"] = comments[:5]
+		} else if err == nil {
+			data["RecentComments"] = comments
+		}
 	}
 }
 

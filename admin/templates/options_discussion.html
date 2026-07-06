@@ -1,11 +1,18 @@
 {{define "content"}}
 <div class="page-head"><div><h1>评论设置</h1></div></div>{{template "options_tabs" .}}{{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
 <form method="post" class="form-panel field-stack">
-  <label class="muted" for="comments_require_moderation">评论审核</label><select id="comments_require_moderation" name="comments_require_moderation"><option value="0" {{if eq (index .Options "comments_require_moderation") "0"}}selected{{end}}>不强制审核</option><option value="1" {{if eq (index .Options "comments_require_moderation") "1"}}selected{{end}}>所有评论必须审核</option></select>
-  <label><input type="checkbox" name="comments_require_mail" value="1" {{if eq (index .Options "comments_require_mail") "1"}}checked{{end}}> 必须填写邮箱</label>
-  <label><input type="checkbox" name="comments_show_url" value="1" {{if eq (index .Options "comments_show_url") "1"}}checked{{end}}> 评论者名称显示主页链接</label>
-  <label class="muted" for="comments_order">评论排序</label><select id="comments_order" name="comments_order"><option value="ASC" {{if eq (index .Options "comments_order") "ASC"}}selected{{end}}>较旧在前</option><option value="DESC" {{if eq (index .Options "comments_order") "DESC"}}selected{{end}}>较新在前</option></select>
+  <mdui-select name="comments_require_moderation" label="评论审核" value="{{index .Options "comments_require_moderation"}}">
+    <mdui-menu-item value="0">不强制审核</mdui-menu-item>
+    <mdui-menu-item value="1">所有评论必须审核</mdui-menu-item>
+  </mdui-select>
+  <mdui-checkbox name="comments_require_mail" value="1" {{if eq (index .Options "comments_require_mail") "1"}}checked{{end}}>必须填写邮箱</mdui-checkbox>
+  <input type="hidden" name="comments_require_mail" value="0">
+  <mdui-checkbox name="comments_show_url" value="1" {{if eq (index .Options "comments_show_url") "1"}}checked{{end}}>评论者名称显示主页链接</mdui-checkbox>
+  <input type="hidden" name="comments_show_url" value="0">
+  <mdui-select name="comments_order" label="评论排序" value="{{index .Options "comments_order"}}">
+    <mdui-menu-item value="ASC">较旧在前</mdui-menu-item>
+    <mdui-menu-item value="DESC">较新在前</mdui-menu-item>
+  </mdui-select>
   <div class="form-actions"><mdui-button type="submit">保存设置</mdui-button></div>
 </form>
-{{end}}{{define "options_tabs"}}<div class="subnav"><a href="/admin/options/general">基本</a><a href="/admin/options/reading">阅读</a><a href="/admin/options/discussion">评论</a><a href="/admin/options/permalink">永久链接</a></div>{{end}}
-
+{{end}}{{define "options_tabs"}}<div class="subnav"><mdui-button variant="tonal" href="/admin/options/general">基本</mdui-button><mdui-button variant="tonal" href="/admin/options/reading">阅读</mdui-button><mdui-button variant="tonal" href="/admin/options/discussion">评论</mdui-button><mdui-button variant="tonal" href="/admin/options/permalink">永久链接</mdui-button></div>{{end}}
