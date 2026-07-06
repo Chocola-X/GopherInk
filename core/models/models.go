@@ -3,11 +3,12 @@ package models
 import "time"
 
 const (
-	ContentTypePost    = "post"
-	ContentTypePage    = "page"
-	ContentTypeAttach  = "attachment"
-	ContentStatusPost  = "publish"
-	ContentStatusDraft = "draft"
+	ContentTypePost     = "post"
+	ContentTypePage     = "page"
+	ContentTypeAttach   = "attachment"
+	ContentTypeRevision = "revision"
+	ContentStatusPost   = "publish"
+	ContentStatusDraft  = "draft"
 )
 
 type Content struct {
@@ -56,4 +57,32 @@ type Option struct {
 	Name  string
 	User  int64
 	Value string
+}
+
+type Field struct {
+	FID        int64
+	CID        int64
+	Name       string
+	Type       string
+	StrValue   string
+	IntValue   int64
+	FloatValue float64
+}
+
+type Revision struct {
+	RID          int64
+	CID          int64
+	Created      int64
+	AuthorID     int64
+	Title        string
+	Slug         string
+	Text         string
+	Status       string
+	Password     string
+	SortOrder    int64
+	Template     string
+	Parent       int64
+	AllowComment string
+	AllowPing    string
+	AllowFeed    string
 }

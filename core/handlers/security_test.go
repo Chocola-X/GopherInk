@@ -19,6 +19,7 @@ import (
 	"goblog/pkg/auth"
 
 	_ "github.com/mattn/go-sqlite3"
+	_ "goblog/themes/default"
 )
 
 func TestSafeNextRejectsExternalURL(t *testing.T) {
@@ -222,6 +223,140 @@ func TestContributorAttachmentUploadsMustTargetOwnPost(t *testing.T) {
 	app.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("contributor upload to own post status = %d, want 303", rec.Code)
+	}
+}
+
+func TestDraftPreviewRequiresSignedToken(t *testing.T) {
+	app, _, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+	id, err := app.Contents.Create(ctx, services.SaveContentInput{Title: "Draft Preview", Slug: "draft-preview", Text: "draft body", Type: models.ContentTypePost, Status: models.ContentStatusDraft}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := app.Contents.ByID(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/preview/"+itoa(id), nil)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("preview without token status = %d, want 403", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, app.previewURL(req, item), nil)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("preview with token status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestFuturePostDoesNotLeakInSearchPage(t *testing.T) {
+	app, _, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+	_, err := app.Contents.Create(ctx, services.SaveContentInput{
+		Title:   "Future Secret",
+		Slug:    "future-secret",
+		Text:    "hidden",
+		Type:    models.ContentTypePost,
+		Status:  models.ContentStatusPost,
+		Created: time.Now().Add(24 * time.Hour).Unix(),
+	}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/search?q=Future", nil)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("search status = %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "Future Secret") {
+		t.Fatal("future post leaked in search page")
+	}
+}
+
+func TestRestoreRevisionMustBelongToRouteContent(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+	contributorID, err := app.Users.Save(ctx, services.SaveUserInput{Name: "contrib2", Password: "secret123", Mail: "c2@example.com", Role: "contributor"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownID, err := app.Contents.Create(ctx, services.SaveContentInput{Title: "Own", Slug: "own", Text: "own", Type: models.ContentTypePost, Status: models.ContentStatusPost}, contributorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherID, err := app.Contents.Create(ctx, services.SaveContentInput{Title: "Other v1", Slug: "other", Text: "v1", Type: models.ContentTypePost, Status: models.ContentStatusPost}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Contents.Update(ctx, otherID, services.SaveContentInput{Title: "Other v2", Slug: "other", Text: "v2", Type: models.ContentTypePost, Status: models.ContentStatusPost}); err != nil {
+		t.Fatal(err)
+	}
+	revisions, err := app.Contents.Revisions(ctx, otherID)
+	if err != nil || len(revisions) == 0 {
+		t.Fatalf("expected other revision, got %v %#v", err, revisions)
+	}
+
+	form := url.Values{"_csrf": {adminToken(secret, contributorID)}, "rid": {itoa(revisions[0].RID)}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/posts/"+itoa(ownID)+"/restore", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, contributorID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("cross-content restore status = %d, want 403", rec.Code)
+	}
+	other, err := app.Contents.ByID(ctx, otherID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.Title != "Other v2" || other.Text != "v2" {
+		t.Fatalf("other post changed after forbidden restore: %#v", other)
+	}
+}
+
+func TestAutosaveAllowsOnlyPostOrPageAndChecksAuthor(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+	contributorID, err := app.Users.Save(ctx, services.SaveUserInput{Name: "contrib3", Password: "secret123", Mail: "c3@example.com", Role: "contributor"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherPostID, err := app.Contents.Create(ctx, services.SaveContentInput{Title: "Other", Slug: "other-auto", Text: "v1", Type: models.ContentTypePost, Status: models.ContentStatusPost}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	form := url.Values{"_csrf": {adminToken(secret, contributorID)}, "type": {models.ContentTypeAttach}, "title": {"Bad"}, "status": {models.ContentStatusDraft}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/autosave", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, contributorID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("autosave attachment status = %d, want 400", rec.Code)
+	}
+	attachments, err := app.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypeAttach, Status: "all", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attachments) != 0 {
+		t.Fatalf("autosave created attachment content: %#v", attachments)
+	}
+
+	form = url.Values{"_csrf": {adminToken(secret, contributorID)}, "type": {models.ContentTypePost}, "cid": {itoa(otherPostID)}, "title": {"Hijack"}, "status": {models.ContentStatusDraft}}
+	req = httptest.NewRequest(http.MethodPost, "/admin/autosave", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, contributorID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("autosave another author's post status = %d, want 403", rec.Code)
 	}
 }
 

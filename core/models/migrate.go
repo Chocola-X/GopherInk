@@ -107,6 +107,34 @@ func sqliteSchema() []string {
 			parent int(10) default '0'
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_comments_cid ON gb_comments (cid)`,
+		`CREATE TABLE IF NOT EXISTS gb_fields (
+			fid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+			cid int(10) NOT NULL default '0',
+			name varchar(150) NOT NULL,
+			type varchar(16) NOT NULL default 'str',
+			strValue text,
+			intValue int(10) default '0',
+			floatValue real default '0'
+		)`,
+		`CREATE INDEX IF NOT EXISTS gb_fields_cid ON gb_fields (cid)`,
+		`CREATE TABLE IF NOT EXISTS gb_revisions (
+			rid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+			cid int(10) NOT NULL default '0',
+			created int(10) default '0',
+			authorId int(10) default '0',
+			title varchar(150) default NULL,
+			slug varchar(150) default NULL,
+			text text,
+			status varchar(16) default 'draft',
+			password varchar(64) default NULL,
+			sortOrder int(10) default '0',
+			template varchar(32) default NULL,
+			parent int(10) default '0',
+			allowComment char(1) default '1',
+			allowPing char(1) default '0',
+			allowFeed char(1) default '1'
+		)`,
+		`CREATE INDEX IF NOT EXISTS gb_revisions_cid ON gb_revisions (cid)`,
 	}
 }
 
@@ -190,6 +218,36 @@ func mysqlSchema() []string {
 			parent int(10) unsigned default '0',
 			PRIMARY KEY (coid),
 			KEY gb_comments_cid (cid)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		`CREATE TABLE IF NOT EXISTS gb_fields (
+			fid int(10) unsigned NOT NULL AUTO_INCREMENT,
+			cid int(10) unsigned NOT NULL default '0',
+			name varchar(150) NOT NULL,
+			type varchar(16) NOT NULL default 'str',
+			strValue longtext,
+			intValue int(10) default '0',
+			floatValue double default '0',
+			PRIMARY KEY (fid),
+			KEY gb_fields_cid (cid)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+		`CREATE TABLE IF NOT EXISTS gb_revisions (
+			rid int(10) unsigned NOT NULL AUTO_INCREMENT,
+			cid int(10) unsigned NOT NULL default '0',
+			created int(10) unsigned default '0',
+			authorId int(10) unsigned default '0',
+			title varchar(150) default NULL,
+			slug varchar(150) default NULL,
+			text longtext,
+			status varchar(16) default 'draft',
+			password varchar(64) default NULL,
+			sortOrder int(10) unsigned default '0',
+			template varchar(32) default NULL,
+			parent int(10) unsigned default '0',
+			allowComment char(1) default '1',
+			allowPing char(1) default '0',
+			allowFeed char(1) default '1',
+			PRIMARY KEY (rid),
+			KEY gb_revisions_cid (cid)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 	}
 }

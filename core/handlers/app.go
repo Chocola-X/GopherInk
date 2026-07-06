@@ -97,6 +97,8 @@ func (a *App) Handler() http.Handler {
 		"/admin/medias":             a.adminMedias,
 		"/admin/medias/":            a.adminMediaRoutes,
 		"/admin/backup":             a.adminBackup,
+		"/admin/autosave":           a.adminAutosave,
+		"/admin/tags/search":        a.adminTagSearch,
 		"/admin/theme-editor":       a.adminPlaceholder("主题编辑器", "对应 Typecho 的 theme-editor.php。直接编辑文件需要额外权限和审计，当前先保留入口。"),
 	}
 	for route, handler := range adminRoutes {
@@ -118,6 +120,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/feed.xml", a.frontRSS)
 	mux.HandleFunc("/atom.xml", a.frontRSS)
 	mux.HandleFunc("/comment", a.frontComment)
+	mux.HandleFunc("/preview/", a.frontPreview)
 	mux.HandleFunc("/post/", a.frontPost)
 	mux.HandleFunc("/page/", a.frontPage)
 	mux.HandleFunc("/category/", a.frontCategory)
@@ -285,6 +288,34 @@ func (a *App) contentRoutes(w http.ResponseWriter, r *http.Request, prefix, typ 
 			return
 		}
 		a.contentForm(w, r, typ, id)
+	case "revisions":
+		if !a.canEditContent(w, r, id, typ) {
+			return
+		}
+		a.contentRevisions(w, r, typ, id)
+	case "restore":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		if !a.canEditContent(w, r, id, typ) {
+			return
+		}
+		rid, _ := strconv.ParseInt(r.FormValue("rid"), 10, 64)
+		revision, err := a.Contents.RevisionByID(r.Context(), rid)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		if revision.CID != id {
+			http.Error(w, "permission denied", http.StatusForbidden)
+			return
+		}
+		if _, err := a.Contents.RestoreRevision(r.Context(), id, rid); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, contentActionURL(typ, id)+"?saved=1", http.StatusSeeOther)
 	case "delete":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -339,6 +370,8 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 		pages, _ := a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePage, Limit: 200})
 		selectedCategories, _ := a.Metas.CategoriesForContent(r.Context(), id)
 		selectedTags, _ := a.Metas.TagsForContent(r.Context(), id)
+		fields, _ := a.Contents.FieldsForContent(r.Context(), id)
+		revisions, _ := a.Contents.Revisions(r.Context(), id)
 		a.renderAdmin(w, r, "content_form.html", map[string]any{
 			"Title":              contentFormTitle(typ, id),
 			"Content":            item,
@@ -349,6 +382,9 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 			"Pages":              pages,
 			"SelectedCategories": selectedCategories,
 			"SelectedTags":       selectedTags,
+			"Fields":             fields,
+			"Revisions":          revisions,
+			"PreviewURL":         a.previewURL(r, item),
 		})
 	case http.MethodPost:
 		input, err := parseContentForm(r, typ)
@@ -358,8 +394,17 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 		}
 		if errs := validateContentInput(input); !errs.Empty() {
 			item = applyContentInput(item, input)
-			a.renderContentForm(w, r, typ, id, item, metasFromIDs(input.CategoryIDs), metasFromNames(input.Tags), errs)
+			a.renderContentForm(w, r, typ, id, item, metasFromIDs(input.CategoryIDs), metasFromNames(input.Tags), fieldModels(input.Fields), errs)
 			return
+		}
+		if id == 0 {
+			draftID, _ := strconv.ParseInt(r.FormValue("cid"), 10, 64)
+			if draftID > 0 {
+				if !a.canEditContent(w, r, draftID, typ) {
+					return
+				}
+				id = draftID
+			}
 		}
 		uid, _ := a.currentUserID(r)
 		if id == 0 {
@@ -377,7 +422,25 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 	}
 }
 
-func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ string, id int64, item models.Content, selectedCategories, selectedTags []models.Meta, errs validate.Errors) {
+func (a *App) contentRevisions(w http.ResponseWriter, r *http.Request, typ string, id int64) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	item, err := a.Contents.ByID(r.Context(), id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	revisions, err := a.Contents.Revisions(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	a.renderAdmin(w, r, "revisions.html", map[string]any{"Title": "修订版本", "Content": item, "Type": typ, "Revisions": revisions})
+}
+
+func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ string, id int64, item models.Content, selectedCategories, selectedTags []models.Meta, fields []models.Field, errs validate.Errors) {
 	categories, _ := a.Metas.List(r.Context(), "category")
 	pages, _ := a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePage, Limit: 200})
 	if selectedCategories == nil {
@@ -386,6 +449,10 @@ func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ stri
 	if selectedTags == nil {
 		selectedTags, _ = a.Metas.TagsForContent(r.Context(), id)
 	}
+	if fields == nil {
+		fields, _ = a.Contents.FieldsForContent(r.Context(), id)
+	}
+	revisions, _ := a.Contents.Revisions(r.Context(), id)
 	a.renderAdmin(w, r, "content_form.html", map[string]any{
 		"Title":              contentFormTitle(typ, id),
 		"Content":            item,
@@ -396,6 +463,9 @@ func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ stri
 		"SelectedCategories": selectedCategories,
 		"SelectedTags":       selectedTags,
 		"Errors":             errs,
+		"Fields":             fields,
+		"Revisions":          revisions,
+		"PreviewURL":         a.previewURL(r, item),
 	})
 }
 
@@ -779,7 +849,7 @@ func (a *App) adminOptionsReading(w http.ResponseWriter, r *http.Request) {
 	if !a.requireRole(w, r, "administrator") {
 		return
 	}
-	a.optionsForm(w, r, "阅读设置", "options_reading.html", []string{"post_date_format", "page_size", "posts_list_size", "feed_full_text"})
+	a.optionsForm(w, r, "阅读设置", "options_reading.html", []string{"post_date_format", "page_size", "posts_list_size", "content_render_mode", "feed_full_text"})
 }
 
 func (a *App) adminOptionsDiscussion(w http.ResponseWriter, r *http.Request) {
@@ -846,6 +916,88 @@ func (a *App) adminPlugins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.renderAdmin(w, r, "plugins.html", map[string]any{"Title": "插件", "Plugins": a.Plugins.Plugins()})
+}
+
+func (a *App) adminAutosave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if !a.requireRole(w, r, "contributor") {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	typ := r.FormValue("type")
+	if typ == "" {
+		typ = models.ContentTypePost
+	}
+	if typ != models.ContentTypePost && typ != models.ContentTypePage {
+		http.Error(w, "unsupported content type", http.StatusBadRequest)
+		return
+	}
+	id, _ := strconv.ParseInt(r.FormValue("cid"), 10, 64)
+	if id > 0 && !a.canEditContent(w, r, id, typ) {
+		return
+	}
+	if typ == models.ContentTypePage && !a.requireRole(w, r, "editor") {
+		return
+	}
+	input, err := parseContentForm(r, typ)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(input.Title) == "" {
+		input.Title = "自动保存草稿"
+	}
+	input.Status = models.ContentStatusDraft
+	user, _ := a.currentUser(r)
+	if id == 0 {
+		id, err = a.Contents.Create(r.Context(), input, user.UID)
+	} else {
+		err = a.Contents.Update(r.Context(), id, input)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	item, _ := a.Contents.ByID(r.Context(), id)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cid": id, "preview": a.previewURL(r, item)})
+}
+
+func (a *App) adminTagSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	if !a.requireRole(w, r, "contributor") {
+		return
+	}
+	keywords := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	tags, err := a.Metas.List(r.Context(), "tag")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	type tagResult struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	}
+	out := make([]tagResult, 0, 10)
+	for _, tag := range tags {
+		if keywords == "" || strings.Contains(strings.ToLower(tag.Name), keywords) || strings.Contains(strings.ToLower(tag.Slug), keywords) {
+			out = append(out, tagResult{Name: tag.Name, Slug: tag.Slug})
+			if len(out) >= 10 {
+				break
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 func (a *App) adminMedias(w http.ResponseWriter, r *http.Request) {
@@ -1021,13 +1173,15 @@ func (a *App) frontPost(w http.ResponseWriter, r *http.Request) {
 	comments, _ := a.Comments.ListForContent(r.Context(), post.CID, a.option(r.Context(), "comments_order", "ASC"))
 	categories, _ := a.Metas.CategoriesForContent(r.Context(), post.CID)
 	tags, _ := a.Metas.TagsForContent(r.Context(), post.CID)
+	fields, _ := a.Contents.FieldMap(r.Context(), post.CID)
 	prev, next, _ := a.Contents.Adjacent(r.Context(), post)
 	a.renderTheme(w, r, "post.html", map[string]any{
 		"Post":         post,
-		"ContentHTML":  render.MarkdownHTML(post.Text),
+		"ContentHTML":  render.ContentHTML(post.Text, a.option(r.Context(), "content_render_mode", "markdown")),
 		"Comments":     comments,
 		"Categories":   categories,
 		"Tags":         tags,
+		"Fields":       fields,
 		"PrevPost":     prev,
 		"NextPost":     next,
 		"CommentError": r.URL.Query().Get("comment_error"),
@@ -1042,7 +1196,37 @@ func (a *App) frontPage(w http.ResponseWriter, r *http.Request) {
 		a.renderThemeStatus(w, r, "404.html", map[string]any{}, http.StatusNotFound)
 		return
 	}
-	a.renderTheme(w, r, "post.html", map[string]any{"Post": pageData, "ContentHTML": render.MarkdownHTML(pageData.Text)})
+	fields, _ := a.Contents.FieldMap(r.Context(), pageData.CID)
+	a.renderTheme(w, r, "post.html", map[string]any{"Post": pageData, "ContentHTML": render.ContentHTML(pageData.Text, a.option(r.Context(), "content_render_mode", "markdown")), "Fields": fields})
+}
+
+func (a *App) frontPreview(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(path.Base(strings.TrimSuffix(r.URL.Path, "/")), 10, 64)
+	if err != nil || id <= 0 {
+		http.NotFound(w, r)
+		return
+	}
+	item, err := a.Contents.ByID(r.Context(), id)
+	if err != nil || (item.Type != models.ContentTypePost && item.Type != models.ContentTypePage) {
+		http.NotFound(w, r)
+		return
+	}
+	if !a.validPreviewToken(r, item) {
+		http.Error(w, "invalid preview token", http.StatusForbidden)
+		return
+	}
+	fields, _ := a.Contents.FieldMap(r.Context(), item.CID)
+	a.renderTheme(w, r, "post.html", map[string]any{
+		"Post":        item,
+		"ContentHTML": render.ContentHTML(item.Text, a.option(r.Context(), "content_render_mode", "markdown")),
+		"Fields":      fields,
+		"Comments":    []models.Comment{},
+		"Categories":  []models.Meta{},
+		"Tags":        []models.Meta{},
+		"PrevPost":    models.Content{},
+		"NextPost":    models.Content{},
+		"Preview":     true,
+	})
 }
 
 func (a *App) frontCategory(w http.ResponseWriter, r *http.Request) {
@@ -1211,6 +1395,7 @@ func (a *App) renderPostList(w http.ResponseWriter, r *http.Request, query servi
 	}
 	query.Limit = size
 	query.Offset = (page - 1) * size
+	query.ExcludeFuture = true
 	total, err := a.Contents.CountList(r.Context(), query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1507,10 +1692,37 @@ func signCSRF(secret, subject, purpose string, t time.Time) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
+func (a *App) previewURL(r *http.Request, c models.Content) string {
+	if c.CID <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("/preview/%d?token=%s", c.CID, a.previewToken(r, c))
+}
+
+func (a *App) previewToken(r *http.Request, c models.Content) string {
+	secret, _ := a.Options.Get(r.Context(), "auth_secret")
+	if secret == "" {
+		secret = "goblog"
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = fmt.Fprintf(mac, "preview:%d:%d:%s", c.CID, c.Modified, c.Status)
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (a *App) validPreviewToken(r *http.Request, c models.Content) bool {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		return false
+	}
+	expected := a.previewToken(r, c)
+	return hmac.Equal([]byte(token), []byte(expected))
+}
+
 func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
 	funcs := template.FuncMap{
 		"date":             formatDate,
 		"statusLabel":      statusLabel,
+		"contentStatus":    contentStatusLabel,
 		"roleLabel":        roleLabel,
 		"excerpt":          render.Excerpt,
 		"containsMeta":     containsMeta,
@@ -1518,6 +1730,7 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 		"checked":          checked,
 		"contentPublicURL": contentPublicURL,
 		"fieldError":       fieldError,
+		"fieldValue":       fieldValue,
 	}
 	tmpl, err := template.New("base.html").Funcs(funcs).ParseFS(admin.FS, "templates/base.html", "templates/"+page)
 	if err != nil {
@@ -1588,7 +1801,7 @@ func (a *App) enrichThemeData(ctx context.Context, data map[string]any) {
 		}
 	}
 	if _, ok := data["Pages"]; !ok {
-		if pages, err := a.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePage, Status: models.ContentStatusPost, Limit: 20}); err == nil {
+		if pages, err := a.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePage, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: 20}); err == nil {
 			data["Pages"] = pages
 		}
 	}
@@ -1615,6 +1828,7 @@ func parseContentForm(r *http.Request, typ string) (services.SaveContentInput, e
 	created := parseDate(r.FormValue("created"))
 	categoryIDs := parseInt64Values(r.Form["category"])
 	tags := splitTags(r.FormValue("tags"))
+	fields := parseFieldInputs(r)
 	return services.SaveContentInput{
 		Title:        strings.TrimSpace(r.FormValue("title")),
 		Slug:         strings.TrimSpace(r.FormValue("slug")),
@@ -1631,7 +1845,38 @@ func parseContentForm(r *http.Request, typ string) (services.SaveContentInput, e
 		AllowFeed:    r.FormValue("allowFeed") == "1",
 		CategoryIDs:  categoryIDs,
 		Tags:         tags,
+		Fields:       fields,
 	}, nil
+}
+
+func parseFieldInputs(r *http.Request) []services.SaveFieldInput {
+	names := r.Form["field_name"]
+	types := r.Form["field_type"]
+	values := r.Form["field_value"]
+	out := make([]services.SaveFieldInput, 0, len(names))
+	for i, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		typ := "str"
+		if i < len(types) {
+			typ = types[i]
+		}
+		value := ""
+		if i < len(values) {
+			value = values[i]
+		}
+		field := services.SaveFieldInput{Name: name, Type: typ, StrValue: value}
+		switch typ {
+		case "int":
+			field.IntValue, _ = strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		case "float":
+			field.FloatValue, _ = strconv.ParseFloat(strings.TrimSpace(value), 64)
+		}
+		out = append(out, field)
+	}
+	return out
 }
 
 func validateContentInput(input services.SaveContentInput) validate.Errors {
@@ -1643,6 +1888,14 @@ func validateContentInput(input services.SaveContentInput) validate.Errors {
 		SafeText("text", input.Text)
 	if input.Type == models.ContentTypePage {
 		v.MaxLength("template", input.Template, 32)
+	}
+	for _, field := range input.Fields {
+		v.Required("field_name", field.Name).
+			In("field_type", field.Type, "str", "int", "float", "json").
+			SafeText("field_value", field.StrValue)
+		if field.Type == "json" && strings.TrimSpace(field.StrValue) != "" && !json.Valid([]byte(field.StrValue)) {
+			v.Errors.Add("field_value", "JSON 格式不正确")
+		}
 	}
 	return v.Errors
 }
@@ -1733,6 +1986,14 @@ func metasFromNames(names []string) []models.Meta {
 	return out
 }
 
+func fieldModels(inputs []services.SaveFieldInput) []models.Field {
+	out := make([]models.Field, 0, len(inputs))
+	for _, input := range inputs {
+		out = append(out, models.Field{Name: input.Name, Type: input.Type, StrValue: input.StrValue, IntValue: input.IntValue, FloatValue: input.FloatValue})
+	}
+	return out
+}
+
 func boolString(v bool) string {
 	if v {
 		return "1"
@@ -1795,6 +2056,13 @@ func statusLabel(status string) string {
 	default:
 		return "已发布"
 	}
+}
+
+func contentStatusLabel(c models.Content) string {
+	if c.Status == models.ContentStatusPost && c.Created > time.Now().Unix() {
+		return "定时发布"
+	}
+	return statusLabel(c.Status)
 }
 
 func roleLabel(role string) string {
@@ -1944,6 +2212,17 @@ func fieldError(errors any, field string) string {
 		}
 	}
 	return ""
+}
+
+func fieldValue(f models.Field) string {
+	switch f.Type {
+	case "int":
+		return strconv.FormatInt(f.IntValue, 10)
+	case "float":
+		return strconv.FormatFloat(f.FloatValue, 'f', -1, 64)
+	default:
+		return f.StrValue
+	}
 }
 
 func safeNext(value string) string {

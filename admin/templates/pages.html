@@ -17,7 +17,7 @@
     {{range .Pages}}
       <tr>
         <td><strong>{{.Title}}</strong><br><span class="muted">/page/{{.Slug}}</span></td>
-        <td>{{statusLabel .Status}}</td>
+        <td>{{contentStatus .}}<br><span class="muted">{{date .Created}}</span></td>
         <td>{{.SortOrder}}</td>
         <td><a href="/admin/comments?cid={{.CID}}">{{.CommentsNum}}</a></td>
         <td>{{date .Modified}}</td>
@@ -34,4 +34,3 @@
   </table>
 </section>
 {{end}}
-

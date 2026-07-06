@@ -34,20 +34,30 @@ type SaveContentInput struct {
 	AllowFeed    bool
 	CategoryIDs  []int64
 	Tags         []string
+	Fields       []SaveFieldInput
 }
 
 type ContentQuery struct {
-	Type     string
-	Status   string
-	Keywords string
-	Category int64
-	Tag      int64
-	AuthorID int64
-	Year     int
-	Month    int
-	Day      int
-	Limit    int
-	Offset   int
+	Type          string
+	Status        string
+	Keywords      string
+	Category      int64
+	Tag           int64
+	AuthorID      int64
+	Year          int
+	Month         int
+	Day           int
+	ExcludeFuture bool
+	Limit         int
+	Offset        int
+}
+
+type SaveFieldInput struct {
+	Name       string
+	Type       string
+	StrValue   string
+	IntValue   int64
+	FloatValue float64
 }
 
 func NewContentService(db *sql.DB) *ContentService {
@@ -55,7 +65,7 @@ func NewContentService(db *sql.DB) *ContentService {
 }
 
 func (s *ContentService) ListPublished(ctx context.Context, limit, offset int) ([]models.Content, error) {
-	return s.List(ctx, ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Limit: limit, Offset: offset})
+	return s.List(ctx, ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: limit, Offset: offset})
 }
 
 func (s *ContentService) ListPublishedPlugin(ctx context.Context, limit, offset int) ([]plugin.PublicContent, error) {
@@ -140,11 +150,11 @@ func (s *ContentService) Stats(ctx context.Context) (models.Stats, error) {
 }
 
 func (s *ContentService) BySlug(ctx context.Context, postSlug string) (models.Content, error) {
-	return s.one(ctx, `WHERE slug = ? AND type = ? AND status = ?`, postSlug, models.ContentTypePost, models.ContentStatusPost)
+	return s.one(ctx, `WHERE slug = ? AND type = ? AND status = ? AND created <= ?`, postSlug, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix())
 }
 
 func (s *ContentService) PageBySlug(ctx context.Context, pageSlug string) (models.Content, error) {
-	return s.one(ctx, `WHERE slug = ? AND type = ? AND status = ?`, pageSlug, models.ContentTypePage, models.ContentStatusPost)
+	return s.one(ctx, `WHERE slug = ? AND type = ? AND status = ? AND created <= ?`, pageSlug, models.ContentTypePage, models.ContentStatusPost, time.Now().Unix())
 }
 
 func (s *ContentService) AttachmentBySlug(ctx context.Context, attachSlug string) (models.Content, error) {
@@ -168,7 +178,12 @@ func (s *ContentService) Create(ctx context.Context, input SaveContentInput, aut
 	if err != nil {
 		return 0, err
 	}
-	res, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `
 		INSERT INTO gb_contents (title, slug, created, modified, text, sortOrder, authorId, template, type, status, password, commentsNum, allowComment, allowPing, allowFeed, parent)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
 	`, input.Title, postSlug, created, now, input.Text, input.SortOrder, authorID, input.Template, input.Type, normalizeStatus(input.Status), input.Password, boolChar(input.AllowComment), boolChar(input.AllowPing), boolChar(input.AllowFeed), input.Parent)
@@ -179,7 +194,15 @@ func (s *ContentService) Create(ctx context.Context, input SaveContentInput, aut
 	if err != nil {
 		return 0, err
 	}
-	return id, s.syncRelationships(ctx, id, input)
+	if err := s.syncRelationshipsTx(ctx, tx, id, input); err != nil {
+		return 0, err
+	}
+	if input.Fields != nil {
+		if err := s.saveFieldsTx(ctx, tx, id, input.Fields); err != nil {
+			return 0, err
+		}
+	}
+	return id, tx.Commit()
 }
 
 func (s *ContentService) CreateAttachment(ctx context.Context, title, slugValue, filePath string, authorID, parent int64) (int64, error) {
@@ -195,18 +218,28 @@ func (s *ContentService) CreateAttachment(ctx context.Context, title, slugValue,
 }
 
 func (s *ContentService) Update(ctx context.Context, id int64, input SaveContentInput) error {
+	current, err := s.ByID(ctx, id)
+	if err != nil {
+		return err
+	}
 	if input.Type == "" {
-		current, err := s.ByID(ctx, id)
-		if err != nil {
-			return err
-		}
 		input.Type = current.Type
 	}
 	postSlug, err := s.uniqueSlug(ctx, input.Slug, input.Title, input.Type, id)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if current.Type == models.ContentTypePost || current.Type == models.ContentTypePage {
+		if err := s.saveRevisionTx(ctx, tx, current); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `
 		UPDATE gb_contents
 		SET title = ?, slug = ?, modified = ?, text = ?, status = ?, password = ?, sortOrder = ?, template = ?, parent = ?, allowComment = ?, allowPing = ?, allowFeed = ?
 		WHERE cid = ?
@@ -214,7 +247,15 @@ func (s *ContentService) Update(ctx context.Context, id int64, input SaveContent
 	if err != nil {
 		return err
 	}
-	return s.syncRelationships(ctx, id, input)
+	if err := s.syncRelationshipsTx(ctx, tx, id, input); err != nil {
+		return err
+	}
+	if input.Fields != nil {
+		if err := s.saveFieldsTx(ctx, tx, id, input.Fields); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *ContentService) MarkStatus(ctx context.Context, id int64, status string) error {
@@ -229,16 +270,174 @@ func (s *ContentService) Delete(ctx context.Context, id int64) error {
 	if _, err := s.db.ExecContext(ctx, `DELETE FROM gb_comments WHERE cid = ?`, id); err != nil {
 		return err
 	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM gb_fields WHERE cid = ?`, id); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM gb_revisions WHERE cid = ?`, id); err != nil {
+		return err
+	}
 	_, err := s.db.ExecContext(ctx, `DELETE FROM gb_contents WHERE cid = ?`, id)
 	return err
 }
 
+func (s *ContentService) SaveFields(ctx context.Context, cid int64, fields []SaveFieldInput) error {
+	return s.saveFieldsTxLike(ctx, s.db, cid, fields)
+}
+
+func (s *ContentService) saveFieldsTx(ctx context.Context, tx *sql.Tx, cid int64, fields []SaveFieldInput) error {
+	return s.saveFieldsTxLike(ctx, tx, cid, fields)
+}
+
+type execer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func (s *ContentService) saveFieldsTxLike(ctx context.Context, db execer, cid int64, fields []SaveFieldInput) error {
+	if _, err := db.ExecContext(ctx, `DELETE FROM gb_fields WHERE cid = ?`, cid); err != nil {
+		return err
+	}
+	for _, field := range fields {
+		field.Name = strings.TrimSpace(field.Name)
+		field.Type = normalizeFieldType(field.Type)
+		if field.Name == "" {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO gb_fields (cid, name, type, strValue, intValue, floatValue)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, cid, field.Name, field.Type, field.StrValue, field.IntValue, field.FloatValue); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *ContentService) FieldsForContent(ctx context.Context, cid int64) ([]models.Field, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT fid, cid, COALESCE(name,''), type, COALESCE(strValue,''), intValue, floatValue
+		FROM gb_fields WHERE cid = ? ORDER BY fid ASC
+	`, cid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var fields []models.Field
+	for rows.Next() {
+		var f models.Field
+		if err := rows.Scan(&f.FID, &f.CID, &f.Name, &f.Type, &f.StrValue, &f.IntValue, &f.FloatValue); err != nil {
+			return nil, err
+		}
+		fields = append(fields, f)
+	}
+	return fields, rows.Err()
+}
+
+func (s *ContentService) FieldMap(ctx context.Context, cid int64) (map[string]any, error) {
+	fields, err := s.FieldsForContent(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]any, len(fields))
+	for _, f := range fields {
+		switch f.Type {
+		case "int":
+			out[f.Name] = f.IntValue
+		case "float":
+			out[f.Name] = f.FloatValue
+		default:
+			out[f.Name] = f.StrValue
+		}
+	}
+	return out, nil
+}
+
+func (s *ContentService) SaveRevision(ctx context.Context, c models.Content) error {
+	return s.saveRevisionTxLike(ctx, s.db, c)
+}
+
+func (s *ContentService) saveRevisionTx(ctx context.Context, tx *sql.Tx, c models.Content) error {
+	return s.saveRevisionTxLike(ctx, tx, c)
+}
+
+func (s *ContentService) saveRevisionTxLike(ctx context.Context, db execer, c models.Content) error {
+	if c.CID <= 0 || c.Type == models.ContentTypeRevision || c.Type == models.ContentTypeAttach {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO gb_revisions (cid, created, authorId, title, slug, text, status, password, sortOrder, template, parent, allowComment, allowPing, allowFeed)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.CID, time.Now().Unix(), c.AuthorID, c.Title, c.Slug, c.Text, c.Status, c.Password, c.SortOrder, c.Template, c.Parent, c.AllowComment, c.AllowPing, c.AllowFeed)
+	if err != nil {
+		return err
+	}
+	_, _ = db.ExecContext(ctx, `
+		DELETE FROM gb_revisions
+		WHERE cid = ? AND rid NOT IN (
+			SELECT rid FROM gb_revisions WHERE cid = ? ORDER BY rid DESC LIMIT 20
+		)
+	`, c.CID, c.CID)
+	return nil
+}
+
+func (s *ContentService) Revisions(ctx context.Context, cid int64) ([]models.Revision, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT rid, cid, created, authorId, COALESCE(title,''), COALESCE(slug,''), COALESCE(text,''), status, COALESCE(password,''), sortOrder, COALESCE(template,''), parent, allowComment, allowPing, allowFeed
+		FROM gb_revisions WHERE cid = ? ORDER BY rid DESC
+	`, cid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var revisions []models.Revision
+	for rows.Next() {
+		var r models.Revision
+		if err := rows.Scan(&r.RID, &r.CID, &r.Created, &r.AuthorID, &r.Title, &r.Slug, &r.Text, &r.Status, &r.Password, &r.SortOrder, &r.Template, &r.Parent, &r.AllowComment, &r.AllowPing, &r.AllowFeed); err != nil {
+			return nil, err
+		}
+		revisions = append(revisions, r)
+	}
+	return revisions, rows.Err()
+}
+
+func (s *ContentService) RevisionByID(ctx context.Context, rid int64) (models.Revision, error) {
+	var r models.Revision
+	err := s.db.QueryRowContext(ctx, `
+		SELECT rid, cid, created, authorId, COALESCE(title,''), COALESCE(slug,''), COALESCE(text,''), status, COALESCE(password,''), sortOrder, COALESCE(template,''), parent, allowComment, allowPing, allowFeed
+		FROM gb_revisions WHERE rid = ?
+	`, rid).Scan(&r.RID, &r.CID, &r.Created, &r.AuthorID, &r.Title, &r.Slug, &r.Text, &r.Status, &r.Password, &r.SortOrder, &r.Template, &r.Parent, &r.AllowComment, &r.AllowPing, &r.AllowFeed)
+	return r, err
+}
+
+func (s *ContentService) RestoreRevision(ctx context.Context, cid, rid int64) (int64, error) {
+	revision, err := s.RevisionByID(ctx, rid)
+	if err != nil {
+		return 0, err
+	}
+	if revision.CID != cid {
+		return 0, sql.ErrNoRows
+	}
+	current, err := s.ByID(ctx, revision.CID)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.SaveRevision(ctx, current); err != nil {
+		return 0, err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		UPDATE gb_contents
+		SET title = ?, slug = ?, modified = ?, text = ?, status = ?, password = ?, sortOrder = ?, template = ?, parent = ?, allowComment = ?, allowPing = ?, allowFeed = ?
+		WHERE cid = ?
+	`, revision.Title, revision.Slug, time.Now().Unix(), revision.Text, revision.Status, revision.Password, revision.SortOrder, revision.Template, revision.Parent, revision.AllowComment, revision.AllowPing, revision.AllowFeed, revision.CID)
+	return revision.CID, err
+}
+
 func (s *ContentService) Adjacent(ctx context.Context, c models.Content) (prev, next models.Content, err error) {
-	prev, prevErr := s.one(ctx, `WHERE type = ? AND status = ? AND created < ? ORDER BY created DESC`, c.Type, models.ContentStatusPost, c.Created)
+	now := time.Now().Unix()
+	prev, prevErr := s.one(ctx, `WHERE type = ? AND status = ? AND created < ? AND created <= ? ORDER BY created DESC`, c.Type, models.ContentStatusPost, c.Created, now)
 	if prevErr != nil && !errors.Is(prevErr, sql.ErrNoRows) {
 		return models.Content{}, models.Content{}, prevErr
 	}
-	next, nextErr := s.one(ctx, `WHERE type = ? AND status = ? AND created > ? ORDER BY created ASC`, c.Type, models.ContentStatusPost, c.Created)
+	next, nextErr := s.one(ctx, `WHERE type = ? AND status = ? AND created > ? AND created <= ? ORDER BY created ASC`, c.Type, models.ContentStatusPost, c.Created, now)
 	if nextErr != nil && !errors.Is(nextErr, sql.ErrNoRows) {
 		return models.Content{}, models.Content{}, nextErr
 	}
@@ -295,6 +494,10 @@ func buildContentWhere(q ContentQuery) ([]string, []any) {
 		where = append(where, "c.authorId = ?")
 		args = append(args, q.AuthorID)
 	}
+	if q.ExcludeFuture {
+		where = append(where, "c.created <= ?")
+		args = append(args, time.Now().Unix())
+	}
 	if q.Year > 0 {
 		start := time.Date(q.Year, time.Month(maxInt(q.Month, 1)), maxInt(q.Day, 1), 0, 0, 0, 0, time.Local)
 		end := start.AddDate(1, 0, 0)
@@ -311,14 +514,22 @@ func buildContentWhere(q ContentQuery) ([]string, []any) {
 }
 
 func (s *ContentService) syncRelationships(ctx context.Context, cid int64, input SaveContentInput) error {
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM gb_relationships WHERE cid = ?`, cid); err != nil {
+	return s.syncRelationshipsTxLike(ctx, s.db, cid, input)
+}
+
+func (s *ContentService) syncRelationshipsTx(ctx context.Context, tx *sql.Tx, cid int64, input SaveContentInput) error {
+	return s.syncRelationshipsTxLike(ctx, tx, cid, input)
+}
+
+func (s *ContentService) syncRelationshipsTxLike(ctx context.Context, db execer, cid int64, input SaveContentInput) error {
+	if _, err := db.ExecContext(ctx, `DELETE FROM gb_relationships WHERE cid = ?`, cid); err != nil {
 		return err
 	}
 	if input.Type == models.ContentTypePost {
 		for _, mid := range input.CategoryIDs {
 			if mid > 0 {
-				if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
-					if _, err = s.db.ExecContext(ctx, `INSERT IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
+				if _, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
+					if _, err = db.ExecContext(ctx, `INSERT IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
 						return err
 					}
 				}
@@ -333,14 +544,14 @@ func (s *ContentService) syncRelationships(ctx context.Context, cid int64, input
 			if err != nil {
 				return err
 			}
-			if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
-				if _, err = s.db.ExecContext(ctx, `INSERT IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
+			if _, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
+				if _, err = db.ExecContext(ctx, `INSERT IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
 					return err
 				}
 			}
 		}
 	}
-	_, _ = s.db.ExecContext(ctx, `
+	_, _ = db.ExecContext(ctx, `
 		UPDATE gb_metas SET count = (
 			SELECT COUNT(*) FROM gb_relationships r JOIN gb_contents c ON c.cid = r.cid
 			WHERE r.mid = gb_metas.mid AND c.type = 'post'
@@ -436,6 +647,15 @@ func boolChar(v bool) string {
 		return "1"
 	}
 	return "0"
+}
+
+func normalizeFieldType(typ string) string {
+	switch typ {
+	case "int", "float", "json":
+		return typ
+	default:
+		return "str"
+	}
 }
 
 func maxInt(a, b int) int {

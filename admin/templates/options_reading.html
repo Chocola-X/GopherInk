@@ -4,6 +4,11 @@
   <mdui-text-field name="post_date_format" label="文章日期格式" value="{{index .Options "post_date_format"}}"></mdui-text-field>
   <mdui-text-field name="posts_list_size" label="文章列表数目" type="number" value="{{index .Options "posts_list_size"}}"></mdui-text-field>
   <mdui-text-field name="page_size" label="每页文章数目" type="number" value="{{index .Options "page_size"}}"></mdui-text-field>
+  <mdui-select name="content_render_mode" label="正文渲染模式" value="{{index .Options "content_render_mode"}}">
+    <mdui-menu-item value="markdown">Markdown（安全转义 HTML）</mdui-menu-item>
+    <mdui-menu-item value="autop">纯文本 / AutoP</mdui-menu-item>
+    <mdui-menu-item value="html">允许 HTML（仅用于受信任作者）</mdui-menu-item>
+  </mdui-select>
   <mdui-select name="feed_full_text" label="聚合全文输出" value="{{index .Options "feed_full_text"}}">
     <mdui-menu-item value="0">仅输出摘要</mdui-menu-item>
     <mdui-menu-item value="1">全文输出</mdui-menu-item>

@@ -8,6 +8,8 @@
 </div>
 {{if .Saved}}<div class="notice">已保存。</div>{{end}}
 <form method="post" action="{{.Action}}" class="form-panel field-stack">
+  <input type="hidden" name="cid" value="{{.Content.CID}}">
+  <input type="hidden" name="type" value="{{.Type}}">
   <mdui-text-field name="title" label="标题" value="{{.Content.Title}}" {{if fieldError .Errors "title"}}helper="{{fieldError .Errors "title"}}"{{end}} required></mdui-text-field>
   <mdui-text-field name="slug" label="固定链接" value="{{.Content.Slug}}" helper="{{if fieldError .Errors "slug"}}{{fieldError .Errors "slug"}}{{else}}留空时由标题生成{{end}}"></mdui-text-field>
   <mdui-text-field name="created" label="发布日期" value="{{date .Content.Created}}" helper="格式：2006-01-02 15:04"></mdui-text-field>
@@ -31,7 +33,8 @@
       <span class="muted">还没有分类。</span>
     {{end}}
   </fieldset>
-  <mdui-text-field name="tags" label="标签" value="{{joinMetaNames .SelectedTags}}" helper="多个标签用逗号分隔"></mdui-text-field>
+  <mdui-text-field class="tag-input" name="tags" label="标签" value="{{joinMetaNames .SelectedTags}}" helper="多个标签用逗号分隔"></mdui-text-field>
+  <datalist id="tag-suggestions"></datalist>
   {{else}}
   <mdui-text-field name="sortOrder" label="页面顺序" type="number" value="{{.Content.SortOrder}}"></mdui-text-field>
   <mdui-text-field name="template" label="自定义模板" value="{{.Content.Template}}" {{if fieldError .Errors "template"}}helper="{{fieldError .Errors "template"}}"{{end}}></mdui-text-field>
@@ -48,7 +51,35 @@
     <label><input type="checkbox" name="allowFeed" value="1" {{if checked .Content.AllowFeed}}checked{{end}}> 允许在聚合中出现</label>
   </fieldset>
   <mdui-text-field name="text" label="正文" rows="16" autosize {{if fieldError .Errors "text"}}helper="{{fieldError .Errors "text"}}"{{end}}>{{.Content.Text}}</mdui-text-field>
+  <fieldset class="fieldset custom-fields">
+    <legend>自定义字段</legend>
+    <div class="custom-field-list">
+      {{range .Fields}}
+      <div class="custom-field-row">
+        <mdui-text-field name="field_name" label="字段名" value="{{.Name}}"></mdui-text-field>
+        <select name="field_type">
+          <option value="str" {{if eq .Type "str"}}selected{{end}}>字符串</option>
+          <option value="int" {{if eq .Type "int"}}selected{{end}}>整数</option>
+          <option value="float" {{if eq .Type "float"}}selected{{end}}>浮点数</option>
+          <option value="json" {{if eq .Type "json"}}selected{{end}}>JSON</option>
+        </select>
+        <mdui-text-field name="field_value" label="值" value="{{fieldValue .}}"></mdui-text-field>
+        <mdui-button-icon type="button" class="remove-field" title="删除字段"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon>
+      </div>
+      {{end}}
+    </div>
+    <mdui-button type="button" variant="outlined" class="add-field"><mdui-icon-add slot="icon"></mdui-icon-add>新增字段</mdui-button>
+  </fieldset>
+  {{if .Revisions}}
+  <section class="revision-summary">
+    <strong>修订版本</strong>
+    <span class="muted">已有 {{len .Revisions}} 个版本快照。</span>
+    <mdui-button variant="outlined" href="{{if eq .Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{.Content.CID}}/revisions">查看修订</mdui-button>
+  </section>
+  {{end}}
+  <div class="autosave-status muted" aria-live="polite"></div>
   <div class="form-actions">
+    {{if .PreviewURL}}<mdui-button variant="outlined" href="{{.PreviewURL}}" target="_blank">预览</mdui-button>{{end}}
     <mdui-button type="submit"><mdui-icon-edit slot="icon"></mdui-icon-edit>保存</mdui-button>
   </div>
 </form>

@@ -14,6 +14,7 @@ import (
 )
 
 func PlainTextHTML(input string) template.HTML {
+	input = strings.TrimPrefix(input, "<!--plaintext-->")
 	escaped := stdhtml.EscapeString(input)
 	escaped = strings.ReplaceAll(escaped, "\r\n", "\n")
 	escaped = strings.ReplaceAll(escaped, "\n\n", "</p><p>")
@@ -22,6 +23,7 @@ func PlainTextHTML(input string) template.HTML {
 }
 
 func MarkdownHTML(input string) template.HTML {
+	input = strings.TrimPrefix(input, "<!--markdown-->")
 	md := goldmark.New(
 		goldmark.WithExtensions(extension.GFM),
 		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
@@ -32,6 +34,23 @@ func MarkdownHTML(input string) template.HTML {
 		return PlainTextHTML(input)
 	}
 	return template.HTML(buf.String())
+}
+
+func ContentHTML(input, mode string) template.HTML {
+	if strings.HasPrefix(input, "<!--markdown-->") {
+		return MarkdownHTML(input)
+	}
+	if strings.HasPrefix(input, "<!--plaintext-->") {
+		return PlainTextHTML(input)
+	}
+	switch mode {
+	case "autop", "plaintext", "plain":
+		return PlainTextHTML(input)
+	case "html":
+		return template.HTML(input)
+	default:
+		return MarkdownHTML(input)
+	}
 }
 
 func Excerpt(input string, n int) string {
@@ -54,6 +73,8 @@ var markdownPatterns = []*regexp.Regexp{
 
 func stripMarkdown(input string) string {
 	input = strings.Split(input, "<!--more-->")[0]
+	input = strings.TrimPrefix(input, "<!--markdown-->")
+	input = strings.TrimPrefix(input, "<!--plaintext-->")
 	for _, pattern := range markdownPatterns {
 		input = pattern.ReplaceAllString(input, "$1")
 	}

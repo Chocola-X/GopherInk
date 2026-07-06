@@ -53,6 +53,7 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 		"post_date_format":            "2006-01-02",
 		"page_size":                   "10",
 		"posts_list_size":             "10",
+		"content_render_mode":         "markdown",
 		"feed_full_text":              "0",
 		"comments_require_moderation": "0",
 		"comments_require_mail":       "1",

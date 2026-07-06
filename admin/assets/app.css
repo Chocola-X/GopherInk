@@ -217,6 +217,29 @@ select {
   color: rgb(var(--mdui-color-on-surface-variant));
 }
 
+.custom-fields,
+.custom-field-list {
+  display: grid;
+  gap: 12px;
+}
+
+.custom-field-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 150px minmax(180px, 1.4fr) 44px;
+  gap: 10px;
+  align-items: center;
+}
+
+.revision-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgb(var(--mdui-color-outline-variant));
+  border-radius: 8px;
+}
+
 .subnav {
   display: flex;
   flex-wrap: wrap;
@@ -336,6 +359,13 @@ mdui-icon-upload {
 
   .filter-bar {
     grid-template-columns: 1fr;
+  }
+
+  .custom-field-row,
+  .revision-summary {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .admin-main {
