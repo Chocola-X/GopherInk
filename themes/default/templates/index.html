@@ -32,9 +32,9 @@
 {{with .Pagination}}
 {{if gt .TotalPages 1}}
 <nav class="pagination">
-  {{if .HasPrev}}<a href="{{.PrevURL}}"><mdui-icon-chevron-left></mdui-icon-chevron-left>上一页</a>{{else}}<span>上一页</span>{{end}}
+  {{if .HasPrev}}<a href="{{.PrevURL}}"><mdui-icon name="chevron_left"></mdui-icon>上一页</a>{{else}}<span>上一页</span>{{end}}
   <strong>{{.Page}} / {{.TotalPages}}</strong>
-  {{if .HasNext}}<a class="next" href="{{.NextURL}}">下一页<mdui-icon-chevron-right></mdui-icon-chevron-right></a>{{else}}<span>下一页</span>{{end}}
+  {{if .HasNext}}<a class="next" href="{{.NextURL}}">下一页<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span>下一页</span>{{end}}
 </nav>
 {{if .HasNext}}<a class="changePage changePage-load" href="{{.NextURL}}">加载更多</a>{{else}}<div class="changePage">到底了啦</div>{{end}}
 <div class="changePage changePage-end">加载中...</div>

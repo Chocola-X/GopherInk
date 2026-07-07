@@ -36,9 +36,9 @@
         <mdui-button type="submit" formaction="/admin/comments/{{.COID}}/mark" name="status" value="approved" variant="text">通过</mdui-button>
         <mdui-button type="submit" formaction="/admin/comments/{{.COID}}/mark" name="status" value="waiting" variant="text">待审</mdui-button>
         <mdui-button type="submit" formaction="/admin/comments/{{.COID}}/mark" name="status" value="spam" variant="text">垃圾</mdui-button>
-        <mdui-button-icon href="/admin/comments/{{.COID}}/edit" title="编辑"><mdui-icon-edit></mdui-icon-edit></mdui-button-icon>
+        <mdui-button-icon href="/admin/comments/{{.COID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
         <mdui-button href="/admin/comments/{{.COID}}/reply" variant="text">回复</mdui-button>
-        <mdui-button-icon type="submit" formaction="/admin/comments/{{.COID}}/delete" title="删除"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon>
+        <mdui-button-icon type="submit" formaction="/admin/comments/{{.COID}}/delete" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
       </div></td>
     </tr>{{else}}<tr><td colspan="6" class="muted">没有评论。</td></tr>{{end}}</tbody>
   </table></section>

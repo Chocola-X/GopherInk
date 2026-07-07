@@ -20,7 +20,7 @@
   </header>
   {{if staleDays .Post.Modified 30}}
   <div class="post-alert">
-    <mdui-icon-report></mdui-icon-report>
+    <mdui-icon name="report"></mdui-icon>
     请注意，本文最后修改于 {{daysSince .Post.Modified}} 天前，其中某些信息可能已经过时。
   </div>
   {{end}}
@@ -32,8 +32,8 @@
   {{else}}
   <div class="post-content mdui-prose">{{.ContentHTML}}</div>
   <nav class="post-neighbors">
-    {{if .PrevPost.CID}}<a href="{{contentURL .PrevPost}}"><mdui-icon-chevron-left></mdui-icon-chevron-left>{{.PrevPost.Title}}</a>{{else}}<span></span>{{end}}
-    {{if .NextPost.CID}}<a href="{{contentURL .NextPost}}">{{.NextPost.Title}}<mdui-icon-chevron-right></mdui-icon-chevron-right></a>{{else}}<span></span>{{end}}
+    {{if .PrevPost.CID}}<a href="{{contentURL .PrevPost}}"><mdui-icon name="chevron_left"></mdui-icon>{{.PrevPost.Title}}</a>{{else}}<span></span>{{end}}
+    {{if .NextPost.CID}}<a href="{{contentURL .NextPost}}">{{.NextPost.Title}}<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span></span>{{end}}
   </nav>
   {{if .RelatedPosts}}
   <section class="mdui-card post-related">
@@ -65,9 +65,9 @@
     </div>
     {{if gt .CommentPager.TotalPages 1}}
     <nav class="pagination comment-pagination">
-      {{if .CommentPager.HasPrev}}<a href="{{.CommentPager.PrevURL}}"><mdui-icon-chevron-left></mdui-icon-chevron-left>上一页</a>{{else}}<span>上一页</span>{{end}}
+      {{if .CommentPager.HasPrev}}<a href="{{.CommentPager.PrevURL}}"><mdui-icon name="chevron_left"></mdui-icon>上一页</a>{{else}}<span>上一页</span>{{end}}
       <span>{{.CommentPager.Page}} / {{.CommentPager.TotalPages}}</span>
-      {{if .CommentPager.HasNext}}<a href="{{.CommentPager.NextURL}}">下一页<mdui-icon-chevron-right></mdui-icon-chevron-right></a>{{else}}<span>下一页</span>{{end}}
+      {{if .CommentPager.HasNext}}<a href="{{.CommentPager.NextURL}}">下一页<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span>下一页</span>{{end}}
     </nav>
     {{end}}
     <form id="comment-form" class="mdui-card comment-respond" method="post" action="/comment">

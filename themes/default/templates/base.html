@@ -25,6 +25,7 @@
   <link rel="wlwmanifest" type="application/wlwmanifest+xml" href="{{.WLWManifestURL}}">
   {{end}}
   {{if .PingbackEnabled}}<link rel="pingback" href="{{.XMLRPCURL}}">{{end}}
+  <link rel="stylesheet" href="/theme/default/material-icons.css">
   <link rel="stylesheet" href="/theme/default/mdui.css">
   <link rel="stylesheet" href="/theme/default/theme.css">
   <script src="/theme/default/mdui.global.js"></script>
@@ -45,22 +46,16 @@
 
   <header class="mdui-appbar appbar">
     <div class="mdui-toolbar">
-      <button class="mdui-btn mdui-btn-icon drawer-toggle" type="button" aria-label="菜单"><mdui-icon-menu></mdui-icon-menu></button>
+      <button class="mdui-btn mdui-btn-icon drawer-toggle" type="button" aria-label="菜单"><mdui-icon name="menu"></mdui-icon></button>
       <a href="/" class="mdui-typo-title appbar-title">{{index .Site "site_title"}}</a>
       <div class="mdui-toolbar-spacer"></div>
       <form class="appbar-search" action="/search" method="get" role="search">
-        <button class="appbar-search-icon" type="submit" aria-label="搜索" title="搜索"><mdui-icon-search></mdui-icon-search></button>
+        <button class="appbar-search-icon" type="submit" aria-label="搜索" title="搜索"><mdui-icon name="search"></mdui-icon></button>
         <input name="q" value="{{.Keywords}}" placeholder="搜索一下" autocomplete="off">
-        <button class="appbar-search-close" type="button" aria-label="关闭搜索" title="关闭搜索"><mdui-icon-close></mdui-icon-close></button>
+        <button class="appbar-search-close" type="button" aria-label="关闭搜索" title="关闭搜索"><mdui-icon name="close"></mdui-icon></button>
       </form>
-      {{if .Post}}
-      <button class="mdui-btn mdui-btn-icon qrcode" type="button" aria-label="跨设备阅读" title="跨设备阅读"><mdui-icon-devices></mdui-icon-devices></button>
-      {{end}}
-      <button class="mdui-btn mdui-btn-icon brightness" type="button" aria-label="切换明暗模式" title="切换明暗模式"><mdui-icon-brightness-5></mdui-icon-brightness-5></button>
-      {{if and .Post (eq (themeValue .ThemeConfig "enable_toc" "1") "1") (ne (fieldString .Fields "catalog") "0")}}
-      <button class="mdui-btn mdui-btn-icon toc-button" type="button" aria-label="文章目录" title="文章目录"><mdui-icon-bookmark></mdui-icon-bookmark></button>
-      {{end}}
-      <a class="mdui-btn mdui-btn-icon" href="/feed.xml" aria-label="Feed" title="Feed"><mdui-icon-rss-feed></mdui-icon-rss-feed></a>
+      <button class="mdui-btn mdui-btn-icon brightness" type="button" aria-label="切换明暗模式" title="切换明暗模式"><mdui-icon name="brightness_5"></mdui-icon></button>
+      <a class="mdui-btn mdui-btn-icon" href="/feed.xml" aria-label="Feed" title="Feed"><mdui-icon name="rss_feed"></mdui-icon></a>
     </div>
   </header>
 
@@ -73,27 +68,27 @@
     </div>
     <div class="drawer-divider"></div>
     <nav class="drawer-list">
-      <a href="/"><mdui-icon-home></mdui-icon-home><span>首页</span></a>
+      <a href="/"><mdui-icon name="home"></mdui-icon><span>首页</span></a>
       <details class="drawer-collapse">
-        <summary><mdui-icon-article></mdui-icon-article><span>独立页面</span></summary>
+        <summary><mdui-icon name="article"></mdui-icon><span>独立页面</span></summary>
         <div>
           {{range .Pages}}<a href="{{contentURL .}}"><span>{{.Title}}</span></a>{{else}}<span class="drawer-empty">暂无页面</span>{{end}}
         </div>
       </details>
       <details class="drawer-collapse">
-        <summary><mdui-icon-calendar-month></mdui-icon-calendar-month><span>按时间归档</span></summary>
+        <summary><mdui-icon name="calendar_month"></mdui-icon><span>按时间归档</span></summary>
         <div>
           <a href="/archive/"><span>全部归档</span></a>
           {{range .Archives}}<a href="{{.URL}}"><span>{{.Title}}（{{.Count}}）</span></a>{{else}}<span class="drawer-empty">暂无归档</span>{{end}}
         </div>
       </details>
       <details class="drawer-collapse">
-        <summary><mdui-icon-category></mdui-icon-category><span>分类归档</span></summary>
+        <summary><mdui-icon name="category"></mdui-icon><span>分类归档</span></summary>
         <div>
           {{range .AllCategories}}<a href="{{metaURL .}}"><span>{{.Name}}（{{.Count}}）</span></a>{{else}}<span class="drawer-empty">暂无分类</span>{{end}}
         </div>
       </details>
-      <a href="/feed.xml"><mdui-icon-rss-feed></mdui-icon-rss-feed><span>订阅</span></a>
+      <a href="/feed.xml"><mdui-icon name="rss_feed"></mdui-icon><span>订阅</span></a>
     </nav>
     <div class="drawer-bottom">Powered by GoBlog</div>
   </aside>
@@ -142,16 +137,8 @@
     </aside>
   </div>
 
-  <div class="toc-overlay" aria-hidden="true"></div>
-  <button class="top" type="button" aria-label="回到顶部"><mdui-icon-arrow-upward></mdui-icon-arrow-upward></button>
+  <button class="top" type="button" aria-label="回到顶部"><mdui-icon name="arrow_upward"></mdui-icon></button>
   <footer>{{with themeValue .ThemeConfig "footer_html"}}{{safeHTML .}}{{else}}Powered by GoBlog{{end}}</footer>
-  <div class="qrcode-popover" hidden>
-    <strong>跨设备阅读</strong>
-    <div class="qrcode-canvas"></div>
-    <input type="text" readonly value="{{.CurrentURL}}">
-    <button type="button">复制链接</button>
-  </div>
-  <script src="/theme/default/qrcode.min.js"></script>
   <script src="/theme/default/app.js"></script>
   {{.FrontendFooter}}
 </body>

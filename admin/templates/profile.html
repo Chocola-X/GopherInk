@@ -1,7 +1,8 @@
 {{define "content"}}
 <div class="page-head"><div><h1>个人设置</h1><p class="muted">更新个人资料和密码。</p></div></div>
 {{if .Saved}}<div class="notice">已保存。</div>{{end}}
-<form method="post" class="form-panel field-stack">
+<form method="post" class="form-panel field-stack profile-panel">
+  <img class="profile-avatar" src="{{adminAvatarURL .User.Mail 176}}" alt="">
   <mdui-text-field label="用户名" value="{{.User.Name}}" disabled></mdui-text-field>
   <mdui-text-field name="screenName" label="昵称" value="{{.User.ScreenName}}" {{if fieldError .Errors "screenName"}}helper="{{fieldError .Errors "screenName"}}"{{end}}></mdui-text-field>
   <mdui-text-field name="mail" label="邮箱" value="{{.User.Mail}}" {{if fieldError .Errors "mail"}}helper="{{fieldError .Errors "mail"}}"{{end}}></mdui-text-field>

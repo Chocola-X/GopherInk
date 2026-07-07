@@ -5,7 +5,7 @@
   <p>{{T "Current database version"}}：{{.CurrentVersion}}</p>
   <p>{{T "Target program version"}}：{{.TargetVersion}}</p>
   {{if lt .CurrentVersion .TargetVersion}}
-  <form method="post"><mdui-button type="submit"><mdui-icon-system-update slot="icon"></mdui-icon-system-update>{{T "Run upgrade"}}</mdui-button></form>
+  <form method="post"><mdui-button type="submit"><mdui-icon slot="icon" name="system_update"></mdui-icon>{{T "Run upgrade"}}</mdui-button></form>
   {{else}}
   <p class="muted">{{T "No upgrade needed"}}</p>
   <form method="post"><mdui-button type="submit" variant="outlined">{{T "Recheck"}}</mdui-button></form>

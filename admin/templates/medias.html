@@ -23,7 +23,7 @@
     <option value="0">不关联</option>
     {{range .Posts}}<option value="{{.CID}}">{{.Title}}</option>{{end}}
   </select>
-  <div class="form-actions"><mdui-button type="submit"><mdui-icon-upload slot="icon"></mdui-icon-upload>上传</mdui-button></div>
+  <div class="form-actions"><mdui-button type="submit"><mdui-icon slot="icon" name="upload"></mdui-icon>上传</mdui-button></div>
 </form>
 <section class="table-panel" style="margin-top:16px">
   <table>
@@ -49,7 +49,7 @@
             <mdui-text-field type="file" name="file" label="替换"></mdui-text-field>
             <mdui-button type="submit" variant="text">替换</mdui-button>
           </form>
-          <form method="post" action="/admin/medias/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon></form>
+          <form method="post" action="/admin/medias/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
         </div></td>
       </tr>
     {{else}}

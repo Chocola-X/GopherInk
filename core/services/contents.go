@@ -53,6 +53,14 @@ type ContentQuery struct {
 	Offset        int
 }
 
+type ArchivePeriod struct {
+	Year  int
+	Month int
+	Day   int
+	Date  string
+	Count int
+}
+
 type SaveFieldInput struct {
 	Name       string
 	Type       string
@@ -75,6 +83,48 @@ func (s *ContentService) Dialect() models.Dialect {
 
 func (s *ContentService) ListPublished(ctx context.Context, limit, offset int) ([]models.Content, error) {
 	return s.List(ctx, ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: limit, Offset: offset})
+}
+
+func (s *ContentService) ArchiveMonths(ctx context.Context, loc *time.Location, limit int) ([]ArchivePeriod, error) {
+	if loc == nil {
+		loc = time.Local
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT created
+		FROM gb_contents
+		WHERE type = ? AND status = ? AND created <= ?
+		ORDER BY created DESC
+	`, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ArchivePeriod
+	seen := map[string]int{}
+	for rows.Next() {
+		var created int64
+		if err := rows.Scan(&created); err != nil {
+			return nil, err
+		}
+		t := time.Unix(created, 0).In(loc)
+		key := t.Format("2006-01")
+		if idx, ok := seen[key]; ok {
+			out[idx].Count++
+			continue
+		}
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+		seen[key] = len(out)
+		out = append(out, ArchivePeriod{
+			Year:  t.Year(),
+			Month: int(t.Month()),
+			Day:   t.Day(),
+			Date:  key,
+			Count: 1,
+		})
+	}
+	return out, rows.Err()
 }
 
 func (s *ContentService) ListPublishedPlugin(ctx context.Context, limit, offset int) ([]plugin.PublicContent, error) {

@@ -4,7 +4,7 @@
     <h1>页面</h1>
     <p class="muted">管理独立页面、父级页面和排序。</p>
   </div>
-  <mdui-button href="/admin/pages/new"><mdui-icon-add slot="icon"></mdui-icon-add>写页面</mdui-button>
+  <mdui-button href="/admin/pages/new"><mdui-icon slot="icon" name="add"></mdui-icon>写页面</mdui-button>
 </div>
 <form method="get" class="filter-bar">
   <mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field>
@@ -22,9 +22,9 @@
         <td><a href="/admin/comments?cid={{.CID}}">{{.CommentsNum}}</a></td>
         <td>{{date .Modified}}</td>
         <td><div class="row-actions">
-          <mdui-button-icon href="{{contentPublicURL .}}" title="查看"><mdui-icon-rss-feed></mdui-icon-rss-feed></mdui-button-icon>
-          <mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="编辑"><mdui-icon-edit></mdui-icon-edit></mdui-button-icon>
-          <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon></form>
+          <mdui-button-icon href="{{contentPublicURL .}}" title="查看"><mdui-icon name="rss_feed"></mdui-icon></mdui-button-icon>
+          <mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+          <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
         </div></td>
       </tr>
     {{else}}

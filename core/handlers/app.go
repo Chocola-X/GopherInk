@@ -26,7 +26,6 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -3522,6 +3521,14 @@ func (a *App) gravatarURL(r *http.Request, mail string) string {
 	return "https://www.gravatar.com/avatar/" + hex.EncodeToString(sum[:]) + "?s=48&d=mp&r=" + rating
 }
 
+func adminAvatarURL(mail string, size int) string {
+	if size <= 0 {
+		size = 96
+	}
+	sum := md5.Sum([]byte(strings.ToLower(strings.TrimSpace(mail))))
+	return "https://www.gravatar.com/avatar/" + hex.EncodeToString(sum[:]) + "?s=" + strconv.Itoa(size) + "&d=mp&r=g"
+}
+
 func (a *App) nameReserved(ctx context.Context, name string) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if name == "" {
@@ -3604,6 +3611,7 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 		"fieldValue":       fieldValue,
 		"schemaValue":      schemaValue,
 		"schemaChecked":    schemaChecked,
+		"adminAvatarURL":   adminAvatarURL,
 	}
 	tmpl, err := template.New("base.html").Funcs(funcs).ParseFS(admin.FS, "templates/base.html", "templates/"+page)
 	if err != nil {
@@ -3838,40 +3846,19 @@ func (a *App) enrichThemeData(ctx context.Context, data map[string]any) {
 }
 
 func (a *App) archiveLinks(ctx context.Context, limit int) []archiveLink {
-	posts, err := a.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: 1200})
+	periods, err := a.Contents.ArchiveMonths(ctx, a.siteLocation(ctx), limit)
 	if err != nil {
 		return nil
 	}
-	loc := a.siteLocation(ctx)
-	byMonth := map[string]*archiveLink{}
-	for _, post := range posts {
-		t := time.Unix(post.Created, 0).In(loc)
-		year, month := t.Year(), int(t.Month())
-		key := fmt.Sprintf("%04d-%02d", year, month)
-		item := byMonth[key]
-		if item == nil {
-			item = &archiveLink{
-				Year:  year,
-				Month: month,
-				Title: fmt.Sprintf("%04d-%02d", year, month),
-				URL:   archivePath(year, month, 0),
-			}
-			byMonth[key] = item
-		}
-		item.Count++
-	}
-	out := make([]archiveLink, 0, len(byMonth))
-	for _, item := range byMonth {
-		out = append(out, *item)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Year == out[j].Year {
-			return out[i].Month > out[j].Month
-		}
-		return out[i].Year > out[j].Year
-	})
-	if limit > 0 && len(out) > limit {
-		out = out[:limit]
+	out := make([]archiveLink, 0, len(periods))
+	for _, period := range periods {
+		out = append(out, archiveLink{
+			Year:  period.Year,
+			Month: period.Month,
+			Title: period.Date,
+			URL:   archivePath(period.Year, period.Month, 0),
+			Count: period.Count,
+		})
 	}
 	return out
 }

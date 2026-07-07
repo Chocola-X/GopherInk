@@ -17,7 +17,7 @@
 <form method="post" class="form-panel field-stack">
   <input type="hidden" name="action" value="export">
   <p class="muted">导出的 JSON 包含附件元数据和 URL。上传文件本体请同时备份 data/uploads 目录。</p>
-  <div class="form-actions"><mdui-button type="submit"><mdui-icon-download slot="icon"></mdui-icon-download>导出 JSON</mdui-button></div>
+  <div class="form-actions"><mdui-button type="submit"><mdui-icon slot="icon" name="download"></mdui-icon>导出 JSON</mdui-button></div>
 </form>
 <form method="post" enctype="multipart/form-data" class="form-panel field-stack" style="margin-top:16px">
   <input type="hidden" name="action" value="import">
@@ -34,7 +34,7 @@
   </fieldset>
   <div class="form-actions">
     <mdui-button type="submit" name="dry_run" value="1" variant="outlined">预览导入</mdui-button>
-    <mdui-button type="submit"><mdui-icon-upload slot="icon"></mdui-icon-upload>执行导入</mdui-button>
+    <mdui-button type="submit"><mdui-icon slot="icon" name="upload"></mdui-icon>执行导入</mdui-button>
   </div>
 </form>
 {{end}}

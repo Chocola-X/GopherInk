@@ -4,7 +4,7 @@
     <h1>文章</h1>
     <p class="muted">管理发布内容和草稿。</p>
   </div>
-  <mdui-button href="/admin/posts/new"><mdui-icon-add slot="icon"></mdui-icon-add>写文章</mdui-button>
+  <mdui-button href="/admin/posts/new"><mdui-icon slot="icon" name="add"></mdui-icon>写文章</mdui-button>
 </div>
 <form method="get" class="filter-bar">
   <mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field>
@@ -45,10 +45,10 @@
         <td>{{date .Modified}}</td>
         <td>
           <div class="row-actions">
-            <mdui-button-icon href="{{contentPublicURL .}}" title="查看"><mdui-icon-rss-feed></mdui-icon-rss-feed></mdui-button-icon>
-            <mdui-button-icon href="/admin/posts/{{.CID}}/edit" title="编辑"><mdui-icon-edit></mdui-icon-edit></mdui-button-icon>
+            <mdui-button-icon href="{{contentPublicURL .}}" title="查看"><mdui-icon name="rss_feed"></mdui-icon></mdui-button-icon>
+            <mdui-button-icon href="/admin/posts/{{.CID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
             <form method="post" action="/admin/posts/{{.CID}}/delete">
-              <mdui-button-icon type="submit" title="删除"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon>
+              <mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
             </form>
           </div>
         </td>

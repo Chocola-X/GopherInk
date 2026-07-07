@@ -29,11 +29,11 @@
         <div class="schema-upload-row">
           <input type="file" name="{{.Name}}_file" accept="image/*" class="schema-native-file" hidden>
           <mdui-button type="button" variant="outlined" class="schema-pick-file">
-            <mdui-icon-upload slot="icon"></mdui-icon-upload>选择图片
+            <mdui-icon slot="icon" name="upload"></mdui-icon>选择图片
           </mdui-button>
           <span class="schema-file-name muted">未选择文件</span>
           <mdui-button type="button" variant="outlined" class="schema-upload-button" data-target="{{.Name}}">
-            <mdui-icon-upload slot="icon"></mdui-icon-upload>上传并填入
+            <mdui-icon slot="icon" name="upload"></mdui-icon>上传并填入
           </mdui-button>
         </div>
       </div>
@@ -60,7 +60,7 @@
     <span class="muted">没有可配置项目。</span>
   {{end}}
   <div class="form-actions">
-    <mdui-button type="submit"><mdui-icon-save slot="icon"></mdui-icon-save>保存</mdui-button>
+    <mdui-button type="submit"><mdui-icon slot="icon" name="save"></mdui-icon>保存</mdui-button>
   </div>
 </form>
 <style>

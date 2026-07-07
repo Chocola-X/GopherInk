@@ -58,7 +58,7 @@
     </div>
     <div class="editor-upload">
       <mdui-text-field type="file" name="file" class="editor-upload-file" label="上传附件"></mdui-text-field>
-      <mdui-button type="button" variant="outlined" class="editor-upload-button"><mdui-icon-upload slot="icon"></mdui-icon-upload>上传并插入</mdui-button>
+      <mdui-button type="button" variant="outlined" class="editor-upload-button"><mdui-icon slot="icon" name="upload"></mdui-icon>上传并插入</mdui-button>
     </div>
     <div class="media-picker">
       {{range .MediaLibrary}}
@@ -83,11 +83,11 @@
           <option value="json" {{if eq .Type "json"}}selected{{end}}>JSON</option>
         </select>
         <mdui-text-field name="field_value" label="值" value="{{fieldValue .}}"></mdui-text-field>
-        <mdui-button-icon type="button" class="remove-field" title="删除字段"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon>
+        <mdui-button-icon type="button" class="remove-field" title="删除字段"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
       </div>
       {{end}}
     </div>
-    <mdui-button type="button" variant="outlined" class="add-field"><mdui-icon-add slot="icon"></mdui-icon-add>新增字段</mdui-button>
+    <mdui-button type="button" variant="outlined" class="add-field"><mdui-icon slot="icon" name="add"></mdui-icon>新增字段</mdui-button>
   </fieldset>
   {{if .Revisions}}
   <section class="revision-summary">
@@ -99,7 +99,7 @@
   <div class="autosave-status muted" aria-live="polite"></div>
   <div class="form-actions">
     {{if .PreviewURL}}<mdui-button variant="outlined" href="{{.PreviewURL}}" target="_blank">预览</mdui-button>{{end}}
-    <mdui-button type="submit"><mdui-icon-edit slot="icon"></mdui-icon-edit>保存</mdui-button>
+    <mdui-button type="submit"><mdui-icon slot="icon" name="edit"></mdui-icon>保存</mdui-button>
   </div>
 </form>
 {{end}}

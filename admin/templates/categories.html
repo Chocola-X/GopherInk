@@ -1,5 +1,5 @@
 {{define "content"}}
-<div class="page-head"><div><h1>分类</h1><p class="muted">管理文章分类层级和默认分类。</p></div><mdui-button href="/admin/categories/new"><mdui-icon-add slot="icon"></mdui-icon-add>新增分类</mdui-button></div>
+<div class="page-head"><div><h1>分类</h1><p class="muted">管理文章分类层级和默认分类。</p></div><mdui-button href="/admin/categories/new"><mdui-icon slot="icon" name="add"></mdui-icon>新增分类</mdui-button></div>
 <section class="table-panel"><table>
   <thead><tr><th>名称</th><th>缩略名</th><th>父级</th><th>文章数</th><th></th></tr></thead>
   <tbody>{{range .Items}}<tr>
@@ -7,8 +7,8 @@
     <td>{{.Slug}}</td><td>{{.Parent}}</td><td>{{.Count}}</td>
     <td><div class="row-actions">
       <form method="post" action="/admin/categories/{{.MID}}/default"><mdui-button type="submit" variant="text">设为默认</mdui-button></form>
-      <mdui-button-icon href="/admin/categories/{{.MID}}/edit" title="编辑"><mdui-icon-edit></mdui-icon-edit></mdui-button-icon>
-      <form method="post" action="/admin/categories/{{.MID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon-delete></mdui-icon-delete></mdui-button-icon></form>
+      <mdui-button-icon href="/admin/categories/{{.MID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+      <form method="post" action="/admin/categories/{{.MID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
     </div></td>
   </tr>{{else}}<tr><td colspan="5" class="muted">没有任何分类。</td></tr>{{end}}</tbody>
 </table></section>

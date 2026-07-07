@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{.CSRF}}">
   <title>{{.Title}} - {{index .Site "site_title"}}</title>
+  <link rel="stylesheet" href="/admin/assets/vendor/material-icons.css">
   <link rel="stylesheet" href="/admin/assets/vendor/mdui.css">
   <link rel="stylesheet" href="/admin/assets/app.css">
   <script src="/admin/assets/vendor/mdui.global.js"></script>
@@ -22,38 +23,32 @@
   <mdui-layout class="admin-shell">
     <div class="admin-bg"></div>
     <mdui-top-app-bar class="admin-appbar">
-      <mdui-button-icon class="drawer-toggle" title="菜单"><mdui-icon-menu></mdui-icon-menu></mdui-button-icon>
+      <mdui-button-icon class="drawer-toggle" title="菜单"><mdui-icon name="menu"></mdui-icon></mdui-button-icon>
       <mdui-top-app-bar-title>{{index .Site "site_title"}}</mdui-top-app-bar-title>
-      <mdui-button-icon href="/" title="{{T "View site"}}"><mdui-icon-rss-feed></mdui-icon-rss-feed></mdui-button-icon>
+      <mdui-button-icon href="/" title="{{T "View site"}}"><mdui-icon name="rss_feed"></mdui-icon></mdui-button-icon>
       <form method="post" action="/admin/logout">
-        <mdui-button-icon type="submit" title="{{T "Logout"}}"><mdui-icon-logout></mdui-icon-logout></mdui-button-icon>
+        <mdui-button-icon type="submit" title="{{T "Logout"}}"><mdui-icon name="logout"></mdui-icon></mdui-button-icon>
       </form>
     </mdui-top-app-bar>
     <mdui-navigation-drawer open class="admin-drawer">
-      <div class="admin-profile-card">
-        <div class="admin-profile-cover"></div>
-        <div class="admin-avatar" aria-hidden="true"><mdui-icon-person></mdui-icon-person></div>
-        <strong>{{index .Site "site_title"}}</strong>
-        <span>{{index .Site "site_description"}}</span>
-      </div>
       <mdui-list class="admin-nav">
         <div class="nav-section">{{T "Content"}}</div>
-        <mdui-list-item href="/admin"><mdui-icon-home slot="icon"></mdui-icon-home>{{T "Dashboard"}}</mdui-list-item>
-        <mdui-list-item href="/admin/posts"><mdui-icon-article slot="icon"></mdui-icon-article>{{T "Posts"}}</mdui-list-item>
-        <mdui-list-item href="/admin/pages"><mdui-icon-article slot="icon"></mdui-icon-article>{{T "Pages"}}</mdui-list-item>
-        <mdui-list-item href="/admin/comments"><mdui-icon-comment slot="icon"></mdui-icon-comment>{{T "Comments"}}</mdui-list-item>
-        <mdui-list-item href="/admin/medias"><mdui-icon-folder slot="icon"></mdui-icon-folder>{{T "Media"}}</mdui-list-item>
-        <mdui-list-item href="/admin/categories"><mdui-icon-category slot="icon"></mdui-icon-category>{{T "Categories"}}</mdui-list-item>
-        <mdui-list-item href="/admin/tags"><mdui-icon-tag slot="icon"></mdui-icon-tag>{{T "Tags"}}</mdui-list-item>
+        <mdui-list-item href="/admin"><mdui-icon slot="icon" name="home"></mdui-icon>{{T "Dashboard"}}</mdui-list-item>
+        <mdui-list-item href="/admin/posts"><mdui-icon slot="icon" name="article"></mdui-icon>{{T "Posts"}}</mdui-list-item>
+        <mdui-list-item href="/admin/pages"><mdui-icon slot="icon" name="article"></mdui-icon>{{T "Pages"}}</mdui-list-item>
+        <mdui-list-item href="/admin/comments"><mdui-icon slot="icon" name="comment"></mdui-icon>{{T "Comments"}}</mdui-list-item>
+        <mdui-list-item href="/admin/medias"><mdui-icon slot="icon" name="folder"></mdui-icon>{{T "Media"}}</mdui-list-item>
+        <mdui-list-item href="/admin/categories"><mdui-icon slot="icon" name="category"></mdui-icon>{{T "Categories"}}</mdui-list-item>
+        <mdui-list-item href="/admin/tags"><mdui-icon slot="icon" name="tag"></mdui-icon>{{T "Tags"}}</mdui-list-item>
         <div class="nav-section">{{T "System"}}</div>
-        <mdui-list-item href="/admin/users"><mdui-icon-person slot="icon"></mdui-icon-person>{{T "Users"}}</mdui-list-item>
-        <mdui-list-item href="/admin/themes"><mdui-icon-palette slot="icon"></mdui-icon-palette>{{T "Themes"}}</mdui-list-item>
-        <mdui-list-item href="/admin/plugins"><mdui-icon-extension slot="icon"></mdui-icon-extension>{{T "Plugins"}}</mdui-list-item>
-        {{range .AdminMenu}}<mdui-list-item href="{{.URL}}"><mdui-icon-extension slot="icon"></mdui-icon-extension>{{.Label}}</mdui-list-item>{{end}}
-        <mdui-list-item href="/admin/options/general"><mdui-icon-settings slot="icon"></mdui-icon-settings>{{T "Settings"}}</mdui-list-item>
-        <mdui-list-item href="/admin/backup"><mdui-icon-download slot="icon"></mdui-icon-download>{{T "Backup"}}</mdui-list-item>
-        <mdui-list-item href="/admin/upgrade"><mdui-icon-system-update slot="icon"></mdui-icon-system-update>{{T "Upgrade"}}</mdui-list-item>
-        <mdui-list-item href="/admin/profile"><mdui-icon-person slot="icon"></mdui-icon-person>{{T "Profile"}}</mdui-list-item>
+        <mdui-list-item href="/admin/users"><mdui-icon slot="icon" name="person"></mdui-icon>{{T "Users"}}</mdui-list-item>
+        <mdui-list-item href="/admin/themes"><mdui-icon slot="icon" name="palette"></mdui-icon>{{T "Themes"}}</mdui-list-item>
+        <mdui-list-item href="/admin/plugins"><mdui-icon slot="icon" name="extension"></mdui-icon>{{T "Plugins"}}</mdui-list-item>
+        {{range .AdminMenu}}<mdui-list-item href="{{.URL}}"><mdui-icon slot="icon" name="extension"></mdui-icon>{{.Label}}</mdui-list-item>{{end}}
+        <mdui-list-item href="/admin/options/general"><mdui-icon slot="icon" name="settings"></mdui-icon>{{T "Settings"}}</mdui-list-item>
+        <mdui-list-item href="/admin/backup"><mdui-icon slot="icon" name="download"></mdui-icon>{{T "Backup"}}</mdui-list-item>
+        <mdui-list-item href="/admin/upgrade"><mdui-icon slot="icon" name="system_update"></mdui-icon>{{T "Upgrade"}}</mdui-list-item>
+        <mdui-list-item href="/admin/profile"><mdui-icon slot="icon" name="person"></mdui-icon>{{T "Profile"}}</mdui-list-item>
       </mdui-list>
     </mdui-navigation-drawer>
     <button class="drawer-scrim" type="button" aria-label="收起菜单"></button>

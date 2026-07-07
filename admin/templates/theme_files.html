@@ -19,7 +19,7 @@
   <form method="post" action="/admin/themes/{{.Theme.Name}}/files?file={{.File}}" class="field-stack">
     <mdui-text-field name="body" label="{{.File}}" rows="24" autosize>{{.Body}}</mdui-text-field>
     <div class="form-actions">
-      <mdui-button type="submit"><mdui-icon-save slot="icon"></mdui-icon-save>保存</mdui-button>
+      <mdui-button type="submit"><mdui-icon slot="icon" name="save"></mdui-icon>保存</mdui-button>
     </div>
   </form>
 </section>

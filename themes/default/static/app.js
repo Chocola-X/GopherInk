@@ -30,7 +30,9 @@
   }
 
   function icon(name) {
-    return document.createElement("mdui-icon-" + name);
+    const el = document.createElement("mdui-icon");
+    el.setAttribute("name", name.replace(/-/g, "_"));
+    return el;
   }
 
   function openDrawer() {
@@ -65,7 +67,6 @@
     toc.innerHTML = "";
     if (!headings.length) {
       card.remove();
-      document.querySelector(".toc-button")?.remove();
       return;
     }
     const seen = new Map();
@@ -92,18 +93,6 @@
       if (heading.getBoundingClientRect().top < 96) active = heading.id;
     });
     links.forEach((link) => link.classList.toggle("is-active", link.hash === "#" + active));
-  }
-
-  function openTOC() {
-    const toc = document.querySelector("#toc");
-    if (!toc) return;
-    document.querySelector(".toc-overlay")?.classList.add("toc-overlay-open");
-    toc.classList.add("toc-show");
-  }
-
-  function closeTOC() {
-    document.querySelector(".toc-overlay")?.classList.remove("toc-overlay-open");
-    document.querySelector("#toc")?.classList.remove("toc-show");
   }
 
   function refreshSearch() {
@@ -145,31 +134,6 @@
       });
       pre.appendChild(button);
     });
-  }
-
-  function updateQRCode() {
-    const popover = document.querySelector(".qrcode-popover");
-    const input = popover?.querySelector("input");
-    const canvas = popover?.querySelector(".qrcode-canvas");
-    if (!popover || !input || !canvas) return;
-    input.value = window.location.href;
-    canvas.innerHTML = "";
-    if (window.QRCode) {
-      new window.QRCode(canvas, {
-        text: window.location.href,
-        width: 150,
-        height: 150,
-        colorDark: "#000000",
-        colorLight: body.classList.contains("mdui-theme-layout-dark") ? "#424242" : "#ffffff",
-      });
-    }
-  }
-
-  function toggleQRCode() {
-    const popover = document.querySelector(".qrcode-popover");
-    if (!popover) return;
-    if (popover.hidden) updateQRCode();
-    popover.hidden = !popover.hidden;
   }
 
   function showProgress() {
@@ -287,7 +251,6 @@
         const dark = !body.classList.contains("mdui-theme-layout-dark");
         localStorage.setItem("cuckoo-brightness", dark ? "dark" : "light");
         applyTheme(dark ? "dark" : "light");
-        updateQRCode();
         return;
       }
       const searchClose = target.closest(".appbar-search-close");
@@ -315,27 +278,6 @@
           return;
         }
       }
-      if (target.closest(".toc-button")) {
-        event.preventDefault();
-        openTOC();
-        return;
-      }
-      if (target.closest(".toc-overlay")) {
-        closeTOC();
-        return;
-      }
-      if (target.closest(".qrcode")) {
-        event.preventDefault();
-        toggleQRCode();
-        return;
-      }
-      if (target.closest(".qrcode-popover button")) {
-        event.preventDefault();
-        const value = document.querySelector(".qrcode-popover input")?.value || window.location.href;
-        copyText(value);
-        return;
-      }
-
       const loadMore = target.closest(".changePage-load");
       if (loadMore) {
         event.preventDefault();
@@ -346,7 +288,6 @@
       const link = target.closest("a");
       if (!shouldPjax(link)) return;
       event.preventDefault();
-      closeTOC();
       closeDrawer();
       loadPage(link.href, true);
     });
@@ -354,9 +295,6 @@
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         closeDrawer();
-        closeTOC();
-        const popover = document.querySelector(".qrcode-popover");
-        if (popover) popover.hidden = true;
       }
     });
 
@@ -374,10 +312,8 @@
     refreshSearch();
     buildTOC();
     codeCopy();
-    updateQRCode();
     refreshBackTop();
     closeDrawer();
-    closeTOC();
   }
 
   setAccent();

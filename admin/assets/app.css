@@ -59,58 +59,8 @@ body.admin-drawer-modal .drawer-scrim {
   pointer-events: auto;
 }
 
-.admin-profile-card {
-  margin: 14px;
-  overflow: hidden;
-  border-radius: 8px;
-  text-align: center;
-  background: rgba(var(--mdui-color-surface-container-low), 0.9);
-  box-shadow: 0 6px 20px rgba(var(--mdui-color-shadow), 0.12);
-}
-
-.admin-profile-cover {
-  height: 86px;
-  background:
-    linear-gradient(135deg, rgba(var(--mdui-color-primary), 0.82), rgba(var(--mdui-color-tertiary), 0.72)),
-    rgb(var(--mdui-color-primary-container));
-}
-
-.admin-avatar {
-  display: inline-grid;
-  width: 74px;
-  height: 74px;
-  place-items: center;
-  margin-top: -37px;
-  color: rgb(var(--mdui-color-on-primary-container));
-  background: rgb(var(--mdui-color-primary-container));
-  border: 3px solid rgb(var(--mdui-color-surface-container-low));
-  border-radius: 50%;
-  box-shadow: 0 6px 18px rgba(var(--mdui-color-shadow), 0.2);
-}
-
-.admin-avatar mdui-icon-person {
-  width: 34px;
-  height: 34px;
-}
-
-.admin-profile-card strong,
-.admin-profile-card span {
-  display: block;
-  padding: 0 12px;
-}
-
-.admin-profile-card strong {
-  margin-top: 6px;
-}
-
-.admin-profile-card span {
-  margin: 4px 0 14px;
-  color: rgb(var(--mdui-color-on-surface-variant));
-  font-size: 13px;
-}
-
 .admin-nav {
-  padding: 4px 10px 18px;
+  padding: 12px 10px 18px;
 }
 
 .nav-section {
@@ -183,6 +133,26 @@ body.admin-drawer-modal .drawer-scrim {
 .stat-panel,
 .form-panel {
   padding: 20px;
+}
+
+.profile-panel {
+  position: relative;
+  margin-top: 52px;
+  padding-top: 64px;
+}
+
+.profile-avatar {
+  position: absolute;
+  top: -44px;
+  left: 50%;
+  width: 88px;
+  height: 88px;
+  object-fit: cover;
+  border: 4px solid rgb(var(--mdui-color-surface));
+  border-radius: 50%;
+  background: rgb(var(--mdui-color-primary-container));
+  box-shadow: 0 8px 24px rgba(var(--mdui-color-shadow), 0.22);
+  transform: translateX(-50%);
 }
 
 .stat-value {
@@ -395,27 +365,14 @@ tbody tr:hover {
   color: rgb(var(--mdui-color-error));
 }
 
-mdui-icon-home,
-mdui-icon-article,
-mdui-icon-add,
-mdui-icon-edit,
-mdui-icon-delete,
-mdui-icon-settings,
-mdui-icon-logout,
-mdui-icon-menu,
-mdui-icon-comment,
-mdui-icon-category,
-mdui-icon-tag,
-mdui-icon-person,
-mdui-icon-palette,
-mdui-icon-extension,
-mdui-icon-rss-feed,
-mdui-icon-folder,
-mdui-icon-download,
-mdui-icon-upload {
+mdui-icon {
+  vertical-align: middle;
+}
+
+.mdui-svg-icon {
   display: inline-flex;
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
   vertical-align: middle;
 }
 
@@ -425,8 +382,7 @@ mdui-icon-upload {
   }
 
   .admin-drawer,
-  .admin-profile-card,
-  .login-panel,
+    .login-panel,
   .form-panel,
   .table-panel,
   .stat-panel,

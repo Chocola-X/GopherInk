@@ -99,19 +99,18 @@ html.mdui-theme-dark .index-filter {
   position: sticky;
   top: 0;
   z-index: 60;
-  color: #fff;
-  text-shadow: var(--cuckoo-text-shadow);
-  background: rgba(30, 41, 59, 0.25);
-  backdrop-filter: blur(8px);
+  color: rgb(var(--mdui-color-on-primary));
+  text-shadow: none;
+  background: rgba(var(--mdui-color-primary), 0.72);
 }
 
 .mdui-toolbar {
   display: flex;
   align-items: center;
   min-height: 56px;
-  width: min(100%, 1180px);
+  width: 100%;
   margin: 0 auto;
-  padding: 0 14px;
+  padding: 0 8px;
 }
 
 .mdui-toolbar > * {
@@ -134,13 +133,13 @@ html.mdui-theme-dark .index-filter {
   width: 38px;
   min-width: 38px;
   height: 38px;
-  color: #fff;
+  color: rgb(var(--mdui-color-on-primary));
   background: transparent;
   border-radius: 999px;
 }
 
 .mdui-toolbar .mdui-btn-icon:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(var(--mdui-color-on-primary), 0.16);
 }
 
 .appbar-title {
@@ -169,7 +168,7 @@ html.mdui-theme-dark .index-filter {
 .appbar-search.is-expanded,
 .appbar-search:focus-within {
   width: min(34vw, 320px);
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(var(--mdui-color-on-primary), 0.14);
 }
 
 .appbar-search button {
@@ -177,7 +176,7 @@ html.mdui-theme-dark .index-filter {
   width: 34px;
   height: 34px;
   place-items: center;
-  color: #fff;
+  color: rgb(var(--mdui-color-on-primary));
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -192,7 +191,7 @@ html.mdui-theme-dark .index-filter {
 .appbar-search input {
   width: 100%;
   min-width: 0;
-  color: #fff;
+  color: rgb(var(--mdui-color-on-primary));
   border: 0;
   outline: 0;
   background: transparent;
@@ -201,7 +200,7 @@ html.mdui-theme-dark .index-filter {
 }
 
 .appbar-search input::placeholder {
-  color: rgba(255, 255, 255, 0.76);
+  color: rgba(var(--mdui-color-on-primary), 0.74);
 }
 
 .appbar-search.is-expanded input,
@@ -220,8 +219,7 @@ html.mdui-theme-dark .index-filter {
   pointer-events: auto;
 }
 
-.drawer-overlay,
-.toc-overlay {
+.drawer-overlay {
   position: fixed;
   inset: 0;
   z-index: 70;
@@ -231,8 +229,7 @@ html.mdui-theme-dark .index-filter {
   transition: opacity 0.24s ease;
 }
 
-body.drawer-open .drawer-overlay,
-.toc-overlay.toc-overlay-open {
+body.drawer-open .drawer-overlay {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1111,10 +1108,6 @@ html.mdui-theme-dark .toc a {
   color: rgba(255, 255, 255, 0.82);
 }
 
-.toc-button {
-  display: none;
-}
-
 .top {
   position: fixed;
   right: 24px;
@@ -1159,65 +1152,18 @@ html.mdui-theme-dark footer {
   background: var(--cuckoo-card-dark);
 }
 
-.qrcode-popover {
-  position: fixed;
-  top: 66px;
-  right: max(16px, calc((100vw - 1150px) / 2));
-  z-index: 90;
-  display: grid;
-  gap: 10px;
-  width: min(280px, calc(100vw - 32px));
-  padding: 14px;
-  border-radius: 7px;
-  background: var(--cuckoo-card-light);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
-}
-
-.qrcode-popover[hidden] {
-  display: none;
-}
-
-.qrcode-popover input {
-  width: 100%;
-  min-width: 0;
-  padding: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.18);
-  border-radius: 5px;
-  background: rgba(255, 255, 255, 0.7);
-}
-
-.qrcode-popover button {
-  min-height: 34px;
-  color: #fff;
-  border: 0;
-  border-radius: 5px;
-  background: var(--cuckoo-accent);
-  cursor: pointer;
-}
-
 .muted {
   color: rgb(var(--mdui-color-on-surface-variant));
 }
 
-mdui-icon-home,
-mdui-icon-article,
-mdui-icon-menu,
-mdui-icon-rss-feed,
-mdui-icon-search,
-mdui-icon-chevron-left,
-mdui-icon-chevron-right,
-mdui-icon-calendar-month,
-mdui-icon-category,
-mdui-icon-devices,
-mdui-icon-brightness-5,
-mdui-icon-brightness-2,
-mdui-icon-bookmark,
-mdui-icon-arrow-upward,
-mdui-icon-report,
-mdui-icon-content-copy {
+mdui-icon {
+  vertical-align: middle;
+}
+
+.mdui-svg-icon {
   display: inline-flex;
-  width: 20px;
-  height: 20px;
+  width: 1em;
+  height: 1em;
   vertical-align: middle;
 }
 
@@ -1230,32 +1176,8 @@ mdui-icon-content-copy {
     order: -1;
   }
 
-  #toc {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 100;
-    display: block;
-    width: calc(100% - 64px);
-    max-width: 320px;
-    max-height: 100%;
-    margin: 0;
-    border-radius: 0;
-    transform: translateX(340px);
-    transition: transform 0.24s ease;
-  }
-
-  #toc.toc-show {
-    transform: translateX(0);
-  }
-
   .toc {
-    max-height: calc(100vh - 58px);
-  }
-
-  .toc-button {
-    display: inline-grid;
+    max-height: none;
   }
 }
 

@@ -33,6 +33,38 @@ func TestPublishedQueriesExcludeFutureContent(t *testing.T) {
 	}
 }
 
+func TestArchiveMonthsGroupsPublishedPastPosts(t *testing.T) {
+	service := newContentTestService(t)
+	ctx := context.Background()
+	loc := time.UTC
+	posts := []SaveContentInput{
+		{Title: "A", Slug: "a", Type: models.ContentTypePost, Status: models.ContentStatusPost, Created: time.Date(2026, 2, 10, 10, 0, 0, 0, loc).Unix()},
+		{Title: "B", Slug: "b", Type: models.ContentTypePost, Status: models.ContentStatusPost, Created: time.Date(2026, 2, 2, 10, 0, 0, 0, loc).Unix()},
+		{Title: "C", Slug: "c", Type: models.ContentTypePost, Status: models.ContentStatusPost, Created: time.Date(2026, 1, 2, 10, 0, 0, 0, loc).Unix()},
+		{Title: "Draft", Slug: "draft", Type: models.ContentTypePost, Status: models.ContentStatusDraft, Created: time.Date(2026, 1, 3, 10, 0, 0, 0, loc).Unix()},
+		{Title: "Future", Slug: "future", Type: models.ContentTypePost, Status: models.ContentStatusPost, Created: time.Now().Add(24 * time.Hour).Unix()},
+	}
+	for _, post := range posts {
+		if _, err := service.Create(ctx, post, 1); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	archives, err := service.ArchiveMonths(ctx, loc, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archives) != 2 {
+		t.Fatalf("ArchiveMonths length = %d, want 2: %#v", len(archives), archives)
+	}
+	if archives[0].Date != "2026-02" || archives[0].Count != 2 {
+		t.Fatalf("first archive = %#v, want 2026-02 count 2", archives[0])
+	}
+	if archives[1].Date != "2026-01" || archives[1].Count != 1 {
+		t.Fatalf("second archive = %#v, want 2026-01 count 1", archives[1])
+	}
+}
+
 func TestRevisionsAndRestore(t *testing.T) {
 	service := newContentTestService(t)
 	ctx := context.Background()
