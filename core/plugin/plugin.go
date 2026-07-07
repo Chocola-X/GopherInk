@@ -106,6 +106,8 @@ const (
 	FieldCheckbox FieldType = "checkbox"
 	FieldSelect   FieldType = "select"
 	FieldNumber   FieldType = "number"
+	FieldColor    FieldType = "color"
+	FieldImage    FieldType = "image"
 )
 
 type FieldOption struct {

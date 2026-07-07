@@ -1,6 +1,6 @@
 {{define "base"}}
 <!doctype html>
-<html lang="zh-CN" class="mdui-theme-auto">
+<html lang="zh-CN" class="mdui-theme-{{themeValue .ThemeConfig "theme_mode" "auto"}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -9,6 +9,7 @@
   <meta name="keywords" content="{{index .Site "site_keywords"}}">
   <meta name="generator" content="GoBlog">
   {{if .CurrentURL}}<link rel="canonical" href="{{.CurrentURL}}">{{end}}
+  {{with themeValue .ThemeConfig "favicon"}}<link rel="icon" href="{{.}}">{{end}}
   <meta property="og:type" content="{{if .Post}}article{{else}}website{{end}}">
   <meta property="og:title" content="{{if .Post}}{{.Post.Title}}{{else}}{{if .Title}}{{.Title}}{{else}}{{index .Site "site_title"}}{{end}}{{end}}">
   <meta property="og:description" content="{{if .Post}}{{excerpt .Post.Text 160}}{{else}}{{index .Site "site_description"}}{{end}}">
@@ -16,7 +17,7 @@
   {{if .SeoImage}}<meta property="og:image" content="{{.SeoImage}}">{{end}}
   <meta name="twitter:card" content="summary_large_image">
   {{if .SeoImage}}<meta name="twitter:image" content="{{.SeoImage}}">{{end}}
-  <title>{{if .Post}}{{.Post.Title}} - {{end}}{{index .Site "site_title"}}</title>
+  <title>{{if .Post}}{{.Post.Title}} - {{else}}{{if .Title}}{{.Title}} - {{end}}{{end}}{{index .Site "site_title"}}</title>
   <link rel="alternate" type="application/rss+xml" title="{{index .Site "site_title"}}" href="{{.FeedPath}}">
   <link rel="alternate" type="application/atom+xml" title="{{index .Site "site_title"}}" href="/atom.xml">
   {{if .XMLRPCEnabled}}
@@ -30,72 +31,128 @@
   <script type="module" src="/theme/default/mdui-icons.js"></script>
   {{.FrontendHead}}
 </head>
-<body>
-  <div class="background"><div class="background-filter"></div></div>
-  <header class="appbar">
-    <a class="icon-button" href="#drawer" aria-label="菜单"><mdui-icon-menu></mdui-icon-menu></a>
-    <a href="/" class="appbar-title">{{index .Site "site_title"}}</a>
-    <div class="appbar-spacer"></div>
-    <a class="icon-button" href="/feed.xml" aria-label="Feed"><mdui-icon-rss-feed></mdui-icon-rss-feed></a>
+<body class="{{if eq (themeValue .ThemeConfig "theme_mode" "auto") "dark"}}mdui-theme-layout-dark{{end}}" data-primary="{{if themeValue .ThemeConfig "custom_primary"}}{{themeValue .ThemeConfig "custom_primary"}}{{else}}{{themeValue .ThemeConfig "primary_preset" "#ff4081"}}{{end}}" data-pjax="{{themeValue .ThemeConfig "enable_pjax" "1"}}" data-theme-mode="{{themeValue .ThemeConfig "theme_mode" "auto"}}">
+  <div class="background" aria-hidden="true">
+    {{if and (eq (themeValue .ThemeConfig "enable_decor" "1") "1") (themeValue .ThemeConfig "background_image")}}
+      <picture>
+        {{with themeValue .ThemeConfig "mobile_background_image"}}<source media="(max-width: 720px)" srcset="{{.}}">{{end}}
+        <img src="{{themeValue .ThemeConfig "background_image"}}" alt="">
+      </picture>
+    {{end}}
+    <div class="index-filter"></div>
+  </div>
+  <div class="pjax-progress" aria-hidden="true"></div>
+
+  <header class="mdui-appbar appbar">
+    <div class="mdui-toolbar">
+      <button class="mdui-btn mdui-btn-icon drawer-toggle" type="button" aria-label="菜单"><mdui-icon-menu></mdui-icon-menu></button>
+      <a href="/" class="mdui-typo-title appbar-title">{{index .Site "site_title"}}</a>
+      <div class="mdui-toolbar-spacer"></div>
+      <form class="appbar-search" action="/search" method="get" role="search">
+        <button class="appbar-search-icon" type="submit" aria-label="搜索" title="搜索"><mdui-icon-search></mdui-icon-search></button>
+        <input name="q" value="{{.Keywords}}" placeholder="搜索一下" autocomplete="off">
+        <button class="appbar-search-close" type="button" aria-label="关闭搜索" title="关闭搜索"><mdui-icon-close></mdui-icon-close></button>
+      </form>
+      {{if .Post}}
+      <button class="mdui-btn mdui-btn-icon qrcode" type="button" aria-label="跨设备阅读" title="跨设备阅读"><mdui-icon-devices></mdui-icon-devices></button>
+      {{end}}
+      <button class="mdui-btn mdui-btn-icon brightness" type="button" aria-label="切换明暗模式" title="切换明暗模式"><mdui-icon-brightness-5></mdui-icon-brightness-5></button>
+      {{if and .Post (eq (themeValue .ThemeConfig "enable_toc" "1") "1") (ne (fieldString .Fields "catalog") "0")}}
+      <button class="mdui-btn mdui-btn-icon toc-button" type="button" aria-label="文章目录" title="文章目录"><mdui-icon-bookmark></mdui-icon-bookmark></button>
+      {{end}}
+      <a class="mdui-btn mdui-btn-icon" href="/feed.xml" aria-label="Feed" title="Feed"><mdui-icon-rss-feed></mdui-icon-rss-feed></a>
+    </div>
   </header>
 
-  <aside id="drawer" class="drawer">
-    <a class="drawer-close" href="#" aria-label="关闭">×</a>
-    <div class="drawer-profile">
-      <img src="/theme/default/cuckoo-logo.jpg" alt="">
-      <strong>{{index .Site "site_title"}}</strong>
-      <span>{{index .Site "site_description"}}</span>
+  <div class="drawer-overlay" aria-hidden="true"></div>
+  <aside class="mdui-drawer drawer" aria-label="站点导航">
+    <div class="drawer-img"><img src="{{avatarURL .ThemeConfig .ProfileEmail 128}}" alt=""></div>
+    <div class="drawer-contact">
+      <strong>{{themeValue .ThemeConfig "display_name" (index .Site "site_title")}}</strong>
+      <span>{{themeValue .ThemeConfig "bio" (index .Site "site_description")}}</span>
     </div>
-    <nav class="drawer-nav">
-      <a href="/"><mdui-icon-home></mdui-icon-home>首页</a>
-      {{range .Pages}}<a href="{{contentURL .}}"><mdui-icon-article></mdui-icon-article>{{.Title}}</a>{{end}}
-      <a href="/feed.xml"><mdui-icon-rss-feed></mdui-icon-rss-feed>订阅</a>
+    <div class="drawer-divider"></div>
+    <nav class="drawer-list">
+      <a href="/"><mdui-icon-home></mdui-icon-home><span>首页</span></a>
+      <details class="drawer-collapse">
+        <summary><mdui-icon-article></mdui-icon-article><span>独立页面</span></summary>
+        <div>
+          {{range .Pages}}<a href="{{contentURL .}}"><span>{{.Title}}</span></a>{{else}}<span class="drawer-empty">暂无页面</span>{{end}}
+        </div>
+      </details>
+      <details class="drawer-collapse">
+        <summary><mdui-icon-calendar-month></mdui-icon-calendar-month><span>按时间归档</span></summary>
+        <div>
+          <a href="/archive/"><span>全部归档</span></a>
+          {{range .Archives}}<a href="{{.URL}}"><span>{{.Title}}（{{.Count}}）</span></a>{{else}}<span class="drawer-empty">暂无归档</span>{{end}}
+        </div>
+      </details>
+      <details class="drawer-collapse">
+        <summary><mdui-icon-category></mdui-icon-category><span>分类归档</span></summary>
+        <div>
+          {{range .AllCategories}}<a href="{{metaURL .}}"><span>{{.Name}}（{{.Count}}）</span></a>{{else}}<span class="drawer-empty">暂无分类</span>{{end}}
+        </div>
+      </details>
+      <a href="/feed.xml"><mdui-icon-rss-feed></mdui-icon-rss-feed><span>订阅</span></a>
     </nav>
+    <div class="drawer-bottom">Powered by GoBlog</div>
   </aside>
 
-  <div class="site-shell">
-    <main class="site-main">{{template "content" .}}</main>
-    <aside class="site-sidebar">
-      <section class="sidebar-card profile-card">
-        <div class="profile-cover"></div>
-        <img src="/theme/default/cuckoo-logo.jpg" alt="">
-        <h2>{{index .Site "site_title"}}</h2>
-        <p>{{index .Site "site_description"}}</p>
-      </section>
-      <section class="sidebar-card">
-        <h3>搜索</h3>
-        <form class="search-form" action="/search" method="get">
-          <mdui-text-field name="q" label="关键字" value="{{.Keywords}}"></mdui-text-field>
-          <mdui-button-icon type="submit" title="搜索"><mdui-icon-search></mdui-icon-search></mdui-button-icon>
-        </form>
-      </section>
-      <section class="sidebar-card">
-        <h3>页面</h3>
-        <div class="sidebar-list">
-          {{range .Pages}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">暂无页面</span>{{end}}
+  <div id="pjax-container" class="index-container">
+    <main class="mdui-col-md-8">{{template "content" .}}</main>
+    <aside class="mdui-col-md-4 site-sidebar">
+      {{if eq (themeValue .ThemeConfig "show_profile" "1") "1"}}
+      <section class="mdui-card mdui-hoverable sidebar-info">
+        <div class="sidebar-info-img">
+          <div class="sidebar-info-bg"{{with themeValue .ThemeConfig "sidebar_image"}} style="background-image: url('{{.}}')"{{end}}></div>
+          <img class="sidebar-avatar" src="{{avatarURL .ThemeConfig .ProfileEmail 160}}" alt="">
+        </div>
+        <div class="sidebar-info-body">
+          <div class="sidebar-info-name">{{themeValue .ThemeConfig "display_name" (index .Site "site_title")}}</div>
+          <div class="sidebar-info-desc">{{themeValue .ThemeConfig "bio" (index .Site "site_description")}}</div>
         </div>
       </section>
-      <section class="sidebar-card">
-        <h3>最新文章</h3>
-        <div class="sidebar-list">
-          {{range .RecentPosts}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">暂无文章</span>{{end}}
-        </div>
+      {{end}}
+      <section class="mdui-card mdui-hoverable sidebar-module">
+        <h3 class="sidebar-module-title">页面</h3>
+        <div class="sidebar-list">{{range .Pages}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">暂无页面</span>{{end}}</div>
       </section>
-      <section class="sidebar-card">
-        <h3>标签云</h3>
-        <div class="tag-cloud">
-          {{range .Tags}}<a href="{{metaURL .}}">{{.Name}}</a>{{else}}<span class="muted">暂无标签</span>{{end}}
-        </div>
+      <section class="mdui-card mdui-hoverable sidebar-module">
+        <h3 class="sidebar-module-title">最新文章</h3>
+        <div class="sidebar-list">{{range .RecentPosts}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">暂无文章</span>{{end}}</div>
       </section>
-      <section class="sidebar-card">
-        <h3>最新回复</h3>
-        <div class="sidebar-list">
-          {{range .RecentComments}}<a href="{{commentURL .}}">{{.Author}}：{{excerpt .Text 28}}</a>{{else}}<span class="muted">暂无回复</span>{{end}}
-        </div>
+      {{if eq (themeValue .ThemeConfig "show_recent_comments" "1") "1"}}
+      <section class="mdui-card mdui-hoverable sidebar-module">
+        <h3 class="sidebar-module-title">最新回复</h3>
+        <div class="sidebar-list">{{range .RecentComments}}<a href="{{commentURL .}}">{{.Author}}：{{excerpt .Text 28}}</a>{{else}}<span class="muted">暂无回复</span>{{end}}</div>
       </section>
+      {{end}}
+      {{if eq (themeValue .ThemeConfig "show_tag_cloud" "1") "1"}}
+      <section class="mdui-card mdui-hoverable sidebar-module">
+        <h3 class="sidebar-module-title">标签云</h3>
+        <div class="sidebar-tag">{{range .Tags}}<a href="{{metaURL .}}"><span>{{.Name}}</span></a>{{else}}<span class="muted">暂无标签</span>{{end}}</div>
+      </section>
+      {{end}}
+      {{if and .Post (eq (themeValue .ThemeConfig "enable_toc" "1") "1") (ne (fieldString .Fields "catalog") "0")}}
+      <section class="mdui-card mdui-hoverable sidebar-module toc-card" id="toc">
+        <h3 class="sidebar-module-title">文章目录</h3>
+        <nav class="toc"></nav>
+      </section>
+      {{end}}
     </aside>
-    <footer class="site-footer">Powered by GoBlog</footer>
   </div>
+
+  <div class="toc-overlay" aria-hidden="true"></div>
+  <button class="top" type="button" aria-label="回到顶部"><mdui-icon-arrow-upward></mdui-icon-arrow-upward></button>
+  <footer>{{with themeValue .ThemeConfig "footer_html"}}{{safeHTML .}}{{else}}Powered by GoBlog{{end}}</footer>
+  <div class="qrcode-popover" hidden>
+    <strong>跨设备阅读</strong>
+    <div class="qrcode-canvas"></div>
+    <input type="text" readonly value="{{.CurrentURL}}">
+    <button type="button">复制链接</button>
+  </div>
+  <script src="/theme/default/qrcode.min.js"></script>
+  <script src="/theme/default/app.js"></script>
   {{.FrontendFooter}}
 </body>
 </html>

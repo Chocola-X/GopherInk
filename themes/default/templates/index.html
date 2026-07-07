@@ -1,19 +1,32 @@
 {{define "content"}}
-{{if .ArchiveTitle}}<section class="archive-head"><h1>{{.ArchiveTitle}}</h1></section>{{end}}
-<section class="post-list">
+{{if .ArchiveTitle}}
+<section class="mdui-card archive-card">
+  <h1 class="archive-title">{{.ArchiveTitle}}</h1>
+</section>
+{{end}}
+{{$defaultCover := themeValue .ThemeConfig "default_cover"}}
+{{$decor := themeValue .ThemeConfig "enable_decor" "1"}}
+<section class="article">
   {{range .Posts}}
-  <a class="post-card" href="{{contentURL .}}">
-    <div class="post-card-media">
-      <div class="post-card-filter"></div>
-      <div class="post-card-text">
-        <h2>{{.Title}}</h2>
-        <div class="meta">{{date .Created}} · {{.CommentsNum}} 条评论</div>
-        <p>{{excerpt .Text 150}}</p>
+  <a class="post" href="{{contentURL .}}">
+    <article class="mdui-card index-card mdui-hoverable">
+      <div class="index-img-media">
+        {{if and (eq $decor "1") $defaultCover}}<div class="index-img" style="background-image: url('{{$defaultCover}}')"></div>{{end}}
+        <div class="index-card-filter"></div>
+        <div class="mdui-card-media-covered">
+          <div class="mdui-card-primary index-primary">
+            <h2 class="mdui-card-primary-title">{{.Title}}</h2>
+            <div class="mdui-card-primary-subtitle index-info">{{date .Created}} ｜ {{.CommentsNum}} 条评论</div>
+            <p class="mdui-card-primary-subtitle index-subtitle">{{excerpt .Text 150}}</p>
+          </div>
+        </div>
       </div>
-    </div>
+    </article>
   </a>
   {{else}}
-  <section class="empty-card">还没有发布文章。</section>
+  <section class="mdui-card page-card">
+    <div class="archive-title">暂无文章</div>
+  </section>
   {{end}}
 </section>
 {{with .Pagination}}
@@ -21,8 +34,10 @@
 <nav class="pagination">
   {{if .HasPrev}}<a href="{{.PrevURL}}"><mdui-icon-chevron-left></mdui-icon-chevron-left>上一页</a>{{else}}<span>上一页</span>{{end}}
   <strong>{{.Page}} / {{.TotalPages}}</strong>
-  {{if .HasNext}}<a href="{{.NextURL}}">下一页<mdui-icon-chevron-right></mdui-icon-chevron-right></a>{{else}}<span>下一页</span>{{end}}
+  {{if .HasNext}}<a class="next" href="{{.NextURL}}">下一页<mdui-icon-chevron-right></mdui-icon-chevron-right></a>{{else}}<span>下一页</span>{{end}}
 </nav>
+{{if .HasNext}}<a class="changePage changePage-load" href="{{.NextURL}}">加载更多</a>{{else}}<div class="changePage">到底了啦</div>{{end}}
+<div class="changePage changePage-end">加载中...</div>
 {{end}}
 {{end}}
 {{end}}

@@ -8,6 +8,7 @@
 </div>
 {{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
 <form method="post" class="form-panel field-stack">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
   {{range .Schema}}
     {{if eq .Type "textarea"}}
       <mdui-text-field name="{{.Name}}" label="{{.Label}}" rows="5" autosize helper="{{.Description}}">{{schemaValue $.Values .Name}}</mdui-text-field>
@@ -15,6 +16,27 @@
       <mdui-text-field type="password" name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
     {{else if eq .Type "number"}}
       <mdui-text-field type="number" name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
+    {{else if eq .Type "color"}}
+      <div class="schema-color-field">
+        <mdui-text-field name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}" class="schema-color-input"></mdui-text-field>
+        <div class="schema-swatches" data-target="{{.Name}}">
+          {{range .Options}}<button type="button" class="schema-swatch" data-color="{{.Value}}" style="--swatch: {{.Value}}" title="{{.Label}}"></button>{{end}}
+        </div>
+      </div>
+    {{else if eq .Type "image"}}
+      <div class="schema-image-field">
+        <mdui-text-field name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}" class="schema-image-input"></mdui-text-field>
+        <div class="schema-upload-row">
+          <input type="file" name="{{.Name}}_file" accept="image/*" class="schema-native-file" hidden>
+          <mdui-button type="button" variant="outlined" class="schema-pick-file">
+            <mdui-icon-upload slot="icon"></mdui-icon-upload>选择图片
+          </mdui-button>
+          <span class="schema-file-name muted">未选择文件</span>
+          <mdui-button type="button" variant="outlined" class="schema-upload-button" data-target="{{.Name}}">
+            <mdui-icon-upload slot="icon"></mdui-icon-upload>上传并填入
+          </mdui-button>
+        </div>
+      </div>
     {{else if eq .Type "checkbox"}}
       <mdui-checkbox name="{{.Name}}" value="1" {{if schemaChecked $.Values .Name}}checked{{end}}>{{.Label}}</mdui-checkbox>
       {{if .Description}}<span class="muted">{{.Description}}</span>{{end}}
@@ -41,4 +63,87 @@
     <mdui-button type="submit"><mdui-icon-save slot="icon"></mdui-icon-save>保存</mdui-button>
   </div>
 </form>
+<style>
+  .schema-image-field,
+  .schema-color-field {
+    display: grid;
+    gap: 10px;
+  }
+  .schema-upload-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+  }
+  .schema-file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .schema-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .schema-swatch {
+    width: 30px;
+    height: 30px;
+    border: 1px solid rgb(var(--mdui-color-outline-variant));
+    border-radius: 50%;
+    background: var(--swatch);
+    cursor: pointer;
+  }
+  @media (max-width: 720px) {
+    .schema-upload-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+<script>
+  document.querySelectorAll('.schema-swatch').forEach((button) => {
+    button.addEventListener('click', () => {
+      const wrap = button.closest('.schema-swatches');
+      const input = document.querySelector(`[name="${wrap.dataset.target}"]`);
+      if (input) input.value = button.dataset.color;
+    });
+  });
+  document.querySelectorAll('.schema-pick-file').forEach((button) => {
+    button.addEventListener('click', () => {
+      const field = button.closest('.schema-image-field');
+      const fileInput = field && field.querySelector('.schema-native-file');
+      if (fileInput) fileInput.click();
+    });
+  });
+  document.querySelectorAll('.schema-native-file').forEach((input) => {
+    input.addEventListener('change', () => {
+      const field = input.closest('.schema-image-field');
+      const label = field && field.querySelector('.schema-file-name');
+      if (label) label.textContent = input.files && input.files[0] ? input.files[0].name : '未选择文件';
+    });
+  });
+  document.querySelectorAll('.schema-upload-button').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const field = button.closest('.schema-image-field');
+      const fileInput = field && field.querySelector('.schema-native-file');
+      if (!fileInput || !fileInput.files || fileInput.files.length === 0) return;
+      const form = button.closest('form');
+      const data = new FormData();
+      data.append('file', fileInput.files[0]);
+      const csrf = form && form.querySelector('input[name="_csrf"]');
+      if (csrf) data.append('_csrf', csrf.value);
+      button.loading = true;
+      try {
+        const response = await fetch('/admin/schema/upload', { method: 'POST', body: data });
+        if (!response.ok) throw new Error(await response.text());
+        const result = await response.json();
+        const target = document.querySelector(`[name="${button.dataset.target}"]`);
+        if (target && result.url) target.value = result.url;
+      } catch (err) {
+        mdui.snackbar({ message: '上传失败：' + err.message });
+      } finally {
+        button.loading = false;
+      }
+    });
+  });
+</script>
 {{end}}

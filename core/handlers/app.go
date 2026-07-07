@@ -26,6 +26,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -123,6 +124,7 @@ func (a *App) Handler() http.Handler {
 		"/admin/ajax/tags":            a.adminTagSearch,
 		"/admin/ajax/preferences":     a.adminAjaxPreferences,
 		"/admin/ajax/remote-callback": a.adminAjaxRemoteCallback,
+		"/admin/schema/upload":        a.adminSchemaUpload,
 		"/admin/theme-editor":         a.adminPlaceholder("主题编辑器", "对应 Typecho 的 theme-editor.php。直接编辑文件需要额外权限和审计，当前先保留入口。"),
 	}
 	for route, handler := range adminRoutes {
@@ -1597,6 +1599,39 @@ func (a *App) adminAjaxRemoteCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "bytes": len(body)})
+}
+
+func (a *App) adminSchemaUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if !a.requireRole(w, r, "contributor") {
+		return
+	}
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "请选择要上传的文件", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	meta, err := a.saveUpload(r.Context(), file, header.Filename, 0)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	user, _ := a.currentUser(r)
+	text, _ := json.Marshal(meta)
+	if _, err := a.Contents.CreateAttachmentMeta(r.Context(), meta.Name, strings.TrimSuffix(filepath.Base(meta.Name), filepath.Ext(meta.Name)), string(text), user.UID, 0); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "url": meta.URL})
 }
 
 func (a *App) adminMedias(w http.ResponseWriter, r *http.Request) {
@@ -3147,6 +3182,14 @@ type pagination struct {
 	HasNext    bool
 }
 
+type archiveLink struct {
+	Year  int
+	Month int
+	Title string
+	URL   string
+	Count int
+}
+
 type commentView struct {
 	models.Comment
 	Level      int
@@ -3751,6 +3794,9 @@ func (a *App) enrichData(ctx context.Context, data map[string]any) {
 }
 
 func (a *App) enrichThemeData(ctx context.Context, data map[string]any) {
+	if _, ok := data["ProfileEmail"]; !ok {
+		data["ProfileEmail"] = a.defaultThemeProfileEmail(ctx, data)
+	}
 	if _, ok := data["RecentPosts"]; !ok {
 		if posts, err := a.Contents.ListPublished(ctx, 5, 0); err == nil {
 			data["RecentPosts"] = posts
@@ -3760,6 +3806,14 @@ func (a *App) enrichThemeData(ctx context.Context, data map[string]any) {
 		if pages, err := a.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePage, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: 20}); err == nil {
 			data["Pages"] = pages
 		}
+	}
+	if _, ok := data["AllCategories"]; !ok {
+		if categories, err := a.Metas.List(ctx, "category"); err == nil {
+			data["AllCategories"] = categories
+		}
+	}
+	if _, ok := data["Archives"]; !ok {
+		data["Archives"] = a.archiveLinks(ctx, 18)
 	}
 	if _, ok := data["Tags"]; !ok {
 		if tags, err := a.Metas.ListCloud(ctx, "tag", 30); err == nil {
@@ -3781,6 +3835,68 @@ func (a *App) enrichThemeData(ctx context.Context, data map[string]any) {
 			data["RecentComments"] = comments
 		}
 	}
+}
+
+func (a *App) archiveLinks(ctx context.Context, limit int) []archiveLink {
+	posts, err := a.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: 1200})
+	if err != nil {
+		return nil
+	}
+	loc := a.siteLocation(ctx)
+	byMonth := map[string]*archiveLink{}
+	for _, post := range posts {
+		t := time.Unix(post.Created, 0).In(loc)
+		year, month := t.Year(), int(t.Month())
+		key := fmt.Sprintf("%04d-%02d", year, month)
+		item := byMonth[key]
+		if item == nil {
+			item = &archiveLink{
+				Year:  year,
+				Month: month,
+				Title: fmt.Sprintf("%04d-%02d", year, month),
+				URL:   archivePath(year, month, 0),
+			}
+			byMonth[key] = item
+		}
+		item.Count++
+	}
+	out := make([]archiveLink, 0, len(byMonth))
+	for _, item := range byMonth {
+		out = append(out, *item)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Year == out[j].Year {
+			return out[i].Month > out[j].Month
+		}
+		return out[i].Year > out[j].Year
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+func (a *App) defaultThemeProfileEmail(ctx context.Context, data map[string]any) string {
+	if post, ok := data["Post"].(models.Content); ok && post.AuthorID > 0 {
+		if user, err := a.Users.ByID(ctx, post.AuthorID); err == nil && strings.TrimSpace(user.Mail) != "" {
+			return strings.TrimSpace(user.Mail)
+		}
+	}
+	users, err := a.Users.List(ctx, "")
+	if err != nil {
+		return ""
+	}
+	for _, user := range users {
+		if user.Role == "administrator" && strings.TrimSpace(user.Mail) != "" {
+			return strings.TrimSpace(user.Mail)
+		}
+	}
+	for _, user := range users {
+		if strings.TrimSpace(user.Mail) != "" {
+			return strings.TrimSpace(user.Mail)
+		}
+	}
+	return ""
 }
 
 func parseContentForm(r *http.Request, typ string) (services.SaveContentInput, error) {
