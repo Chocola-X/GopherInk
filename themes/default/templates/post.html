@@ -31,60 +31,66 @@
   </form>
   {{else}}
   <div class="post-content mdui-prose">{{.ContentHTML}}</div>
-  <nav class="post-neighbors">
-    {{if .PrevPost.CID}}<a href="{{contentURL .PrevPost}}"><mdui-icon name="chevron_left"></mdui-icon>{{.PrevPost.Title}}</a>{{else}}<span></span>{{end}}
-    {{if .NextPost.CID}}<a href="{{contentURL .NextPost}}">{{.NextPost.Title}}<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span></span>{{end}}
-  </nav>
-  {{if .RelatedPosts}}
-  <section class="mdui-card post-related">
-    <h2>相关文章</h2>
-    <div class="sidebar-list">{{range .RelatedPosts}}<a href="{{contentURL .}}">{{.Title}}</a>{{end}}</div>
-  </section>
-  {{end}}
-  {{if eq .Post.AllowComment "1"}}
-  <section id="comments" class="comments-wrap">
-    <h2 class="comment-title">评论</h2>
-    {{if .CommentOK}}<div class="notice-card">评论已提交。</div>{{end}}
-    {{if .CommentError}}<div class="notice-card notice-error">评论提交失败，请检查必填项。</div>{{end}}
-    <div class="comment-list">
-      {{range .Comments}}
-      <article id="{{.Anchor}}" class="mdui-card comment-card comment-level-{{.Level}}">
-        <header class="comment-header">
-          {{if .AvatarURL}}<img class="comment-avatar" src="{{.AvatarURL}}" alt="">{{end}}
-          <div>
-            <strong>{{.AuthorHTML}}</strong>
-            <span>{{commentDate .Created}}</span>
-          </div>
-        </header>
-        <div class="comment-content">{{.BodyHTML}}</div>
-        <a class="comment-reply" href="{{.ReplyURL}}">回复</a>
-      </article>
-      {{else}}
-      <p class="muted">还没有评论。</p>
-      {{end}}
-    </div>
-    {{if gt .CommentPager.TotalPages 1}}
-    <nav class="pagination comment-pagination">
-      {{if .CommentPager.HasPrev}}<a href="{{.CommentPager.PrevURL}}"><mdui-icon name="chevron_left"></mdui-icon>上一页</a>{{else}}<span>上一页</span>{{end}}
-      <span>{{.CommentPager.Page}} / {{.CommentPager.TotalPages}}</span>
-      {{if .CommentPager.HasNext}}<a href="{{.CommentPager.NextURL}}">下一页<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span>下一页</span>{{end}}
-    </nav>
-    {{end}}
-    <form id="comment-form" class="mdui-card comment-respond" method="post" action="/comment">
-      <input type="hidden" name="_csrf" value="{{.CommentCSRF}}">
-      <input type="hidden" name="cid" value="{{.Post.CID}}">
-      <input type="hidden" name="parent" value="{{.ReplyTo}}">
-      <input class="hp-field" type="text" name="website" tabindex="-1" autocomplete="off">
-      <div class="comment-web">
-        <mdui-text-field name="author" label="称呼" required></mdui-text-field>
-        <mdui-text-field name="mail" label="邮箱" type="email"></mdui-text-field>
-        <mdui-text-field name="url" label="网址"></mdui-text-field>
-      </div>
-      <mdui-text-field class="comment-textarea" name="text" label="评论" rows="5" required></mdui-text-field>
-      <div class="comment-form-button"><mdui-button type="submit">提交评论</mdui-button></div>
-    </form>
-  </section>
-  {{end}}
   {{end}}
 </article>
+{{if not .PasswordRequired}}
+{{if or .PrevPost.CID .NextPost.CID}}
+<nav class="mdui-card post-neighbors-card">
+  <div class="post-neighbors">
+    {{if .PrevPost.CID}}<a href="{{contentURL .PrevPost}}"><mdui-icon name="chevron_left"></mdui-icon>{{.PrevPost.Title}}</a>{{else}}<span></span>{{end}}
+    {{if .NextPost.CID}}<a href="{{contentURL .NextPost}}">{{.NextPost.Title}}<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span></span>{{end}}
+  </div>
+</nav>
+{{end}}
+{{if .RelatedPosts}}
+<section class="mdui-card post-related">
+  <h2>相关文章</h2>
+  <div class="sidebar-list">{{range .RelatedPosts}}<a href="{{contentURL .}}">{{.Title}}</a>{{end}}</div>
+</section>
+{{end}}
+{{if eq .Post.AllowComment "1"}}
+<section id="comments" class="comments-wrap">
+  <h2 class="comment-title">评论</h2>
+  {{if .CommentOK}}<div class="notice-card">评论已提交。</div>{{end}}
+  {{if .CommentError}}<div class="notice-card notice-error">评论提交失败，请检查必填项。</div>{{end}}
+  <div class="comment-list">
+    {{range .Comments}}
+    <article id="{{.Anchor}}" class="mdui-card comment-card comment-level-{{.Level}}">
+      <header class="comment-header">
+        {{if .AvatarURL}}<img class="comment-avatar" src="{{.AvatarURL}}" alt="">{{end}}
+        <div>
+          <strong>{{.AuthorHTML}}</strong>
+          <span>{{commentDate .Created}}</span>
+        </div>
+      </header>
+      <div class="comment-content">{{.BodyHTML}}</div>
+      <a class="comment-reply" href="{{.ReplyURL}}">回复</a>
+    </article>
+    {{else}}
+    <p class="muted">还没有评论。</p>
+    {{end}}
+  </div>
+  {{if gt .CommentPager.TotalPages 1}}
+  <nav class="pagination comment-pagination">
+    {{if .CommentPager.HasPrev}}<a href="{{.CommentPager.PrevURL}}"><mdui-icon name="chevron_left"></mdui-icon>上一页</a>{{else}}<span>上一页</span>{{end}}
+    <span>{{.CommentPager.Page}} / {{.CommentPager.TotalPages}}</span>
+    {{if .CommentPager.HasNext}}<a href="{{.CommentPager.NextURL}}">下一页<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span>下一页</span>{{end}}
+  </nav>
+  {{end}}
+  <form id="comment-form" class="mdui-card comment-respond" method="post" action="/comment">
+    <input type="hidden" name="_csrf" value="{{.CommentCSRF}}">
+    <input type="hidden" name="cid" value="{{.Post.CID}}">
+    <input type="hidden" name="parent" value="{{.ReplyTo}}">
+    <input class="hp-field" type="text" name="website" tabindex="-1" autocomplete="off">
+    <div class="comment-web">
+      <mdui-text-field name="author" label="称呼" required></mdui-text-field>
+      <mdui-text-field name="mail" label="邮箱" type="email"></mdui-text-field>
+      <mdui-text-field name="url" label="网址"></mdui-text-field>
+    </div>
+    <mdui-text-field class="comment-textarea" name="text" label="评论" rows="5" required></mdui-text-field>
+    <div class="comment-form-button"><mdui-button type="submit">提交评论</mdui-button></div>
+  </form>
+</section>
+{{end}}
+{{end}}
 {{end}}

@@ -1023,9 +1023,9 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   padding: 24px;
 }
 
-.post-neighbors,
-.post-related {
-  margin: 0 24px 24px;
+.post-neighbors-card {
+  margin-top: 20px;
+  padding: 18px 24px;
 }
 
 .post-neighbors {
@@ -1049,6 +1049,7 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 }
 
 .post-related {
+  margin-top: 20px;
   padding: 18px;
 }
 
@@ -1066,6 +1067,10 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   font-weight: 500;
   letter-spacing: 0;
   text-shadow: var(--cuckoo-text-shadow);
+}
+
+.comments-wrap {
+  margin-top: 20px;
 }
 
 .comment-title::before {
