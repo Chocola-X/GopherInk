@@ -79,7 +79,6 @@
       <details class="drawer-collapse">
         <summary><mdui-icon name="calendar_month"></mdui-icon><span>按时间归档</span></summary>
         <div>
-          <a href="/archive/"><span>全部归档</span></a>
           {{range .Archives}}<a href="{{.URL}}"><span>{{.Title}}（{{.Count}}）</span></a>{{else}}<span class="drawer-empty">暂无归档</span>{{end}}
         </div>
       </details>

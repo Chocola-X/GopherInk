@@ -880,13 +880,13 @@ html.mdui-theme-dark .post-content code {
   border-radius: 0;
 }
 
-.post-content .task-list-item {
+.post-content li:has(> input[type="checkbox"]) {
   list-style: none;
   position: relative;
   margin-left: -1.5em;
 }
 
-.post-content .task-list-item input[type="checkbox"] {
+.post-content li > input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
   width: 16px;
@@ -901,12 +901,12 @@ html.mdui-theme-dark .post-content code {
   transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.post-content .task-list-item input[type="checkbox"]:checked {
+.post-content li > input[type="checkbox"]:checked {
   background: rgb(var(--mdui-color-primary));
   border-color: rgb(var(--mdui-color-primary));
 }
 
-.post-content .task-list-item input[type="checkbox"]:checked::after {
+.post-content li > input[type="checkbox"]:checked::after {
   content: "";
   position: absolute;
   top: 1px;
@@ -1062,11 +1062,10 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 .comment-title {
   position: relative;
   margin: 20px 0;
-  color: #fff;
+  color: rgb(var(--mdui-color-primary));
   font-size: 30px;
   font-weight: 500;
   letter-spacing: 0;
-  text-shadow: var(--cuckoo-text-shadow);
 }
 
 .comments-wrap {
@@ -1081,7 +1080,7 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   z-index: -1;
   width: 120px;
   height: 10px;
-  background: var(--cuckoo-card-light);
+  background: rgba(var(--mdui-color-primary), 0.15);
 }
 
 .comment-list {
