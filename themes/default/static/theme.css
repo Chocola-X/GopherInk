@@ -755,11 +755,13 @@ html.mdui-theme-dark .sidebar-tag span {
 }
 
 .post-card {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .post-card-media {
   height: 350px;
+  overflow: hidden;
+  border-radius: 7px 7px 0 0;
 }
 
 .post-card-media-normal {
@@ -858,6 +860,64 @@ html.mdui-theme-dark .post-content h2 {
   color: rgb(var(--mdui-color-on-surface-variant));
 }
 
+.post-content code {
+  padding: 2px 6px;
+  color: rgb(var(--mdui-color-primary));
+  background: rgba(var(--mdui-color-primary), 0.1);
+  border-radius: 4px;
+  font-size: 0.875em;
+}
+
+body.mdui-theme-layout-dark .post-content code,
+html.mdui-theme-dark .post-content code {
+  background: rgba(var(--mdui-color-primary), 0.18);
+}
+
+.post-content pre code {
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border-radius: 0;
+}
+
+.post-content .task-list-item {
+  list-style: none;
+  position: relative;
+  margin-left: -1.5em;
+}
+
+.post-content .task-list-item input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: middle;
+  position: relative;
+  border: 2px solid rgba(var(--mdui-color-primary), 0.5);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.post-content .task-list-item input[type="checkbox"]:checked {
+  background: rgb(var(--mdui-color-primary));
+  border-color: rgb(var(--mdui-color-primary));
+}
+
+.post-content .task-list-item input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
 .post-content pre:not(.mermaid) {
   position: relative;
   max-width: 100%;
@@ -866,8 +926,67 @@ html.mdui-theme-dark .post-content h2 {
   padding: 34px 16px 16px;
   color: #abb2bf;
   border-radius: 5px;
-  background: #21252b;
+  background: #282c34;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.post-content pre:not(.mermaid) code {
+  display: block;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border-radius: 0;
+  font-size: 0.875em;
+  line-height: 1.6;
+  white-space: pre;
+  word-wrap: normal;
+}
+
+.post-content .table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 24px;
+}
+
+.post-content table {
+  min-width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin: 0;
+  font-size: 0.9em;
+}
+
+.post-content table th,
+.post-content table td {
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  text-align: left;
+}
+
+.post-content table th {
+  font-weight: 600;
+  background: rgba(var(--mdui-color-primary), 0.08);
+}
+
+.post-content table tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+body.mdui-theme-layout-dark .post-content table th,
+html.mdui-theme-dark .post-content table th {
+  background: rgba(var(--mdui-color-primary), 0.15);
+}
+
+body.mdui-theme-layout-dark .post-content table th,
+body.mdui-theme-layout-dark .post-content table td,
+html.mdui-theme-dark .post-content table th,
+html.mdui-theme-dark .post-content table td {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+body.mdui-theme-layout-dark .post-content table tr:nth-child(even) td,
+html.mdui-theme-dark .post-content table tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .post-content pre:not(.mermaid)::before {

@@ -27,6 +27,7 @@
   {{if .PingbackEnabled}}<link rel="pingback" href="{{.XMLRPCURL}}">{{end}}
   <link rel="stylesheet" href="/theme/default/material-icons.css">
   <link rel="stylesheet" href="/theme/default/mdui.css">
+  <link rel="stylesheet" href="/theme/default/atom-one-dark.min.css">
   <link rel="stylesheet" href="/theme/default/theme.css">
   <script src="/theme/default/mdui.global.js"></script>
   <script type="module" src="/theme/default/mdui-icons.js"></script>
@@ -140,6 +141,7 @@
   <button class="top" type="button" aria-label="回到顶部"><mdui-icon name="arrow_upward"></mdui-icon></button>
   <footer>{{with themeValue .ThemeConfig "footer_html"}}{{safeHTML .}}{{else}}Powered by GoBlog{{end}}</footer>
   <script src="/theme/default/app.js"></script>
+  <script src="/theme/default/highlight.min.js"></script>
   {{.FrontendFooter}}
 </body>
 </html>

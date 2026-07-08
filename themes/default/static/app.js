@@ -117,6 +117,24 @@
     return Promise.resolve();
   }
 
+  function highlightCode() {
+    if (window.hljs) {
+      document.querySelectorAll(".post-content pre:not(.mermaid) code").forEach((block) => {
+        hljs.highlightElement(block);
+      });
+    }
+  }
+
+  function wrapTables() {
+    document.querySelectorAll(".post-content table").forEach((table) => {
+      if (table.parentElement.classList.contains("table-wrapper")) return;
+      const wrapper = document.createElement("div");
+      wrapper.className = "table-wrapper";
+      table.parentNode.insertBefore(wrapper, table);
+      wrapper.appendChild(table);
+    });
+  }
+
   function codeCopy() {
     document.querySelectorAll(".post-content pre:not(.mermaid)").forEach((pre) => {
       if (pre.querySelector(".post-content-code-copy")) return;
@@ -311,6 +329,8 @@
     applyTheme();
     refreshSearch();
     buildTOC();
+    highlightCode();
+    wrapTables();
     codeCopy();
     refreshBackTop();
     closeDrawer();
