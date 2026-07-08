@@ -1194,40 +1194,59 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 }
 
 .toc {
-  display: grid;
   max-height: 440px;
   overflow: auto;
   padding: 10px 0;
 }
 
-.toc a {
+.toc .toc-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.toc .toc-list .toc-list {
+  padding-left: 16px;
+}
+
+.toc .toc-list-item {
+  margin: 0;
+}
+
+.toc a.toc-link {
   display: block;
   margin: 0 10px;
   padding: 6px 10px;
   border-radius: 5px;
   color: rgba(0, 0, 0, 0.78);
   line-height: 1.55;
+  font-weight: 400;
+  transition: color 0.2s ease, background 0.2s ease;
 }
 
-.toc a.toc-level-2 {
-  padding-left: 24px;
-  font-size: 14px;
-}
-
-.toc a.toc-level-3 {
-  padding-left: 38px;
-  font-size: 13px;
-}
-
-.toc a:hover,
-.toc a.is-active {
+.toc a.toc-link:hover,
+.toc a.toc-link.is-active-link {
   color: rgb(var(--mdui-color-primary));
   font-weight: 700;
   background: rgba(var(--mdui-color-primary), 0.1);
 }
 
-body.mdui-theme-layout-dark .toc a,
-html.mdui-theme-dark .toc a {
+.toc .is-collapsible {
+  max-height: 1000px;
+  overflow: hidden;
+  transition: max-height 300ms ease-in-out;
+}
+
+.toc .is-collapsed {
+  max-height: 0;
+}
+
+.toc .is-active-link::before {
+  background-color: rgb(var(--mdui-color-primary));
+}
+
+body.mdui-theme-layout-dark .toc a.toc-link,
+html.mdui-theme-dark .toc a.toc-link {
   color: rgba(255, 255, 255, 0.82);
 }
 

@@ -58,13 +58,12 @@
     return used ? base + "-" + used : base;
   }
 
-  function buildTOC() {
+  function initTOC() {
     const toc = document.querySelector("#toc .toc");
     const content = document.querySelector(".post-content");
     const card = document.querySelector("#toc");
     if (!toc || !content || !card) return;
     const headings = Array.from(content.querySelectorAll("h1, h2, h3, h4"));
-    toc.innerHTML = "";
     if (!headings.length) {
       card.remove();
       return;
@@ -72,27 +71,25 @@
     const seen = new Map();
     headings.forEach((heading, index) => {
       if (!heading.id) heading.id = slugify(heading.textContent, index, seen);
-      const link = document.createElement("a");
-      link.href = "#" + heading.id;
-      link.textContent = heading.textContent || "";
-      if (heading.tagName === "H3") link.classList.add("toc-level-2");
-      if (heading.tagName === "H4") link.classList.add("toc-level-3");
-      toc.appendChild(link);
     });
-    refreshTOC();
+    if (window.tocbot) {
+      tocbot.init({
+        tocSelector: "#toc .toc",
+        contentSelector: ".post-content",
+        headingSelector: "h1, h2, h3, h4",
+        scrollSmooth: true,
+        scrollSmoothOffset: -70,
+        headingsOffset: -70,
+        collapseDepth: 0,
+        orderedList: true,
+      });
+    }
   }
 
-  function refreshTOC() {
-    const content = document.querySelector(".post-content");
-    const toc = document.querySelector("#toc .toc");
-    if (!content || !toc) return;
-    const headings = Array.from(content.querySelectorAll("h1, h2, h3, h4"));
-    const links = Array.from(toc.querySelectorAll("a"));
-    let active = "";
-    headings.forEach((heading) => {
-      if (heading.getBoundingClientRect().top < 96) active = heading.id;
-    });
-    links.forEach((link) => link.classList.toggle("is-active", link.hash === "#" + active));
+  function destroyTOC() {
+    if (window.tocbot) {
+      try { tocbot.destroy(); } catch (e) { /* ignore */ }
+    }
   }
 
   function refreshSearch() {
@@ -318,7 +315,6 @@
 
     window.addEventListener("scroll", () => {
       refreshBackTop();
-      refreshTOC();
     }, { passive: true });
 
     window.addEventListener("popstate", () => loadPage(window.location.href, false));
@@ -328,7 +324,8 @@
   function afterLoad() {
     applyTheme();
     refreshSearch();
-    buildTOC();
+    destroyTOC();
+    initTOC();
     highlightCode();
     wrapTables();
     codeCopy();
