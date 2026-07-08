@@ -758,6 +758,19 @@ html.mdui-theme-dark .sidebar-tag span {
   overflow: visible;
 }
 
+.post-end-image {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 24px 16px;
+}
+
+.post-end-image img {
+  max-width: 200px;
+  max-height: 200px;
+  object-fit: contain;
+  opacity: 0.85;
+}
+
 .post-card-media {
   height: 350px;
   overflow: hidden;
@@ -1157,8 +1170,21 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 }
 
 .comment-respond {
+  position: relative;
   margin-top: 20px;
   padding: 16px;
+  overflow: hidden;
+}
+
+.comment-bg-image {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  max-width: 200px;
+  max-height: 200px;
+  object-fit: contain;
+  pointer-events: none;
+  opacity: 0.85;
 }
 
 .comment-web {

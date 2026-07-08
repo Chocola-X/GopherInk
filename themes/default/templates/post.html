@@ -2,6 +2,8 @@
 {{$cover := fieldString .Fields "cover"}}
 {{if not $cover}}{{$cover = themeValue .ThemeConfig "default_cover"}}{{end}}
 {{$decor := themeValue .ThemeConfig "enable_decor" "1"}}
+{{$postEndImg := themeValue .ThemeConfig "post_end_image"}}
+{{$commentBgImg := themeValue .ThemeConfig "comment_bg_image"}}
 <article class="mdui-card post-card">
   <header class="post-card-media{{if not $cover}} post-card-media-normal{{end}}">
     {{if and (eq $decor "1") $cover}}<div class="index-img" style="background-image: url('{{$cover}}')"></div>{{end}}
@@ -31,6 +33,9 @@
   </form>
   {{else}}
   <div class="post-content mdui-prose">{{.ContentHTML}}</div>
+  {{if and (eq $decor "1") $postEndImg}}
+  <div class="post-end-image"><img src="{{$postEndImg}}" alt=""></div>
+  {{end}}
   {{end}}
 </article>
 {{if not .PasswordRequired}}
@@ -89,6 +94,9 @@
     </div>
     <mdui-text-field class="comment-textarea" name="text" label="评论" rows="5" required></mdui-text-field>
     <div class="comment-form-button"><mdui-button type="submit">提交评论</mdui-button></div>
+    {{if and (eq $decor "1") $commentBgImg}}
+    <img class="comment-bg-image" src="{{$commentBgImg}}" alt="">
+    {{end}}
   </form>
 </section>
 {{end}}

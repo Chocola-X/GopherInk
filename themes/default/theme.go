@@ -68,6 +68,8 @@ func init() {
 			{Name: "mobile_background_image", Label: "移动端背景图 URL", Type: plugin.FieldImage, Description: "留空时沿用桌面背景图"},
 			{Name: "sidebar_image", Label: "侧栏封面图 URL", Type: plugin.FieldImage, Description: "资料卡顶部封面；留空时使用主题色"},
 			{Name: "default_cover", Label: "默认文章封面 URL", Type: plugin.FieldImage, Description: "文章未设置 cover 字段时使用；留空时使用主题色看板"},
+			{Name: "comment_bg_image", Label: "评论框装饰图 URL", Type: plugin.FieldImage, Description: "显示在评论输入框右侧；留空时不显示"},
+			{Name: "post_end_image", Label: "文章底部装饰图 URL", Type: plugin.FieldImage, Description: "显示在文章内容底部右下角；留空时不显示"},
 			{Name: "favicon", Label: "Favicon URL", Type: plugin.FieldImage},
 			{Name: "show_profile", Label: "显示侧栏资料卡", Type: plugin.FieldCheckbox, Default: "1"},
 			{Name: "show_recent_comments", Label: "显示最新回复", Type: plugin.FieldCheckbox, Default: "1"},
