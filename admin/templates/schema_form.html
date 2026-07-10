@@ -7,7 +7,7 @@
   <mdui-button variant="outlined" href="{{.BackURL}}">返回</mdui-button>
 </div>
 {{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
-<form method="post" class="form-panel field-stack">
+<form method="post" class="form-panel field-stack" data-schema-upload-url="{{.UploadURL}}">
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
   {{range .Schema}}
     {{if eq .Type "textarea"}}
@@ -99,52 +99,4 @@
     }
   }
 </style>
-<script>
-  const schemaUploadURL = '{{.UploadURL}}';
-  document.querySelectorAll('.schema-swatch').forEach((button) => {
-    button.addEventListener('click', () => {
-      const wrap = button.closest('.schema-swatches');
-      const input = document.querySelector(`[name="${wrap.dataset.target}"]`);
-      if (input) input.value = button.dataset.color;
-    });
-  });
-  document.querySelectorAll('.schema-pick-file').forEach((button) => {
-    button.addEventListener('click', () => {
-      const field = button.closest('.schema-image-field');
-      const fileInput = field && field.querySelector('.schema-native-file');
-      if (fileInput) fileInput.click();
-    });
-  });
-  document.querySelectorAll('.schema-native-file').forEach((input) => {
-    input.addEventListener('change', () => {
-      const field = input.closest('.schema-image-field');
-      const label = field && field.querySelector('.schema-file-name');
-      if (label) label.textContent = input.files && input.files[0] ? input.files[0].name : '未选择文件';
-    });
-  });
-  document.querySelectorAll('.schema-upload-button').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const field = button.closest('.schema-image-field');
-      const fileInput = field && field.querySelector('.schema-native-file');
-      if (!fileInput || !fileInput.files || fileInput.files.length === 0) return;
-      const form = button.closest('form');
-      const data = new FormData();
-      data.append('file', fileInput.files[0]);
-      const csrf = form && form.querySelector('input[name="_csrf"]');
-      if (csrf) data.append('_csrf', csrf.value);
-      button.loading = true;
-      try {
-        const response = await fetch(schemaUploadURL || '/admin/schema/upload', { method: 'POST', body: data });
-        if (!response.ok) throw new Error(await response.text());
-        const result = await response.json();
-        const target = document.querySelector(`[name="${button.dataset.target}"]`);
-        if (target && result.url) target.value = result.url;
-      } catch (err) {
-        mdui.snackbar({ message: '上传失败：' + err.message });
-      } finally {
-        button.loading = false;
-      }
-    });
-  });
-</script>
 {{end}}

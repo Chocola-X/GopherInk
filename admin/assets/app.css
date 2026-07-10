@@ -139,6 +139,12 @@ body.admin-drawer-modal .drawer-scrim {
   max-width: 1120px;
   margin: 0 auto;
   padding: 28px 20px 56px;
+  transition: opacity 160ms var(--mdui-motion-easing-standard);
+}
+
+body.admin-pjax-loading .admin-main {
+  opacity: 0.58;
+  pointer-events: none;
 }
 
 .login-main {
