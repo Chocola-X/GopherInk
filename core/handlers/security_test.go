@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"mime/multipart"
@@ -144,6 +145,14 @@ func TestPermissionMatrixAndAuthorBoundary(t *testing.T) {
 	app.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("editor /admin/options/general status = %d, want 403", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/management", nil)
+	setSession(t, req, secret, editorID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("editor /admin/management status = %d, want 403", rec.Code)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/admin", nil)
@@ -748,6 +757,46 @@ func TestMediaUploadStoresMetadataUnderContentIDAndDeleteRemovesFile(t *testing.
 	}
 	if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
 		t.Fatalf("uploaded file still exists after delete: %v", err)
+	}
+}
+
+func TestAdminManagementUploadUsesSeparateSettingsBucket(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	app.UploadDir = t.TempDir()
+	ctx := context.Background()
+	before, err := app.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypeAttach, Status: "all", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := multipartUploadRequestBytes(t, "/admin/management/upload", map[string]string{"_csrf": adminToken(secret, adminID)}, "file", "background.png", tinyPNG(t))
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin management upload status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK  bool   `json:"ok"`
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	prefix := "/uploads/" + adminSettingsUploadBucket + "/"
+	if !payload.OK || !strings.HasPrefix(payload.URL, prefix) {
+		t.Fatalf("admin management upload payload = %#v, want %s bucket", payload, prefix)
+	}
+	relPath := strings.TrimPrefix(payload.URL, "/uploads/")
+	if _, err := os.Stat(filepath.Join(app.UploadDir, filepath.FromSlash(relPath))); err != nil {
+		t.Fatalf("admin settings upload file missing: %v", err)
+	}
+	after, err := app.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypeAttach, Status: "all", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("admin settings upload created attachment rows: before=%d after=%d", len(before), len(after))
 	}
 }
 

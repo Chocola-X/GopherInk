@@ -8,6 +8,26 @@
   }
 
   ready(function () {
+    var body = document.body;
+    var primary = body && body.dataset.adminPrimary ? body.dataset.adminPrimary : "#6750a4";
+    if (window.mdui && typeof window.mdui.setColorScheme === "function") {
+      try {
+        window.mdui.setColorScheme(primary);
+      } catch (err) {
+        window.mdui.setColorScheme("#6750a4");
+      }
+    }
+    if (body) {
+      var desktopBg = body.dataset.adminBackground || "";
+      var mobileBg = body.dataset.adminMobileBackground || "";
+      if (desktopBg) {
+        body.style.setProperty("--admin-bg-image", cssURL(desktopBg));
+      }
+      if (mobileBg) {
+        body.style.setProperty("--admin-mobile-bg-image", cssURL(mobileBg));
+      }
+    }
+
     var csrf = document.querySelector('meta[name="csrf-token"]');
     if (csrf && csrf.content) {
       document.querySelectorAll('form[method="post"], form[method="POST"]').forEach(function (form) {
@@ -222,15 +242,14 @@
       return;
     }
 
-    function setDrawer(open, modal) {
-      drawer.open = open;
+    function setDrawer(open) {
       if (open) {
         drawer.setAttribute("open", "");
       } else {
         drawer.removeAttribute("open");
       }
       document.body.classList.toggle("admin-drawer-open", open);
-      document.body.classList.toggle("admin-drawer-modal", open && !!modal);
+      document.body.classList.remove("admin-drawer-modal");
       localStorage.setItem("goblogAdminDrawerOpen", open ? "1" : "0");
     }
 
@@ -238,17 +257,21 @@
     setDrawer(stored === null ? window.matchMedia("(min-width: 920px)").matches : stored === "1", false);
 
     toggle.addEventListener("click", function () {
-      setDrawer(!drawer.open, !drawer.open);
+      setDrawer(!drawer.hasAttribute("open"));
     });
 
     scrim.addEventListener("click", function () {
-      setDrawer(false, false);
+      setDrawer(false);
     });
 
     window.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && drawer.open) {
-        setDrawer(false, false);
+      if (event.key === "Escape" && drawer.hasAttribute("open")) {
+        setDrawer(false);
       }
     });
   });
+
+  function cssURL(value) {
+    return 'url("' + String(value).replace(/["\\\n\r\f]/g, "\\$&") + '")';
+  }
 })();

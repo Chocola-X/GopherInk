@@ -15,7 +15,7 @@
     {{else if eq .Type "password"}}
       <mdui-text-field type="password" name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
     {{else if eq .Type "number"}}
-      <mdui-text-field type="number" name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
+      <mdui-text-field type="number" {{if .Min}}min="{{.Min}}"{{end}} {{if .Max}}max="{{.Max}}"{{end}} {{if .Step}}step="{{.Step}}"{{end}} name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
     {{else if eq .Type "color"}}
       <div class="schema-color-field">
         <mdui-text-field name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}" class="schema-color-input"></mdui-text-field>
@@ -100,6 +100,7 @@
   }
 </style>
 <script>
+  const schemaUploadURL = '{{.UploadURL}}';
   document.querySelectorAll('.schema-swatch').forEach((button) => {
     button.addEventListener('click', () => {
       const wrap = button.closest('.schema-swatches');
@@ -133,7 +134,7 @@
       if (csrf) data.append('_csrf', csrf.value);
       button.loading = true;
       try {
-        const response = await fetch('/admin/schema/upload', { method: 'POST', body: data });
+        const response = await fetch(schemaUploadURL || '/admin/schema/upload', { method: 'POST', body: data });
         if (!response.ok) throw new Error(await response.text());
         const result = await response.json();
         const target = document.querySelector(`[name="${button.dataset.target}"]`);

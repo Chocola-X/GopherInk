@@ -121,6 +121,9 @@ type FieldSchema struct {
 	Type        FieldType
 	Default     string
 	Description string
+	Min         string
+	Max         string
+	Step        string
 	Options     []FieldOption
 	ForTypes    []string
 }

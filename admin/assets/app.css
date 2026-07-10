@@ -1,4 +1,11 @@
 body {
+  --admin-appbar-height: 64px;
+  --admin-sidebar-width: 16.5rem;
+  --admin-card-opacity: 0.84;
+  --admin-sidebar-opacity: 0.9;
+  --admin-topbar-opacity: 0.92;
+  --admin-input-opacity: 0.62;
+  --admin-bg-mask-opacity: 0.54;
   margin: 0;
   color: rgb(var(--mdui-color-on-background));
   background:
@@ -8,44 +15,96 @@ body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
+body.admin-page {
+  height: 100vh;
+  overflow: hidden;
+}
+
 .admin-shell {
-  min-height: 100vh;
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .admin-bg {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
+  pointer-events: none;
   background:
     linear-gradient(135deg, rgba(var(--mdui-color-primary), 0.12), transparent 34%),
-    linear-gradient(315deg, rgba(var(--mdui-color-tertiary), 0.1), transparent 40%);
+    linear-gradient(315deg, rgba(var(--mdui-color-tertiary), 0.1), transparent 40%),
+    var(--admin-bg-image, rgb(var(--mdui-color-background)));
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: auto, auto, cover;
 }
 
 .admin-bg::after {
   position: absolute;
   inset: 0;
   content: "";
-  background: rgba(var(--mdui-color-background), 0.54);
-  backdrop-filter: blur(2px);
+  background: rgba(var(--mdui-color-background), var(--admin-bg-mask-opacity));
 }
 
 .admin-appbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--admin-appbar-height);
   z-index: 30;
-  color: rgb(var(--mdui-color-on-surface));
-  background: rgba(var(--mdui-color-surface-container-low), 0.82);
-  border-bottom: 1px solid rgba(var(--mdui-color-outline-variant), 0.55);
-  backdrop-filter: blur(16px);
+  color: rgb(var(--mdui-color-on-primary-container));
+  background: rgba(var(--mdui-color-primary-container), var(--admin-topbar-opacity));
+  border-bottom: 1px solid rgba(var(--mdui-color-primary), 0.18);
+}
+
+.admin-appbar mdui-button-icon,
+.admin-appbar mdui-top-app-bar-title {
+  color: inherit;
 }
 
 .admin-drawer {
+  position: fixed;
+  top: var(--admin-appbar-height);
+  bottom: 0;
+  left: 0;
+  width: var(--admin-sidebar-width);
+  max-width: 82vw;
+  height: auto;
   z-index: 40;
-  background: rgba(var(--mdui-color-surface-container-low), 0.9);
-  backdrop-filter: blur(14px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: rgba(var(--mdui-color-surface-container-low), var(--admin-sidebar-opacity));
+  transform: translateX(0);
+  transition: transform 180ms var(--mdui-motion-easing-standard);
+}
+
+.admin-drawer:not([open]) {
+  pointer-events: none;
+  transform: translateX(-100%);
+}
+
+.admin-layout-main {
+  position: fixed;
+  top: var(--admin-appbar-height);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transition: left 180ms var(--mdui-motion-easing-standard);
+}
+
+body.admin-drawer-open:not(.admin-drawer-modal) .admin-layout-main {
+  left: var(--admin-sidebar-width);
 }
 
 .drawer-scrim {
   position: fixed;
-  inset: 64px 0 0 0;
+  inset: var(--admin-appbar-height) 0 0 0;
   z-index: 25;
   display: block;
   border: 0;
@@ -56,11 +115,12 @@ body {
 }
 
 body.admin-drawer-modal .drawer-scrim {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .admin-nav {
-  padding: 12px 10px 18px;
+  min-height: 100%;
+  padding: 10px 8px 16px;
 }
 
 .nav-section {
@@ -82,6 +142,8 @@ body.admin-drawer-modal .drawer-scrim {
 }
 
 .login-main {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
   display: grid;
   place-items: center;
@@ -94,9 +156,8 @@ body.admin-drawer-modal .drawer-scrim {
 .stat-panel {
   border: 1px solid rgba(var(--mdui-color-outline-variant), 0.72);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.84);
+  background: rgba(var(--mdui-color-surface-container), var(--admin-card-opacity));
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(12px);
 }
 
 .login-panel {
@@ -184,7 +245,12 @@ select {
   border: 1px solid rgb(var(--mdui-color-outline));
   border-radius: 6px;
   color: rgb(var(--mdui-color-on-surface));
-  background: rgb(var(--mdui-color-surface));
+  background: rgba(var(--mdui-color-surface-container-highest), var(--admin-input-opacity));
+}
+
+mdui-text-field::part(container),
+mdui-select::part(text-field__container) {
+  background: rgba(var(--mdui-color-surface-container-highest), var(--admin-input-opacity));
 }
 
 .fieldset {
@@ -280,7 +346,7 @@ select {
   border-radius: 6px;
   color: rgb(var(--mdui-color-primary));
   text-decoration: none;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(var(--mdui-color-surface-container), var(--admin-card-opacity));
 }
 
 .form-actions {
@@ -355,10 +421,10 @@ tbody tr:hover {
 .notice {
   margin-bottom: 16px;
   padding: 12px 14px;
-  border: 1px solid rgb(var(--mdui-color-primary));
+  border: 1px solid rgba(var(--mdui-color-primary), 0.22);
   border-radius: 8px;
   color: rgb(var(--mdui-color-on-primary-container));
-  background: rgb(var(--mdui-color-primary-container));
+  background: rgba(var(--mdui-color-primary-container), var(--admin-topbar-opacity));
 }
 
 .danger {
@@ -376,22 +442,21 @@ mdui-icon {
   vertical-align: middle;
 }
 
-@media (prefers-color-scheme: dark) {
-  .admin-bg::after {
-    background: rgba(15, 23, 42, 0.66);
-  }
-
-  .admin-drawer,
-    .login-panel,
-  .form-panel,
-  .table-panel,
-  .stat-panel,
-  .subnav a {
-    background: rgba(31, 41, 55, 0.86);
-  }
-}
-
 @media (max-width: 720px) {
+  body.admin-drawer-open:not(.admin-drawer-modal) .admin-layout-main {
+    left: 0;
+  }
+
+  .admin-bg {
+    background:
+      linear-gradient(135deg, rgba(var(--mdui-color-primary), 0.12), transparent 34%),
+      linear-gradient(315deg, rgba(var(--mdui-color-tertiary), 0.1), transparent 40%),
+      var(--admin-mobile-bg-image, var(--admin-bg-image, rgb(var(--mdui-color-background))));
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: auto, auto, cover;
+  }
+
   .page-head {
     align-items: flex-start;
     flex-direction: column;

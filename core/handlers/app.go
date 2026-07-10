@@ -114,6 +114,8 @@ func (a *App) Handler() http.Handler {
 		"/admin/themes/":              a.adminThemeRoutes,
 		"/admin/plugins":              a.adminPlugins,
 		"/admin/plugins/":             a.adminPluginRoutes,
+		"/admin/management":           a.adminManagement,
+		"/admin/management/upload":    a.adminManagementUpload,
 		"/admin/medias":               a.adminMedias,
 		"/admin/medias/":              a.adminMediaRoutes,
 		"/admin/backup":               a.adminBackup,
@@ -1373,6 +1375,123 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 	})
 }
 
+const (
+	adminAppearanceOptionKey  = "admin_appearance"
+	adminSettingsUploadBucket = "admin-settings"
+)
+
+func (a *App) adminManagement(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "administrator") {
+		return
+	}
+	a.schemaForm(w, r, schemaFormConfig{
+		Title:     "管理设置",
+		Template:  "schema_form.html",
+		BackURL:   "/admin",
+		OptionKey: adminAppearanceOptionKey,
+		Schema:    adminAppearanceSchema(),
+		SavedURL:  r.URL.Path,
+		Saved:     r.URL.Query().Get("saved") == "1",
+		UploadURL: "/admin/management/upload",
+	})
+}
+
+func adminAppearanceSchema() []plugin.FieldSchema {
+	colorOptions := adminAppearanceColorOptions()
+	return []plugin.FieldSchema{
+		{
+			Name:        "admin_bg_image",
+			Label:       "电脑端后台背景图 URL",
+			Type:        plugin.FieldImage,
+			Description: "用于桌面端后台背景。上传文件会保存到后台设置专用目录。",
+		},
+		{
+			Name:        "admin_mobile_bg_image",
+			Label:       "手机端后台背景图 URL",
+			Type:        plugin.FieldImage,
+			Description: "用于窄屏和手机端后台背景；留空时沿用电脑端背景。",
+		},
+		{
+			Name:        "admin_card_opacity",
+			Label:       "后台卡片背景透明度",
+			Type:        plugin.FieldNumber,
+			Default:     "0.84",
+			Description: "取值 0 到 1，仅影响后台卡片背景透明度。",
+			Min:         "0",
+			Max:         "1",
+			Step:        "0.01",
+		},
+		{
+			Name:        "admin_sidebar_opacity",
+			Label:       "后台侧边栏背景透明度",
+			Type:        plugin.FieldNumber,
+			Default:     "0.90",
+			Description: "取值 0 到 1，仅影响后台侧边栏背景透明度。",
+			Min:         "0",
+			Max:         "1",
+			Step:        "0.01",
+		},
+		{
+			Name:        "admin_topbar_opacity",
+			Label:       "后台顶栏背景透明度",
+			Type:        plugin.FieldNumber,
+			Default:     "0.92",
+			Description: "取值 0 到 1，仅影响后台顶栏主题色背景透明度。",
+			Min:         "0",
+			Max:         "1",
+			Step:        "0.01",
+		},
+		{
+			Name:        "admin_input_opacity",
+			Label:       "后台输入框背景透明度",
+			Type:        plugin.FieldNumber,
+			Default:     "0.62",
+			Description: "取值 0 到 1，仅影响后台输入框和选择框背景透明度。",
+			Min:         "0",
+			Max:         "1",
+			Step:        "0.01",
+		},
+		{
+			Name:        "admin_bg_mask_opacity",
+			Label:       "后台背景蒙版透明度",
+			Type:        plugin.FieldNumber,
+			Default:     "0.54",
+			Description: "取值 0 到 1，控制背景图片上方的 MDUI 背景色蒙版。",
+			Min:         "0",
+			Max:         "1",
+			Step:        "0.01",
+		},
+		{
+			Name:        "admin_primary_preset",
+			Label:       "后台常用主题色",
+			Type:        plugin.FieldSelect,
+			Default:     "#6750a4",
+			Description: "用于 MDUI2 生成后台配色方案。",
+			Options:     colorOptions,
+		},
+		{
+			Name:        "admin_custom_primary",
+			Label:       "后台自定义主题色",
+			Type:        plugin.FieldColor,
+			Description: "填写 #RRGGBB 后会覆盖上方预设色。",
+			Options:     colorOptions,
+		},
+	}
+}
+
+func adminAppearanceColorOptions() []plugin.FieldOption {
+	return []plugin.FieldOption{
+		{Label: "MDUI 紫", Value: "#6750a4"},
+		{Label: "Cuckoo 粉", Value: "#ff4081"},
+		{Label: "蓝色", Value: "#1976d2"},
+		{Label: "青色", Value: "#00838f"},
+		{Label: "绿色", Value: "#2e7d32"},
+		{Label: "琥珀", Value: "#ff8f00"},
+		{Label: "橙红", Value: "#e64a19"},
+		{Label: "蓝灰", Value: "#546e7a"},
+	}
+}
+
 func (a *App) adminThemeFiles(w http.ResponseWriter, r *http.Request, name string) {
 	theme, ok := a.Plugins.Theme(name)
 	if !ok {
@@ -1429,6 +1548,7 @@ type schemaFormConfig struct {
 	Schema    []plugin.FieldSchema
 	SavedURL  string
 	Saved     bool
+	UploadURL string
 }
 
 func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormConfig) {
@@ -1440,7 +1560,12 @@ func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormC
 			return
 		}
 		a.applySchemaDefaults(cfg.Schema, values)
-		a.renderAdmin(w, r, cfg.Template, map[string]any{"Title": cfg.Title, "BackURL": cfg.BackURL, "Schema": cfg.Schema, "Values": values, "Saved": cfg.Saved})
+		normalizeSchemaValues(cfg.Schema, values)
+		uploadURL := cfg.UploadURL
+		if uploadURL == "" {
+			uploadURL = "/admin/schema/upload"
+		}
+		a.renderAdmin(w, r, cfg.Template, map[string]any{"Title": cfg.Title, "BackURL": cfg.BackURL, "Schema": cfg.Schema, "Values": values, "Saved": cfg.Saved, "UploadURL": uploadURL})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1631,6 +1756,33 @@ func (a *App) adminSchemaUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "url": meta.URL})
+}
+
+func (a *App) adminManagementUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if !a.requireRole(w, r, "administrator") {
+		return
+	}
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "请选择要上传的文件", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	url, err := a.saveAdminSettingUpload(r.Context(), file, header.Filename)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "url": url})
 }
 
 func (a *App) adminMedias(w http.ResponseWriter, r *http.Request) {
@@ -2810,6 +2962,59 @@ func (a *App) saveUpload(ctx context.Context, src io.Reader, original string, pa
 	return meta, nil
 }
 
+func (a *App) saveAdminSettingUpload(ctx context.Context, src io.Reader, original string) (string, error) {
+	maxSize := int64(optionInt(a.option(ctx, "upload_max_size", "10485760"), 10485760))
+	if maxSize <= 0 {
+		maxSize = 10 << 20
+	}
+	data, err := io.ReadAll(io.LimitReader(src, maxSize+1))
+	if err != nil {
+		return "", err
+	}
+	if int64(len(data)) > maxSize {
+		return "", fmt.Errorf("文件超过大小限制")
+	}
+	name := sanitizeFilename(original)
+	if name == "" {
+		name = "admin-setting-image"
+	}
+	if dangerousUpload(name) || !allowedUploadExt(name, a.option(ctx, "upload_allowed_exts", "")) {
+		return "", fmt.Errorf("不允许上传该文件类型")
+	}
+	mimeType := http.DetectContentType(data)
+	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
+	if !adminSettingImageExt(ext) {
+		return "", fmt.Errorf("后台设置仅支持图片文件")
+	}
+	if !mimeAllowedForExt(ext, mimeType) {
+		return "", fmt.Errorf("文件内容与扩展名不匹配")
+	}
+	dir := filepath.Join(a.UploadDir, adminSettingsUploadBucket)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	targetName := uniqueUploadName(dir, name)
+	fullPath := filepath.Join(dir, targetName)
+	dst, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return "", err
+	}
+	defer dst.Close()
+	if _, err := io.Copy(dst, bytes.NewReader(data)); err != nil {
+		return "", err
+	}
+	return "/uploads/" + path.Join(adminSettingsUploadBucket, targetName), nil
+}
+
+func adminSettingImageExt(ext string) bool {
+	switch strings.ToLower(ext) {
+	case "jpg", "jpeg", "png", "gif", "webp", "svg":
+		return true
+	default:
+		return false
+	}
+}
+
 func (a *App) replaceUpload(ctx context.Context, src io.Reader, original string, parent int64, old models.AttachmentMeta) (models.AttachmentMeta, error) {
 	if optionBool(a.option(ctx, "upload_replace_same_ext_only", "1")) && old.Type != "" {
 		newExt := strings.ToLower(strings.TrimPrefix(filepath.Ext(original), "."))
@@ -3619,6 +3824,7 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 		return
 	}
 	a.enrichData(r.Context(), data)
+	a.enrichAdminAppearance(r.Context(), data)
 	if notices := a.consumeFlash(w, r); len(notices) > 0 {
 		data["Notices"] = notices
 	}
@@ -3637,6 +3843,76 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (a *App) enrichAdminAppearance(ctx context.Context, data map[string]any) {
+	values := a.adminAppearanceValues(ctx)
+	data["AdminPrimary"] = adminAppearancePrimary(values)
+	data["AdminCardOpacity"] = adminAppearanceOpacity(values["admin_card_opacity"], 0.84)
+	data["AdminSidebarOpacity"] = adminAppearanceOpacity(values["admin_sidebar_opacity"], 0.90)
+	data["AdminTopbarOpacity"] = adminAppearanceOpacity(values["admin_topbar_opacity"], 0.92)
+	data["AdminInputOpacity"] = adminAppearanceOpacity(values["admin_input_opacity"], 0.62)
+	data["AdminBackgroundMaskOpacity"] = adminAppearanceOpacity(values["admin_bg_mask_opacity"], 0.54)
+	data["AdminBackgroundImage"] = adminAppearanceURL(values["admin_bg_image"])
+	data["AdminMobileBackgroundImage"] = adminAppearanceURL(values["admin_mobile_bg_image"])
+}
+
+func (a *App) adminAppearanceValues(ctx context.Context) map[string]string {
+	values, err := a.optionJSONForUser(ctx, adminAppearanceOptionKey, 0)
+	if err != nil {
+		values = map[string]string{}
+	}
+	a.applySchemaDefaults(adminAppearanceSchema(), values)
+	return values
+}
+
+func adminAppearancePrimary(values map[string]string) string {
+	if color := adminAppearanceHexColor(values["admin_custom_primary"]); color != "" {
+		return color
+	}
+	if color := adminAppearanceHexColor(values["admin_primary_preset"]); color != "" {
+		return color
+	}
+	return "#6750a4"
+}
+
+var adminAppearanceHexColorRE = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+func adminAppearanceHexColor(value string) string {
+	value = strings.TrimSpace(value)
+	if !adminAppearanceHexColorRE.MatchString(value) {
+		return ""
+	}
+	return strings.ToLower(value)
+}
+
+func adminAppearanceOpacity(value string, fallback float64) string {
+	opacity, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		opacity = fallback
+	}
+	if opacity < 0 {
+		opacity = 0
+	}
+	if opacity > 1 {
+		opacity = 1
+	}
+	return strconv.FormatFloat(opacity, 'f', 2, 64)
+}
+
+func adminAppearanceURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(value, "/") && !strings.HasPrefix(value, "//") {
+		return value
+	}
+	parsed, err := neturl.Parse(value)
+	if err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") {
+		return value
+	}
+	return ""
 }
 
 func (a *App) renderTheme(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
@@ -4826,9 +5102,63 @@ func valuesFromSchema(r *http.Request, schema []plugin.FieldSchema) map[string]s
 			}
 			continue
 		}
-		out[field.Name] = strings.TrimSpace(r.FormValue(field.Name))
+		value := strings.TrimSpace(r.FormValue(field.Name))
+		if field.Type == plugin.FieldNumber {
+			value = normalizeSchemaNumber(value, field)
+		}
+		out[field.Name] = value
 	}
 	return out
+}
+
+func normalizeSchemaValues(schema []plugin.FieldSchema, values map[string]string) {
+	for _, field := range schema {
+		if field.Type != plugin.FieldNumber {
+			continue
+		}
+		if value, ok := values[field.Name]; ok {
+			values[field.Name] = normalizeSchemaNumber(value, field)
+		}
+	}
+}
+
+func normalizeSchemaNumber(value string, field plugin.FieldSchema) string {
+	value = strings.TrimSpace(value)
+	if value == "" || field.Step == "" {
+		return value
+	}
+	number, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return value
+	}
+	if minValue, err := strconv.ParseFloat(strings.TrimSpace(field.Min), 64); err == nil && number < minValue {
+		number = minValue
+	}
+	if maxValue, err := strconv.ParseFloat(strings.TrimSpace(field.Max), 64); err == nil && number > maxValue {
+		number = maxValue
+	}
+	if digits := stepFractionDigits(field.Step); digits >= 0 {
+		return strconv.FormatFloat(number, 'f', digits, 64)
+	}
+	return strconv.FormatFloat(number, 'f', -1, 64)
+}
+
+func stepFractionDigits(step string) int {
+	step = strings.TrimSpace(step)
+	if step == "" || strings.EqualFold(step, "any") {
+		return -1
+	}
+	if idx := strings.IndexAny(step, "eE"); idx >= 0 {
+		parsed, err := strconv.ParseFloat(step, 64)
+		if err != nil {
+			return -1
+		}
+		step = strconv.FormatFloat(parsed, 'f', -1, 64)
+	}
+	if dot := strings.IndexByte(step, '.'); dot >= 0 {
+		return len(strings.TrimRight(step[dot+1:], "0"))
+	}
+	return 0
 }
 
 func schemaValue(values map[string]string, name string) string {
