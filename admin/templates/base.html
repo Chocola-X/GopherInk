@@ -17,8 +17,10 @@
 <div class="admin-bg"></div>
 {{if or (eq .Title "登录") (eq .Title "注册") (eq .Title "安装")}}
   <main class="login-main">
-    {{range .Notices}}<div class="notice {{if eq .Type "error"}}danger{{end}}">{{.Message}}</div>{{end}}
-    {{template "content" .}}
+    <div class="login-stack">
+      {{template "content" .}}
+      {{range .Notices}}<div class="notice auth-notice {{if eq .Type "error"}}danger{{end}}">{{.Message}}</div>{{end}}
+    </div>
   </main>
 {{else}}
   <div class="admin-shell">

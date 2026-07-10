@@ -144,10 +144,18 @@ body.admin-drawer-modal .drawer-scrim {
 .login-main {
   position: relative;
   z-index: 1;
+  box-sizing: border-box;
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 24px;
+}
+
+.login-stack {
+  display: grid;
+  width: min(420px, 100%);
+  gap: 12px;
 }
 
 .login-panel,
@@ -161,8 +169,17 @@ body.admin-drawer-modal .drawer-scrim {
 }
 
 .login-panel {
+  box-sizing: border-box;
   width: min(420px, 100%);
   padding: 28px;
+}
+
+.login-stack .login-panel {
+  width: 100%;
+}
+
+.login-stack > .notice {
+  margin: 0;
 }
 
 .page-head {
