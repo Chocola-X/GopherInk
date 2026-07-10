@@ -544,6 +544,10 @@ html.mdui-theme-dark .drawer-bottom {
   text-align: center;
 }
 
+.archive-card {
+  margin-bottom: 20px;
+}
+
 .archive-title {
   margin: 0;
   font-size: 24px;
