@@ -9,10 +9,10 @@
 {{if .Saved}}<div class="notice">已保存。</div>{{end}}
 {{if .EditingDraft}}<div class="notice">正在编辑草稿，发布后将替换已发布的版本。</div>{{end}}
 <form method="post" action="{{.Action}}" class="form-panel field-stack">
-  <input type="hidden" name="cid" value="{{.FormCID}}">
+  <input type="hidden" name="cid" value="{{if .FormCID}}{{.FormCID}}{{end}}">
   <input type="hidden" name="type" value="{{.Type}}">
   <mdui-text-field name="title" label="标题" value="{{.Content.Title}}" {{if fieldError .Errors "title"}}helper="{{fieldError .Errors "title"}}"{{end}} required></mdui-text-field>
-  <mdui-text-field name="slug" label="固定链接" value="{{.Content.Slug}}" helper="{{if fieldError .Errors "slug"}}{{fieldError .Errors "slug"}}{{else}}留空时由标题生成{{end}}"></mdui-text-field>
+  <mdui-text-field name="slug" label="固定链接" value="{{.Content.Slug}}" helper="{{if fieldError .Errors "slug"}}{{fieldError .Errors "slug"}}{{else}}留空时使用数字 ID{{end}}"></mdui-text-field>
   <mdui-text-field name="created" label="发布日期" value="{{date .Content.Created}}" helper="格式：2006-01-02 15:04"></mdui-text-field>
   <label class="muted" for="status">公开度</label>
   <select id="status" name="status">

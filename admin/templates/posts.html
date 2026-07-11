@@ -38,7 +38,7 @@
       <tr>
         <td>
           <strong>{{.Title}}</strong><br>
-          <span class="muted">/post/{{.Slug}}</span>
+          <span class="muted">{{contentPublicURL .}}</span>
         </td>
         <td>
           {{contentStatus .}}
@@ -50,19 +50,29 @@
         <td>
           <div class="row-actions">
             {{if eq .Status "publish"}}<mdui-button-icon href="{{contentPublicURL .}}" title="查看"><mdui-icon name="rss_feed"></mdui-icon></mdui-button-icon>{{end}}
-            {{if and (eq .Status "publish") (index $.DraftMap .CID)}}
-            <mdui-button-icon href="/admin/posts/{{.CID}}/edit" title="编辑草稿"><mdui-icon name="edit_note"></mdui-icon></mdui-button-icon>
-            <mdui-button-icon href="/admin/posts/{{.CID}}/edit?source=published" title="编辑已发布内容"><mdui-icon name="article"></mdui-icon></mdui-button-icon>
-            {{else}}
-            <mdui-button-icon href="/admin/posts/{{.CID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
-            {{end}}
             {{if eq .Status "draft"}}
+            <mdui-button-icon href="/admin/posts/{{.CID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+            <form method="post" action="/admin/posts/{{.CID}}/mark">
+              <input type="hidden" name="status" value="publish">
+              <mdui-button-icon type="submit" title="发布"><mdui-icon name="publish"></mdui-icon></mdui-button-icon>
+            </form>
             <form method="post" action="/admin/posts/{{.CID}}/delete">
               <mdui-button-icon type="submit" title="删除草稿"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
             </form>
-            {{else if and (eq .Status "publish") (index $.DraftMap .CID)}}
-            <form method="post" action="/admin/posts/{{.CID}}/discard">
-              <mdui-button-icon type="submit" title="丢弃草稿"><mdui-icon name="delete_sweep"></mdui-icon></mdui-button-icon>
+            {{else if eq .Status "publish"}}
+            <mdui-button-icon href="/admin/posts/{{.CID}}/edit?source=published" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+            {{if index $.DraftMap .CID}}<mdui-button-icon href="/admin/posts/{{.CID}}/edit" title="编辑草稿"><mdui-icon name="edit_note"></mdui-icon></mdui-button-icon>{{end}}
+            <form method="post" action="/admin/posts/{{.CID}}/mark">
+              <input type="hidden" name="status" value="hidden">
+              <mdui-button-icon type="submit" title="隐藏"><mdui-icon name="visibility_off"></mdui-icon></mdui-button-icon>
+            </form>
+            <form method="post" action="/admin/posts/{{.CID}}/delete">
+              <mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
+            </form>
+            {{else}}
+            <mdui-button-icon href="/admin/posts/{{.CID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+            <form method="post" action="/admin/posts/{{.CID}}/delete">
+              <mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
             </form>
             {{end}}
           </div>

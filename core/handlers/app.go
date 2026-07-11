@@ -3239,7 +3239,7 @@ func (a *App) backupPayload(ctx context.Context) (backupData, error) {
 	}
 	out.Users = users
 	for _, typ := range []string{models.ContentTypePost, models.ContentTypePage, models.ContentTypeAttach} {
-		items, err := a.Contents.List(ctx, services.ContentQuery{Type: typ, Status: "all", Limit: 10000})
+		items, err := a.Contents.List(ctx, services.ContentQuery{Type: typ, Status: "all", IncludeDrafts: true, Limit: 10000})
 		if err != nil {
 			return out, err
 		}
@@ -3454,11 +3454,15 @@ func (a *App) importBackupPayload(ctx context.Context, payload backupData, secti
 			if content.Type != models.ContentTypeAttach && !sections.Contents {
 				continue
 			}
+			slugID := content.SlugID
+			if slugID <= 0 && (content.Type == models.ContentTypePost || content.Type == models.ContentTypePage) {
+				slugID = content.CID
+			}
 			if err := txInsertIgnore(ctx, tx, dialect,
-				`INSERT OR IGNORE INTO gb_contents (cid, title, slug, created, modified, text, sortOrder, authorId, template, type, status, password, commentsNum, allowComment, allowPing, allowFeed, parent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				`INSERT IGNORE INTO gb_contents (cid, title, slug, created, modified, text, sortOrder, authorId, template, type, status, password, commentsNum, allowComment, allowPing, allowFeed, parent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				`INSERT INTO gb_contents (cid, title, slug, created, modified, text, sortOrder, authorId, template, type, status, password, commentsNum, allowComment, allowPing, allowFeed, parent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cid) DO NOTHING`,
-				content.CID, content.Title, content.Slug, content.Created, content.Modified, content.Text, content.SortOrder, content.AuthorID, content.Template, content.Type, content.Status, content.Password, content.CommentsNum, content.AllowComment, content.AllowPing, content.AllowFeed, content.Parent); err != nil {
+				`INSERT OR IGNORE INTO gb_contents (cid, title, slug, slugId, created, modified, text, sortOrder, authorId, template, type, status, password, commentsNum, allowComment, allowPing, allowFeed, parent, draftOf) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT IGNORE INTO gb_contents (cid, title, slug, slugId, created, modified, text, sortOrder, authorId, template, type, status, password, commentsNum, allowComment, allowPing, allowFeed, parent, draftOf) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				`INSERT INTO gb_contents (cid, title, slug, slugId, created, modified, text, sortOrder, authorId, template, type, status, password, commentsNum, allowComment, allowPing, allowFeed, parent, draftOf) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cid) DO NOTHING`,
+				content.CID, content.Title, content.Slug, slugID, content.Created, content.Modified, content.Text, content.SortOrder, content.AuthorID, content.Template, content.Type, content.Status, content.Password, content.CommentsNum, content.AllowComment, content.AllowPing, content.AllowFeed, content.Parent, content.DraftOf); err != nil {
 				return err
 			}
 		}
@@ -4676,7 +4680,7 @@ func (a *App) metaURL(ctx context.Context, m models.Meta) string {
 }
 
 func (a *App) pageDirectory(ctx context.Context, c models.Content) string {
-	parts := []string{c.Slug}
+	parts := []string{contentRouteSlug(c)}
 	parent := c.Parent
 	seen := map[int64]bool{c.CID: true}
 	for parent > 0 && !seen[parent] {
@@ -4685,7 +4689,7 @@ func (a *App) pageDirectory(ctx context.Context, c models.Content) string {
 		if err != nil || p.Type != models.ContentTypePage {
 			break
 		}
-		parts = append([]string{p.Slug}, parts...)
+		parts = append([]string{contentRouteSlug(p)}, parts...)
 		parent = p.Parent
 	}
 	return strings.Join(parts, "/")
@@ -4721,9 +4725,10 @@ func applyContentPattern(pattern string, c models.Content, directory string, cat
 		cat = category[0]
 	}
 	t := time.Unix(c.Created, 0)
+	routeSlug := contentRouteSlug(c)
 	replacer := strings.NewReplacer(
 		"{cid}", strconv.FormatInt(c.CID, 10),
-		"{slug}", c.Slug,
+		"{slug}", routeSlug,
 		"{directory}", directory,
 		"{category}", cat,
 		"{year}", t.Format("2006"),
@@ -5002,11 +5007,24 @@ func matchPermalink(pattern, value string) (map[string]string, bool) {
 	return out, true
 }
 
+func contentRouteSlug(c models.Content) string {
+	if slug := strings.TrimSpace(c.Slug); slug != "" {
+		return slug
+	}
+	if c.SlugID > 0 {
+		return strconv.FormatInt(c.SlugID, 10)
+	}
+	if c.CID > 0 {
+		return strconv.FormatInt(c.CID, 10)
+	}
+	return ""
+}
+
 func contentPublicURL(c models.Content) string {
 	if c.Type == models.ContentTypePage {
-		return "/page/" + c.Slug
+		return "/page/" + contentRouteSlug(c)
 	}
-	return "/post/" + c.Slug + ".html"
+	return "/post/" + contentRouteSlug(c) + ".html"
 }
 
 func contentListURL(typ string) string {

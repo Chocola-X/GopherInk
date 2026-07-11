@@ -159,6 +159,13 @@ func TestEditingDraftLifecyclePreservesPublishedUntilPublish(t *testing.T) {
 	if draft.DraftOf != publishedID || draft.Slug != "same-slug" || draft.Text != "draft body" {
 		t.Fatalf("editing draft mismatch: %#v", draft)
 	}
+	publishedBeforeDraft, err := service.ByID(ctx, publishedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.SlugID <= 0 || draft.SlugID != publishedBeforeDraft.SlugID {
+		t.Fatalf("editing draft slugID = %d, want same as published slugID %d", draft.SlugID, publishedBeforeDraft.SlugID)
+	}
 	published, err := service.BySlug(ctx, "same-slug")
 	if err != nil {
 		t.Fatal(err)
@@ -201,6 +208,13 @@ func TestEditingDraftLifecyclePreservesPublishedUntilPublish(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	finalDraft, err := service.ByID(ctx, draftID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if finalDraft.SlugID != publishedBeforeDraft.SlugID {
+		t.Fatalf("final editing draft slugID = %d, want same as published slugID %d", finalDraft.SlugID, publishedBeforeDraft.SlugID)
+	}
 	if err := service.PublishDraft(ctx, draftID); err != nil {
 		t.Fatal(err)
 	}
@@ -210,6 +224,9 @@ func TestEditingDraftLifecyclePreservesPublishedUntilPublish(t *testing.T) {
 	}
 	if published.Title != "Final" || published.Text != "final body" || published.Slug != "same-slug" || published.DraftOf != 0 {
 		t.Fatalf("published content not updated from draft: %#v", published)
+	}
+	if published.SlugID != finalDraft.SlugID {
+		t.Fatalf("published slugID after draft publish = %d, want draft slugID %d", published.SlugID, finalDraft.SlugID)
 	}
 	tags, err := service.TagsForContentNames(ctx, publishedID)
 	if err != nil {
@@ -305,6 +322,115 @@ func TestRepairOrphanEditingDraftsFoldsSlugCopies(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("Count = %d, want 1 published post", count)
+	}
+}
+
+func TestNumericSlugIDAllocationRecyclesOnlyUnpublishedDrafts(t *testing.T) {
+	service := newContentTestService(t)
+	ctx := context.Background()
+	var publishedIDs []int64
+	for i := 1; i <= 4; i++ {
+		id, err := service.Create(ctx, SaveContentInput{Title: "Post", Type: models.ContentTypePost, Status: models.ContentStatusPost}, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		post, err := service.ByID(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if post.Slug != "" || post.SlugID != int64(i) {
+			t.Fatalf("published post %d slug state = %#v, want empty custom slug and slugID %d", i, post, i)
+		}
+		publishedIDs = append(publishedIDs, id)
+	}
+
+	draftID, err := service.Create(ctx, SaveContentInput{Title: "Draft", Type: models.ContentTypePost, Status: models.ContentStatusDraft}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft, err := service.ByID(ctx, draftID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.SlugID != 5 {
+		t.Fatalf("draft slugID = %d, want 5", draft.SlugID)
+	}
+	if err := service.Delete(ctx, draftID); err != nil {
+		t.Fatal(err)
+	}
+
+	reusedID, err := service.Create(ctx, SaveContentInput{Title: "Reused", Type: models.ContentTypePost, Status: models.ContentStatusDraft}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reused, err := service.ByID(ctx, reusedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reused.SlugID != 5 {
+		t.Fatalf("reused draft slugID = %d, want recycled 5", reused.SlugID)
+	}
+	if err := service.MarkStatus(ctx, reusedID, models.ContentStatusPost); err != nil {
+		t.Fatal(err)
+	}
+	byNumericSlug, err := service.BySlug(ctx, "5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byNumericSlug.CID != reusedID {
+		t.Fatalf("BySlug(5) = %#v, want cid %d", byNumericSlug, reusedID)
+	}
+
+	if err := service.Delete(ctx, publishedIDs[1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Delete(ctx, publishedIDs[2]); err != nil {
+		t.Fatal(err)
+	}
+	nextID, err := service.Create(ctx, SaveContentInput{Title: "Next", Type: models.ContentTypePost, Status: models.ContentStatusDraft}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := service.ByID(ctx, nextID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.SlugID != 6 {
+		t.Fatalf("next draft slugID = %d, want 6 after published IDs are reserved", next.SlugID)
+	}
+}
+
+func TestCustomSlugKeepsDisplaySlugWhileStoringSlugID(t *testing.T) {
+	service := newContentTestService(t)
+	ctx := context.Background()
+	customID, err := service.Create(ctx, SaveContentInput{Title: "Custom", Slug: "custom-path", Type: models.ContentTypePost, Status: models.ContentStatusPost}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	custom, err := service.ByID(ctx, customID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if custom.Slug != "custom-path" || custom.SlugID != 1 {
+		t.Fatalf("custom slug state = %#v, want custom-path with slugID 1", custom)
+	}
+	byCustom, err := service.BySlug(ctx, "custom-path")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byCustom.CID != customID {
+		t.Fatalf("BySlug(custom-path) = %#v, want cid %d", byCustom, customID)
+	}
+	numericID, err := service.Create(ctx, SaveContentInput{Title: "Numeric", Type: models.ContentTypePost, Status: models.ContentStatusPost}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numeric, err := service.ByID(ctx, numericID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if numeric.Slug != "" || numeric.SlugID != 2 {
+		t.Fatalf("numeric slug state = %#v, want empty custom slug and slugID 2", numeric)
 	}
 }
 

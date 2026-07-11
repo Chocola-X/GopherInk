@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const CurrentSchemaVersion = 4
+const CurrentSchemaVersion = 5
 
 func Migrate(ctx context.Context, db *sql.DB, driver string) error {
 	var stmts []string
@@ -64,6 +64,7 @@ func RunVersionedMigrations(ctx context.Context, db *sql.DB) error {
 		{Version: 2, Run: migrateV2},
 		{Version: 3, Run: migrateV3},
 		{Version: 4, Run: migrateV4},
+		{Version: 5, Run: migrateV5},
 	}
 	for _, migration := range migrations {
 		if version >= migration.Version {
@@ -113,6 +114,149 @@ func migrateV4(ctx context.Context, db *sql.DB) error {
 	}
 	_, err = db.ExecContext(ctx, `UPDATE gb_options SET value = $1 WHERE name = $2 AND "user" = 0 AND value = $3`, "/post/{slug}.html", "permalink_post", "/post/{slug}")
 	return err
+}
+
+func migrateV5(ctx context.Context, db *sql.DB) error {
+	if err := ensureColumn(ctx, db, `ALTER TABLE gb_contents ADD COLUMN slugId int(10) default '0'`); err != nil {
+		return err
+	}
+	_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS gb_contents_slugId ON gb_contents (slugId)`)
+	return initializeContentSlugIDs(ctx, db)
+}
+
+func initializeContentSlugIDs(ctx context.Context, db *sql.DB) error {
+	for _, typ := range []string{"post", "page"} {
+		if err := initializeContentSlugIDsForType(ctx, db, typ); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type contentSlugSeed struct {
+	CID     int64
+	Slug    string
+	Status  string
+	DraftOf int64
+	SlugID  int64
+}
+
+func initializeContentSlugIDsForType(ctx context.Context, db *sql.DB, typ string) error {
+	rows, err := db.QueryContext(ctx, `SELECT cid, COALESCE(slug,''), status, COALESCE(draftOf,0), COALESCE(slugId,0) FROM gb_contents WHERE type = ? ORDER BY cid ASC`, typ)
+	if err != nil {
+		rows, err = db.QueryContext(ctx, `SELECT cid, COALESCE(slug,''), status, COALESCE(draftOf,0), COALESCE(slugId,0) FROM gb_contents WHERE type = $1 ORDER BY cid ASC`, typ)
+	}
+	if err != nil {
+		return err
+	}
+	var items []contentSlugSeed
+	for rows.Next() {
+		var item contentSlugSeed
+		if err := rows.Scan(&item.CID, &item.Slug, &item.Status, &item.DraftOf, &item.SlugID); err != nil {
+			rows.Close()
+			return err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	nextID := int64(1)
+	byCID := map[int64]int64{}
+	publishedNext := int64(1)
+	for _, item := range items {
+		if item.DraftOf != 0 {
+			continue
+		}
+		slugID := item.SlugID
+		if slugID <= 0 {
+			slugID = nextID
+			nextID++
+		} else if slugID >= nextID {
+			nextID = slugID + 1
+		}
+		byCID[item.CID] = slugID
+		if err := updateContentSlugID(ctx, db, item.CID, slugID); err != nil {
+			return err
+		}
+		if looksGeneratedFallbackSlug(item.Slug) {
+			if err := updateContentSlug(ctx, db, item.CID, ""); err != nil {
+				return err
+			}
+		}
+		if item.Status == "publish" && slugID >= publishedNext {
+			publishedNext = slugID + 1
+		}
+	}
+	for _, item := range items {
+		if item.DraftOf == 0 {
+			continue
+		}
+		slugID := byCID[item.DraftOf]
+		if slugID <= 0 {
+			slugID = nextID
+			nextID++
+		}
+		if err := updateContentSlugID(ctx, db, item.CID, slugID); err != nil {
+			return err
+		}
+		if looksGeneratedFallbackSlug(item.Slug) {
+			if err := updateContentSlug(ctx, db, item.CID, ""); err != nil {
+				return err
+			}
+		}
+	}
+	return setOption(ctx, db, "content_slug_id_next_"+typ, strconv.FormatInt(publishedNext, 10))
+}
+
+func updateContentSlugID(ctx context.Context, db *sql.DB, cid, slugID int64) error {
+	if _, err := db.ExecContext(ctx, `UPDATE gb_contents SET slugId = ? WHERE cid = ?`, slugID, cid); err == nil {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, `UPDATE gb_contents SET slugId = $1 WHERE cid = $2`, slugID, cid)
+	return err
+}
+
+func updateContentSlug(ctx context.Context, db *sql.DB, cid int64, slug string) error {
+	if _, err := db.ExecContext(ctx, `UPDATE gb_contents SET slug = ? WHERE cid = ?`, slug, cid); err == nil {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, `UPDATE gb_contents SET slug = $1 WHERE cid = $2`, slug, cid)
+	return err
+}
+
+func setOption(ctx context.Context, db *sql.DB, name, value string) error {
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
+		ON CONFLICT(name, user) DO UPDATE SET value = excluded.value
+	`, name, value); err == nil {
+		return nil
+	}
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
+		ON DUPLICATE KEY UPDATE value = VALUES(value)
+	`, name, value); err == nil {
+		return nil
+	}
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO gb_options (name, "user", value) VALUES ($1, 0, $2)
+		ON CONFLICT(name, "user") DO UPDATE SET value = EXCLUDED.value
+	`, name, value)
+	return err
+}
+
+func looksGeneratedFallbackSlug(value string) bool {
+	if value == "post" {
+		return true
+	}
+	if !strings.HasPrefix(value, "post-") {
+		return false
+	}
+	_, err := strconv.Atoi(strings.TrimPrefix(value, "post-"))
+	return err == nil
 }
 
 func replaceContentSlugIndex(ctx context.Context, db *sql.DB) error {
@@ -182,6 +326,7 @@ func sqliteSchema() []string {
 			cid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			title varchar(150) default NULL,
 			slug varchar(150) default NULL,
+			slugId int(10) default '0',
 			created int(10) default '0',
 			modified int(10) default '0',
 			text text,
@@ -199,6 +344,7 @@ func sqliteSchema() []string {
 			draftOf int(10) default '0'
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_slug ON gb_contents (slug)`,
+		`CREATE INDEX IF NOT EXISTS gb_contents_slugId ON gb_contents (slugId)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_created ON gb_contents (created)`,
 		`CREATE TABLE IF NOT EXISTS gb_users (
 			uid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -291,6 +437,7 @@ func mysqlSchema() []string {
 			cid int(10) unsigned NOT NULL AUTO_INCREMENT,
 			title varchar(150) default NULL,
 			slug varchar(150) default NULL,
+			slugId int(10) unsigned default '0',
 			created int(10) unsigned default '0',
 			modified int(10) unsigned default '0',
 			text longtext,
@@ -308,6 +455,7 @@ func mysqlSchema() []string {
 			draftOf int(10) unsigned default '0',
 			PRIMARY KEY (cid),
 			KEY gb_contents_slug (slug),
+			KEY gb_contents_slugId (slugId),
 			KEY gb_contents_created (created),
 			KEY gb_contents_draftOf (draftOf)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -407,6 +555,7 @@ func postgresSchema() []string {
 			cid bigserial PRIMARY KEY,
 			title varchar(150) default NULL,
 			slug varchar(150) default NULL,
+			slugId bigint default 0,
 			created bigint default 0,
 			modified bigint default 0,
 			text text,
@@ -424,6 +573,7 @@ func postgresSchema() []string {
 			draftOf bigint default 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_slug ON gb_contents (slug)`,
+		`CREATE INDEX IF NOT EXISTS gb_contents_slugId ON gb_contents (slugId)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_created ON gb_contents (created)`,
 		`CREATE TABLE IF NOT EXISTS gb_users (
 			uid bigserial PRIMARY KEY,

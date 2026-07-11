@@ -15,6 +15,7 @@ type Content struct {
 	CID          int64
 	Title        string
 	Slug         string
+	SlugID       int64
 	Created      int64
 	Modified     int64
 	Text         string

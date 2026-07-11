@@ -382,6 +382,89 @@ func TestAutosaveAllowsOnlyPostOrPageAndChecksAuthor(t *testing.T) {
 	}
 }
 
+func TestNewPostAutosaveReusesDraftWhenPublishing(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/posts/new", nil)
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("new post form status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `name="cid" value=""`) {
+		t.Fatalf("new post form should render empty cid, got: %s", body)
+	}
+	if strings.Contains(body, `name="cid" value="0"`) {
+		t.Fatal("new post form rendered cid=0, which prevents autosave from writing back the real id")
+	}
+
+	form := url.Values{
+		"_csrf":        {adminToken(secret, adminID)},
+		"type":         {models.ContentTypePost},
+		"cid":          {""},
+		"title":        {"Autosave Draft"},
+		"status":       {models.ContentStatusDraft},
+		"text":         {"draft body"},
+		"allowComment": {"1"},
+		"allowFeed":    {"1"},
+	}
+	req = httptest.NewRequest(http.MethodPost, "/admin/autosave", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("autosave status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK  bool  `json:"ok"`
+		CID int64 `json:"cid"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || payload.CID <= 0 {
+		t.Fatalf("autosave payload = %#v", payload)
+	}
+	draft, err := app.Contents.ByID(ctx, payload.CID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Status != models.ContentStatusDraft || draft.SlugID != 1 {
+		t.Fatalf("autosaved draft = %#v, want draft slugID 1", draft)
+	}
+
+	form.Set("cid", itoa(payload.CID))
+	form.Set("title", "Published From Autosave")
+	form.Set("status", models.ContentStatusPost)
+	form.Set("text", "published body")
+	req = httptest.NewRequest(http.MethodPost, "/admin/posts/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("publish autosaved draft status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	published, err := app.Contents.ByID(ctx, payload.CID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published.Status != models.ContentStatusPost || published.Title != "Published From Autosave" || published.Text != "published body" || published.SlugID != draft.SlugID {
+		t.Fatalf("published autosaved draft mismatch: draft=%#v published=%#v", draft, published)
+	}
+	posts, err := app.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePost, Status: "all", IncludeDrafts: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(posts) != 1 || posts[0].CID != payload.CID {
+		t.Fatalf("content list after publishing autosaved draft = %#v, want only published draft row", posts)
+	}
+}
+
 func TestPublishedPostEditUsesSeparateDraft(t *testing.T) {
 	app, secret, adminID := newSecurityTestApp(t)
 	ctx := context.Background()
@@ -1074,6 +1157,28 @@ func TestBackupExportImportRoundTrip(t *testing.T) {
 	if postID <= 0 {
 		t.Fatal("expected ids")
 	}
+	draftID, err := app.Contents.SaveEditingDraft(ctx, postID, services.SaveContentInput{
+		Title:        "Backup Post Edited",
+		Slug:         "backup-post",
+		Text:         "draft body",
+		Type:         models.ContentTypePost,
+		Status:       models.ContentStatusDraft,
+		AllowComment: true,
+	}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	published, err := app.Contents.ByID(ctx, postID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft, err := app.Contents.ByID(ctx, draftID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.DraftOf != postID || draft.SlugID != published.SlugID {
+		t.Fatalf("backup draft relation mismatch: published=%#v draft=%#v", published, draft)
+	}
 	if err := app.Comments.Save(ctx, services.SaveCommentInput{CID: postID, Author: "Reader", Mail: "r@example.com", Text: "hello", Status: "approved"}, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -1083,6 +1188,16 @@ func TestBackupExportImportRoundTrip(t *testing.T) {
 	}
 	if payload.Version != 1 || len(payload.Users) == 0 || len(payload.Relationships) == 0 || len(payload.Fields) == 0 {
 		t.Fatalf("incomplete backup payload")
+	}
+	foundDraft := false
+	for _, item := range payload.Contents {
+		if item.CID == draftID && item.DraftOf == postID && item.SlugID == published.SlugID {
+			foundDraft = true
+			break
+		}
+	}
+	if !foundDraft {
+		t.Fatalf("backup payload missing editing draft with shared slugID: %#v", payload.Contents)
 	}
 
 	target, _, _ := newSecurityTestApp(t)
@@ -1099,6 +1214,13 @@ func TestBackupExportImportRoundTrip(t *testing.T) {
 	}
 	if fields["source"] != "backup" {
 		t.Fatalf("imported fields = %#v", fields)
+	}
+	importedDraft, err := target.Contents.DraftForContent(ctx, imported.CID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if importedDraft.Text != "draft body" || importedDraft.SlugID != imported.SlugID {
+		t.Fatalf("imported editing draft mismatch: published=%#v draft=%#v", imported, importedDraft)
 	}
 	comments, err := target.Comments.List(ctx, "approved", "", imported.CID)
 	if err != nil {
@@ -1246,6 +1368,65 @@ func TestPermalinkGeneratesMatchesAndRedirectsCanonical(t *testing.T) {
 	app.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/2026/07/permalink-post" {
 		t.Fatalf("canonical redirect = %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+}
+
+func TestDefaultPostURLUsesNumericSlugIDWithHTMLSuffix(t *testing.T) {
+	app, _, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+	postID, err := app.Contents.Create(ctx, services.SaveContentInput{
+		Title:  "数字链接",
+		Text:   "body",
+		Type:   models.ContentTypePost,
+		Status: models.ContentStatusPost,
+	}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post, err := app.Contents.ByID(ctx, postID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if post.Slug != "" || post.SlugID != 1 {
+		t.Fatalf("post slug state = %#v, want empty custom slug and slugID 1", post)
+	}
+	if got := contentPublicURL(post); got != "/post/1.html" {
+		t.Fatalf("contentPublicURL = %q, want /post/1.html", got)
+	}
+	if got := app.contentURL(ctx, post); got != "/post/1.html" {
+		t.Fatalf("contentURL = %q, want /post/1.html", got)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/post/1.html", nil)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("numeric slug route status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/post/1", nil)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/post/1.html" {
+		t.Fatalf("numeric slug canonical redirect = %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+
+	customID, err := app.Contents.Create(ctx, services.SaveContentInput{
+		Title:  "Custom",
+		Slug:   "custom-path",
+		Text:   "body",
+		Type:   models.ContentTypePost,
+		Status: models.ContentStatusPost,
+	}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	custom, err := app.Contents.ByID(ctx, customID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := contentPublicURL(custom); got != "/post/custom-path.html" {
+		t.Fatalf("custom contentPublicURL = %q, want /post/custom-path.html", got)
 	}
 }
 

@@ -21,6 +21,7 @@ type ContentService struct {
 type SaveContentInput struct {
 	Title        string
 	Slug         string
+	SlugID       int64
 	Text         string
 	Type         string
 	Status       string
@@ -161,7 +162,7 @@ func (s *ContentService) List(ctx context.Context, q ContentQuery) ([]models.Con
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT c.cid, c.title, c.slug, c.created, c.modified, c.text, c.sortOrder, c.authorId, COALESCE(c.template,''), c.type, c.status,
+		SELECT c.cid, c.title, c.slug, COALESCE(c.slugId,0), c.created, c.modified, c.text, c.sortOrder, c.authorId, COALESCE(c.template,''), c.type, c.status,
 			COALESCE(c.password,''), c.commentsNum, c.allowComment, c.allowPing, c.allowFeed, c.parent, COALESCE(c.draftOf,0)
 		FROM gb_contents c
 		WHERE `+strings.Join(where, " AND ")+`
@@ -211,11 +212,27 @@ func (s *ContentService) Stats(ctx context.Context) (models.Stats, error) {
 }
 
 func (s *ContentService) BySlug(ctx context.Context, postSlug string) (models.Content, error) {
-	return s.one(ctx, `WHERE slug = ? AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, postSlug, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix())
+	if c, err := s.one(ctx, `WHERE slug = ? AND slug <> '' AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, postSlug, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix()); err == nil {
+		return c, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return models.Content{}, err
+	}
+	if slugID, err := strconv.ParseInt(postSlug, 10, 64); err == nil && slugID > 0 {
+		return s.one(ctx, `WHERE slugId = ? AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, slugID, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix())
+	}
+	return models.Content{}, sql.ErrNoRows
 }
 
 func (s *ContentService) PageBySlug(ctx context.Context, pageSlug string) (models.Content, error) {
-	return s.one(ctx, `WHERE slug = ? AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, pageSlug, models.ContentTypePage, models.ContentStatusPost, time.Now().Unix())
+	if c, err := s.one(ctx, `WHERE slug = ? AND slug <> '' AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, pageSlug, models.ContentTypePage, models.ContentStatusPost, time.Now().Unix()); err == nil {
+		return c, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return models.Content{}, err
+	}
+	if slugID, err := strconv.ParseInt(pageSlug, 10, 64); err == nil && slugID > 0 {
+		return s.one(ctx, `WHERE slugId = ? AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, slugID, models.ContentTypePage, models.ContentStatusPost, time.Now().Unix())
+	}
+	return models.Content{}, sql.ErrNoRows
 }
 
 func (s *ContentService) AttachmentBySlug(ctx context.Context, attachSlug string) (models.Content, error) {
@@ -231,10 +248,15 @@ func (s *ContentService) Create(ctx context.Context, input SaveContentInput, aut
 	if input.Type == "" {
 		input.Type = models.ContentTypePost
 	}
+	status := normalizeStatus(input.Status)
 	now := time.Now().Unix()
 	created := input.Created
 	if created <= 0 {
 		created = now
+	}
+	slugID, err := s.contentSlugID(ctx, input, models.Content{})
+	if err != nil {
+		return 0, err
 	}
 	postSlug, err := s.contentSlug(ctx, input, 0)
 	if err != nil {
@@ -247,9 +269,9 @@ func (s *ContentService) Create(ctx context.Context, input SaveContentInput, aut
 	defer tx.Rollback()
 	var id int64
 	insertSQL := `
-		INSERT INTO gb_contents (title, slug, created, modified, text, sortOrder, authorId, template, type, status, password, commentsNum, allowComment, allowPing, allowFeed, parent, draftOf)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`
-	insertArgs := []any{input.Title, postSlug, created, now, input.Text, input.SortOrder, authorID, input.Template, input.Type, normalizeStatus(input.Status), input.Password, boolChar(input.AllowComment), boolChar(input.AllowPing), boolChar(input.AllowFeed), input.Parent, input.DraftOf}
+		INSERT INTO gb_contents (title, slug, slugId, created, modified, text, sortOrder, authorId, template, type, status, password, commentsNum, allowComment, allowPing, allowFeed, parent, draftOf)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`
+	insertArgs := []any{input.Title, postSlug, slugID, created, now, input.Text, input.SortOrder, authorID, input.Template, input.Type, status, input.Password, boolChar(input.AllowComment), boolChar(input.AllowPing), boolChar(input.AllowFeed), input.Parent, input.DraftOf}
 	if s.db.Dialect() == models.DialectPostgres {
 		err = tx.QueryRowContext(ctx, models.Rebind(s.db.Dialect(), insertSQL+" RETURNING cid"), insertArgs...).Scan(&id)
 	} else {
@@ -270,7 +292,13 @@ func (s *ContentService) Create(ctx context.Context, input SaveContentInput, aut
 			return 0, err
 		}
 	}
-	return id, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	if err := s.commitContentSlugID(ctx, input.Type, status, input.DraftOf, slugID); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 func (s *ContentService) CreateAttachment(ctx context.Context, title, slugValue, filePath string, authorID, parent int64) (int64, error) {
@@ -318,6 +346,11 @@ func (s *ContentService) Update(ctx context.Context, id int64, input SaveContent
 	if input.Type == "" {
 		input.Type = current.Type
 	}
+	status := normalizeStatus(input.Status)
+	slugID, err := s.contentSlugID(ctx, input, current)
+	if err != nil {
+		return err
+	}
 	postSlug, err := s.contentSlug(ctx, input, id)
 	if err != nil {
 		return err
@@ -338,9 +371,9 @@ func (s *ContentService) Update(ctx context.Context, id int64, input SaveContent
 	}
 	_, err = txExec(ctx, tx, s.db.Dialect(), `
 		UPDATE gb_contents
-		SET title = ?, slug = ?, created = ?, modified = ?, text = ?, status = ?, password = ?, sortOrder = ?, template = ?, parent = ?, allowComment = ?, allowPing = ?, allowFeed = ?, draftOf = ?
+		SET title = ?, slug = ?, slugId = ?, created = ?, modified = ?, text = ?, status = ?, password = ?, sortOrder = ?, template = ?, parent = ?, allowComment = ?, allowPing = ?, allowFeed = ?, draftOf = ?
 		WHERE cid = ?
-	`, input.Title, postSlug, created, time.Now().Unix(), input.Text, normalizeStatus(input.Status), input.Password, input.SortOrder, input.Template, input.Parent, boolChar(input.AllowComment), boolChar(input.AllowPing), boolChar(input.AllowFeed), input.DraftOf, id)
+	`, input.Title, postSlug, slugID, created, time.Now().Unix(), input.Text, status, input.Password, input.SortOrder, input.Template, input.Parent, boolChar(input.AllowComment), boolChar(input.AllowPing), boolChar(input.AllowFeed), input.DraftOf, id)
 	if err != nil {
 		return err
 	}
@@ -352,13 +385,33 @@ func (s *ContentService) Update(ctx context.Context, id int64, input SaveContent
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.commitContentSlugID(ctx, input.Type, status, input.DraftOf, slugID)
 }
 
 func (s *ContentService) MarkStatus(ctx context.Context, id int64, status string) error {
 	ctx = WithWriter(ctx)
-	_, err := s.db.ExecContext(ctx, `UPDATE gb_contents SET status = ?, modified = ? WHERE cid = ?`, normalizeStatus(status), time.Now().Unix(), id)
-	return err
+	current, err := s.ByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	nextStatus := normalizeStatus(status)
+	if current.DraftOf > 0 && nextStatus == models.ContentStatusPost {
+		return s.PublishDraft(ctx, id)
+	}
+	slugID := current.SlugID
+	if needsSlugID(current.Type) && current.DraftOf == 0 && slugID <= 0 {
+		slugID, err = s.allocateSlugID(ctx, current.Type, current.CID)
+		if err != nil {
+			return err
+		}
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE gb_contents SET status = ?, modified = ?, slugId = ? WHERE cid = ?`, nextStatus, time.Now().Unix(), slugID, id); err != nil {
+		return err
+	}
+	return s.commitContentSlugID(ctx, current.Type, nextStatus, current.DraftOf, slugID)
 }
 
 func (s *ContentService) Delete(ctx context.Context, id int64) error {
@@ -451,9 +504,20 @@ func (s *ContentService) SaveEditingDraft(ctx context.Context, publishedID int64
 	if published.DraftOf > 0 {
 		return 0, sql.ErrNoRows
 	}
+	if needsSlugID(published.Type) && published.SlugID <= 0 {
+		slugID, err := s.allocateSlugID(ctx, published.Type, published.CID)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := s.db.ExecContext(ctx, `UPDATE gb_contents SET slugId = ? WHERE cid = ?`, slugID, published.CID); err != nil {
+			return 0, err
+		}
+		published.SlugID = slugID
+	}
 	input.Type = published.Type
 	input.Status = models.ContentStatusDraft
 	input.DraftOf = publishedID
+	input.SlugID = published.SlugID
 	if input.Created <= 0 {
 		input.Created = published.Created
 	}
@@ -533,7 +597,7 @@ func (s *ContentService) RepairOrphanEditingDrafts(ctx context.Context) error {
 		}
 		publishedBySlug := make(map[string]models.Content)
 		for _, item := range items {
-			if item.DraftOf == 0 && item.Status == models.ContentStatusPost {
+			if item.DraftOf == 0 && item.Status == models.ContentStatusPost && item.Slug != "" {
 				publishedBySlug[item.Slug] = item
 			}
 		}
@@ -552,9 +616,9 @@ func (s *ContentService) RepairOrphanEditingDrafts(ctx context.Context) error {
 			}
 			if _, err := s.db.ExecContext(ctx, `
 				UPDATE gb_contents
-				SET draftOf = ?, slug = ?, modified = ?
+				SET draftOf = ?, slug = ?, slugId = ?, modified = ?
 				WHERE cid = ?
-			`, published.CID, published.Slug, time.Now().Unix(), item.CID); err != nil {
+			`, published.CID, published.Slug, published.SlugID, time.Now().Unix(), item.CID); err != nil {
 				return err
 			}
 			touched[published.CID] = true
@@ -603,7 +667,17 @@ func (s *ContentService) PublishDraft(ctx context.Context, draftID int64) error 
 	if err != nil {
 		return err
 	}
-	postSlug, err := s.uniqueSlug(ctx, draft.Slug, draft.Title, published.Type, publishedID)
+	slugID := published.SlugID
+	if slugID <= 0 {
+		slugID = draft.SlugID
+	}
+	if needsSlugID(published.Type) && slugID <= 0 {
+		slugID, err = s.allocateSlugID(ctx, published.Type, publishedID)
+		if err != nil {
+			return err
+		}
+	}
+	postSlug, err := s.contentSlug(ctx, SaveContentInput{Title: draft.Title, Slug: draft.Slug, Type: published.Type}, publishedID)
 	if err != nil {
 		return err
 	}
@@ -621,9 +695,9 @@ func (s *ContentService) PublishDraft(ctx context.Context, draftID int64) error 
 	}
 	_, err = txExec(ctx, tx, s.db.Dialect(), `
 		UPDATE gb_contents
-		SET title = ?, slug = ?, created = ?, modified = ?, text = ?, status = ?, password = ?, sortOrder = ?, template = ?, parent = ?, allowComment = ?, allowPing = ?, allowFeed = ?, draftOf = 0
+		SET title = ?, slug = ?, slugId = ?, created = ?, modified = ?, text = ?, status = ?, password = ?, sortOrder = ?, template = ?, parent = ?, allowComment = ?, allowPing = ?, allowFeed = ?, draftOf = 0
 		WHERE cid = ?
-	`, draft.Title, postSlug, created, time.Now().Unix(), draft.Text, models.ContentStatusPost, draft.Password, draft.SortOrder, draft.Template, draft.Parent, draft.AllowComment, draft.AllowPing, draft.AllowFeed, publishedID)
+	`, draft.Title, postSlug, slugID, created, time.Now().Unix(), draft.Text, models.ContentStatusPost, draft.Password, draft.SortOrder, draft.Template, draft.Parent, draft.AllowComment, draft.AllowPing, draft.AllowFeed, publishedID)
 	if err != nil {
 		return err
 	}
@@ -648,7 +722,10 @@ func (s *ContentService) PublishDraft(ctx context.Context, draftID int64) error 
 	if err := s.deleteDraftTx(ctx, tx, draftID); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.commitContentSlugID(ctx, published.Type, models.ContentStatusPost, 0, slugID)
 }
 
 // CategoriesForContentIDs returns category IDs for a content item.
@@ -936,7 +1013,7 @@ func (s *ContentService) Adjacent(ctx context.Context, c models.Content) (prev, 
 
 func (s *ContentService) one(ctx context.Context, where string, args ...any) (models.Content, error) {
 	query := `
-		SELECT cid, title, slug, created, modified, text, sortOrder, authorId, COALESCE(template,''), type, status,
+		SELECT cid, title, slug, COALESCE(slugId,0), created, modified, text, sortOrder, authorId, COALESCE(template,''), type, status,
 			COALESCE(password,''), commentsNum, allowComment, allowPing, allowFeed, parent, COALESCE(draftOf,0)
 		FROM gb_contents ` + where + ` LIMIT 1`
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -1106,19 +1183,28 @@ func (s *ContentService) uniqueSlug(ctx context.Context, raw, title, typ string,
 		if i > 0 {
 			candidate = fmt.Sprintf("%s-%d", base, i+1)
 		}
-		var id int64
-		err := s.db.QueryRowContext(ctx, `SELECT cid FROM gb_contents WHERE slug = ? AND type = ? AND COALESCE(draftOf, 0) = 0 AND cid <> ? LIMIT 1`, candidate, typ, exceptID).Scan(&id)
-		if errors.Is(err, sql.ErrNoRows) {
-			return candidate, nil
-		}
+		taken, err := s.slugCandidateTaken(ctx, candidate, typ, exceptID)
 		if err != nil {
 			return "", err
+		}
+		if !taken {
+			return candidate, nil
 		}
 	}
 	return "", errors.New("cannot allocate unique slug")
 }
 
 func (s *ContentService) contentSlug(ctx context.Context, input SaveContentInput, exceptID int64) (string, error) {
+	if needsSlugID(input.Type) {
+		raw := strings.TrimSpace(input.Slug)
+		if raw == "" {
+			return "", nil
+		}
+		if input.DraftOf > 0 {
+			return slug.Make(raw), nil
+		}
+		return s.uniqueSlug(ctx, raw, "", input.Type, exceptID)
+	}
 	if input.DraftOf > 0 {
 		base := slug.Make(input.Slug)
 		if base == "" {
@@ -1130,6 +1216,173 @@ func (s *ContentService) contentSlug(ctx context.Context, input SaveContentInput
 		return base, nil
 	}
 	return s.uniqueSlug(ctx, input.Slug, input.Title, input.Type, exceptID)
+}
+
+func needsSlugID(typ string) bool {
+	return typ == models.ContentTypePost || typ == models.ContentTypePage
+}
+
+func (s *ContentService) contentSlugID(ctx context.Context, input SaveContentInput, current models.Content) (int64, error) {
+	typ := input.Type
+	if typ == "" {
+		typ = current.Type
+	}
+	if !needsSlugID(typ) {
+		return 0, nil
+	}
+	if input.DraftOf > 0 {
+		parent, err := s.ByID(ctx, input.DraftOf)
+		if err != nil {
+			return 0, err
+		}
+		if parent.SlugID > 0 {
+			return parent.SlugID, nil
+		}
+		slugID, err := s.allocateSlugID(ctx, typ, parent.CID)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := s.db.ExecContext(ctx, `UPDATE gb_contents SET slugId = ? WHERE cid = ?`, slugID, parent.CID); err != nil {
+			return 0, err
+		}
+		return slugID, nil
+	}
+	if input.SlugID > 0 {
+		return input.SlugID, nil
+	}
+	if current.CID > 0 && current.SlugID > 0 {
+		return current.SlugID, nil
+	}
+	return s.allocateSlugID(ctx, typ, current.CID)
+}
+
+func (s *ContentService) allocateSlugID(ctx context.Context, typ string, exceptID int64) (int64, error) {
+	floor, err := s.slugIDFloor(ctx, typ)
+	if err != nil {
+		return 0, err
+	}
+	if floor <= 0 {
+		floor = 1
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT COALESCE(slug,''), COALESCE(slugId,0)
+		FROM gb_contents
+		WHERE type = ? AND COALESCE(draftOf, 0) = 0 AND cid <> ?
+	`, typ, exceptID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	used := map[int64]bool{}
+	for rows.Next() {
+		var customSlug string
+		var slugID int64
+		if err := rows.Scan(&customSlug, &slugID); err != nil {
+			return 0, err
+		}
+		if slugID > 0 {
+			used[slugID] = true
+		}
+		if n, err := strconv.ParseInt(strings.TrimSpace(customSlug), 10, 64); err == nil && n > 0 {
+			used[n] = true
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for candidate := floor; candidate < floor+1000000; candidate++ {
+		if !used[candidate] {
+			return candidate, nil
+		}
+	}
+	return 0, errors.New("cannot allocate slug id")
+}
+
+func (s *ContentService) slugIDFloor(ctx context.Context, typ string) (int64, error) {
+	next := int64(1)
+	var value string
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM gb_options WHERE name = ? AND user = 0`, "content_slug_id_next_"+typ).Scan(&value)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	if err == nil {
+		if parsed, parseErr := strconv.ParseInt(strings.TrimSpace(value), 10, 64); parseErr == nil && parsed > next {
+			next = parsed
+		}
+	}
+	var maxPublished sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT MAX(COALESCE(slugId,0))
+		FROM gb_contents
+		WHERE type = ? AND status = ? AND COALESCE(draftOf, 0) = 0
+	`, typ, models.ContentStatusPost).Scan(&maxPublished); err != nil {
+		return 0, err
+	}
+	if maxPublished.Valid && maxPublished.Int64 >= next {
+		next = maxPublished.Int64 + 1
+	}
+	return next, nil
+}
+
+func (s *ContentService) commitContentSlugID(ctx context.Context, typ, status string, draftOf, slugID int64) error {
+	if !needsSlugID(typ) || status != models.ContentStatusPost || draftOf > 0 || slugID <= 0 {
+		return nil
+	}
+	floor, err := s.slugIDFloor(ctx, typ)
+	if err != nil {
+		return err
+	}
+	if slugID < floor {
+		return nil
+	}
+	return s.setSlugIDFloor(ctx, typ, slugID+1)
+}
+
+func (s *ContentService) setSlugIDFloor(ctx context.Context, typ string, next int64) error {
+	value := strconv.FormatInt(next, 10)
+	name := "content_slug_id_next_" + typ
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
+		ON CONFLICT(name, user) DO UPDATE SET value = excluded.value
+	`, name, value)
+	if err == nil {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
+		ON DUPLICATE KEY UPDATE value = VALUES(value)
+	`, name, value)
+	if err == nil {
+		return nil
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO gb_options (name, "user", value) VALUES (?, 0, ?)
+		ON CONFLICT(name, "user") DO UPDATE SET value = EXCLUDED.value
+	`, name, value)
+	return err
+}
+
+func (s *ContentService) slugCandidateTaken(ctx context.Context, candidate, typ string, exceptID int64) (bool, error) {
+	var id int64
+	err := s.db.QueryRowContext(ctx, `SELECT cid FROM gb_contents WHERE slug = ? AND slug <> '' AND type = ? AND COALESCE(draftOf, 0) = 0 AND cid <> ? LIMIT 1`, candidate, typ, exceptID).Scan(&id)
+	if err == nil {
+		return true, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if needsSlugID(typ) {
+		if slugID, parseErr := strconv.ParseInt(candidate, 10, 64); parseErr == nil && slugID > 0 {
+			err = s.db.QueryRowContext(ctx, `SELECT cid FROM gb_contents WHERE slugId = ? AND type = ? AND COALESCE(draftOf, 0) = 0 AND cid <> ? LIMIT 1`, slugID, typ, exceptID).Scan(&id)
+			if err == nil {
+				return true, nil
+			}
+			if !errors.Is(err, sql.ErrNoRows) {
+				return false, err
+			}
+		}
+	}
+	return false, nil
 }
 
 func stripNumericSlugSuffix(value string) (string, bool) {
@@ -1183,7 +1436,7 @@ func scanContents(rows *sql.Rows) ([]models.Content, error) {
 	var contents []models.Content
 	for rows.Next() {
 		var c models.Content
-		if err := rows.Scan(&c.CID, &c.Title, &c.Slug, &c.Created, &c.Modified, &c.Text, &c.SortOrder, &c.AuthorID, &c.Template, &c.Type, &c.Status, &c.Password, &c.CommentsNum, &c.AllowComment, &c.AllowPing, &c.AllowFeed, &c.Parent, &c.DraftOf); err != nil {
+		if err := rows.Scan(&c.CID, &c.Title, &c.Slug, &c.SlugID, &c.Created, &c.Modified, &c.Text, &c.SortOrder, &c.AuthorID, &c.Template, &c.Type, &c.Status, &c.Password, &c.CommentsNum, &c.AllowComment, &c.AllowPing, &c.AllowFeed, &c.Parent, &c.DraftOf); err != nil {
 			return nil, err
 		}
 		contents = append(contents, c)

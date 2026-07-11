@@ -147,9 +147,62 @@
       var typeInput = form.querySelector('input[name="type"]');
       var status = form.querySelector(".autosave-status");
       var timer = null;
+      var saving = false;
+      var pending = false;
+      var submitting = false;
 
       function markClean() {
         adminDirty = false;
+      }
+
+      function hasContentID() {
+        return cidInput && parseInt(cidInput.value || "0", 10) > 0;
+      }
+
+      function updateContentID(id) {
+        id = parseInt(id || "0", 10);
+        if (id > 0) {
+          cidInput.value = String(id);
+        }
+      }
+
+      function sendAutosave() {
+        if (submitting) {
+          return;
+        }
+        if (saving) {
+          pending = true;
+          return;
+        }
+        saving = true;
+        var data = new FormData(form);
+        data.set("_csrf", csrfToken());
+        fetch("/admin/autosave", {
+          method: "POST",
+          body: data,
+          credentials: "same-origin"
+        }).then(function (res) {
+          if (!res.ok) {
+            throw new Error("autosave failed");
+          }
+          return res.json();
+        }).then(function (payload) {
+          updateContentID(payload.cid);
+          markClean();
+          if (status) {
+            status.textContent = "已自动保存";
+          }
+        }).catch(function () {
+          if (status) {
+            status.textContent = "自动保存失败";
+          }
+        }).finally(function () {
+          saving = false;
+          if (pending && !submitting) {
+            pending = false;
+            scheduleAutosave();
+          }
+        });
       }
 
       function scheduleAutosave() {
@@ -163,36 +216,37 @@
         }
         clearTimeout(timer);
         timer = setTimeout(function () {
-          var data = new FormData(form);
-          data.set("_csrf", csrf);
-          fetch("/admin/autosave", {
-            method: "POST",
-            body: data,
-            credentials: "same-origin"
-          }).then(function (res) {
-            if (!res.ok) {
-              throw new Error("autosave failed");
-            }
-            return res.json();
-          }).then(function (payload) {
-            if (payload.cid && !cidInput.value) {
-              cidInput.value = payload.cid;
-            }
-            markClean();
-            if (status) {
-              status.textContent = "已自动保存";
-            }
-          }).catch(function () {
-            if (status) {
-              status.textContent = "自动保存失败";
-            }
-          });
+          sendAutosave();
         }, 3000);
       }
 
       form.addEventListener("input", scheduleAutosave);
       form.addEventListener("change", scheduleAutosave);
-      form.addEventListener("submit", markClean);
+      form.addEventListener("submit", function (event) {
+        clearTimeout(timer);
+        if (saving && !hasContentID()) {
+          event.preventDefault();
+          pending = false;
+          if (status) {
+            status.textContent = "正在完成自动保存";
+          }
+          var retry = setInterval(function () {
+            if (saving) {
+              return;
+            }
+            clearInterval(retry);
+            submitting = true;
+            if (form.requestSubmit) {
+              form.requestSubmit();
+            } else {
+              form.submit();
+            }
+          }, 100);
+          return;
+        }
+        submitting = true;
+        markClean();
+      });
     });
   }
 
