@@ -648,7 +648,7 @@
       method: method.toUpperCase(),
       body: params,
       submitter: submitter,
-      preserveMainScroll: shouldPreserveFormScroll(form, url)
+      preserveMainScroll: shouldPreserveFormScroll(form, url, submitter)
     });
   }
 
@@ -891,9 +891,15 @@
     data.append(name, submitter.getAttribute("value") || "");
   }
 
-  function shouldPreserveFormScroll(form, url) {
+  function shouldPreserveFormScroll(form, url, submitter) {
     if (!form || !url) {
       return false;
+    }
+    if (submitter && submitter.hasAttribute && submitter.hasAttribute("data-reset-scroll")) {
+      return false;
+    }
+    if (form.hasAttribute("data-preserve-scroll")) {
+      return true;
     }
     var current = new URL(window.location.href);
     return url.pathname === current.pathname && url.search === current.search;

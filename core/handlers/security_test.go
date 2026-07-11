@@ -400,6 +400,14 @@ func TestNewPostAutosaveReusesDraftWhenPublishing(t *testing.T) {
 	if strings.Contains(body, `name="cid" value="0"`) {
 		t.Fatal("new post form rendered cid=0, which prevents autosave from writing back the real id")
 	}
+	if strings.Contains(body, `id="status"`) {
+		t.Fatal("new post form should not render top visibility selector")
+	}
+	for _, want := range []string{`name="status" value="draft"`, `name="status" value="publish"`, `name="discard" value="1"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("new post form missing action button %q", want)
+		}
+	}
 
 	form := url.Values{
 		"_csrf":        {adminToken(secret, adminID)},
@@ -465,6 +473,128 @@ func TestNewPostAutosaveReusesDraftWhenPublishing(t *testing.T) {
 	}
 }
 
+func TestContentFormDiscardDeletesStandaloneDraft(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+	draftID, err := app.Contents.Create(ctx, services.SaveContentInput{
+		Title:  "Discard Me",
+		Text:   "draft body",
+		Type:   models.ContentTypePost,
+		Status: models.ContentStatusDraft,
+	}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{
+		"_csrf":   {adminToken(secret, adminID)},
+		"type":    {models.ContentTypePost},
+		"cid":     {itoa(draftID)},
+		"discard": {"1"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/posts/"+itoa(draftID)+"/edit", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("discard standalone draft status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := app.Contents.ByID(ctx, draftID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("discarded draft lookup err = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestNewPageAutosaveReusesDraftWhenPublishing(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/pages/new", nil)
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("new page form status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `name="cid" value=""`) {
+		t.Fatalf("new page form should render empty cid, got: %s", body)
+	}
+	if strings.Contains(body, `name="cid" value="0"`) {
+		t.Fatal("new page form rendered cid=0, which prevents autosave from writing back the real id")
+	}
+	if strings.Contains(body, `id="status"`) {
+		t.Fatal("new page form should not render top visibility selector")
+	}
+	for _, want := range []string{`name="status" value="draft"`, `name="status" value="publish"`, `name="discard" value="1"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("new page form missing action button %q", want)
+		}
+	}
+
+	form := url.Values{
+		"_csrf":        {adminToken(secret, adminID)},
+		"type":         {models.ContentTypePage},
+		"cid":          {""},
+		"title":        {"Autosave Page"},
+		"status":       {models.ContentStatusDraft},
+		"text":         {"draft page body"},
+		"allowComment": {"1"},
+		"allowFeed":    {"1"},
+	}
+	req = httptest.NewRequest(http.MethodPost, "/admin/autosave", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("page autosave status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK  bool  `json:"ok"`
+		CID int64 `json:"cid"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || payload.CID <= 0 {
+		t.Fatalf("page autosave payload = %#v", payload)
+	}
+	draft, err := app.Contents.ByID(ctx, payload.CID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Type != models.ContentTypePage || draft.Status != models.ContentStatusDraft || draft.SlugID != 1 {
+		t.Fatalf("autosaved page draft = %#v, want page draft slugID 1", draft)
+	}
+
+	form.Set("cid", itoa(payload.CID))
+	form.Set("title", "Published Page From Autosave")
+	form.Set("status", models.ContentStatusPost)
+	form.Set("text", "published page body")
+	req = httptest.NewRequest(http.MethodPost, "/admin/pages/new", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("publish autosaved page status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	published, err := app.Contents.ByID(ctx, payload.CID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published.Type != models.ContentTypePage || published.Status != models.ContentStatusPost || published.Title != "Published Page From Autosave" || published.Text != "published page body" || published.SlugID != draft.SlugID {
+		t.Fatalf("published autosaved page mismatch: draft=%#v published=%#v", draft, published)
+	}
+	pages, err := app.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePage, Status: "all", IncludeDrafts: true, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pages) != 1 || pages[0].CID != payload.CID {
+		t.Fatalf("page list after publishing autosaved draft = %#v, want only published draft row", pages)
+	}
+}
+
 func TestPublishedPostEditUsesSeparateDraft(t *testing.T) {
 	app, secret, adminID := newSecurityTestApp(t)
 	ctx := context.Background()
@@ -523,7 +653,7 @@ func TestPublishedPostEditUsesSeparateDraft(t *testing.T) {
 		t.Fatalf("edit page status = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, `value="draft body"`) {
+	if !strings.Contains(body, ">draft body</textarea>") {
 		t.Fatal("edit page did not render editing draft body")
 	}
 	if !strings.Contains(body, `name="cid" value="`+itoa(postID)+`"`) {
@@ -593,6 +723,97 @@ func TestPublishedPostEditUsesSeparateDraft(t *testing.T) {
 	}
 	if _, err := app.Contents.DraftForContent(ctx, postID); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("DraftForContent after publish err = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestPublishedPageEditUsesSeparateDraft(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+	pageID, err := app.Contents.Create(ctx, services.SaveContentInput{
+		Title:        "Original Page",
+		Slug:         "published-page-edit",
+		Text:         "published page body",
+		Type:         models.ContentTypePage,
+		Status:       models.ContentStatusPost,
+		AllowComment: true,
+		AllowFeed:    true,
+	}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	form := url.Values{
+		"_csrf":        {adminToken(secret, adminID)},
+		"type":         {models.ContentTypePage},
+		"cid":          {itoa(pageID)},
+		"title":        {"Edited Page"},
+		"slug":         {"published-page-edit"},
+		"status":       {models.ContentStatusDraft},
+		"text":         {"draft page body"},
+		"allowComment": {"1"},
+		"allowFeed":    {"1"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/pages/"+itoa(pageID)+"/edit", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("save page editing draft status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	published, err := app.Contents.ByID(ctx, pageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published.Title != "Original Page" || published.Text != "published page body" {
+		t.Fatalf("published page changed after saving draft: %#v", published)
+	}
+	draft, err := app.Contents.DraftForContent(ctx, pageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Title != "Edited Page" || draft.Text != "draft page body" || draft.DraftOf != pageID || draft.SlugID != published.SlugID {
+		t.Fatalf("page editing draft mismatch: published=%#v draft=%#v", published, draft)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/admin/pages", nil)
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pages list status = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "/admin/pages/"+itoa(draft.CID)+"/edit") {
+		t.Fatal("pages list rendered editing draft as a separate row")
+	}
+	if !strings.Contains(body, "/admin/pages/"+itoa(pageID)+"/edit") || !strings.Contains(body, "/admin/pages/"+itoa(pageID)+"/edit?source=published") {
+		t.Fatal("pages list did not render both draft and published edit actions")
+	}
+	if !strings.Contains(body, "有编辑草稿") {
+		t.Fatal("pages list did not mark published page with editing draft")
+	}
+
+	form.Set("title", "Final Page")
+	form.Set("status", models.ContentStatusPost)
+	form.Set("text", "final page body")
+	req = httptest.NewRequest(http.MethodPost, "/admin/pages/"+itoa(pageID)+"/edit", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("publish page editing draft status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	published, err = app.Contents.ByID(ctx, pageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if published.Title != "Final Page" || published.Text != "final page body" || published.SlugID != draft.SlugID {
+		t.Fatalf("published page not updated after publishing draft: %#v", published)
+	}
+	if _, err := app.Contents.DraftForContent(ctx, pageID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("DraftForContent after page publish err = %v, want sql.ErrNoRows", err)
 	}
 }
 
@@ -1427,6 +1648,65 @@ func TestDefaultPostURLUsesNumericSlugIDWithHTMLSuffix(t *testing.T) {
 	}
 	if got := contentPublicURL(custom); got != "/post/custom-path.html" {
 		t.Fatalf("custom contentPublicURL = %q, want /post/custom-path.html", got)
+	}
+}
+
+func TestDefaultPageURLUsesNumericSlugIDWithHTMLSuffix(t *testing.T) {
+	app, _, adminID := newSecurityTestApp(t)
+	ctx := context.Background()
+	pageID, err := app.Contents.Create(ctx, services.SaveContentInput{
+		Title:  "数字页面",
+		Text:   "body",
+		Type:   models.ContentTypePage,
+		Status: models.ContentStatusPost,
+	}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pageData, err := app.Contents.ByID(ctx, pageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pageData.Slug != "" || pageData.SlugID != 1 {
+		t.Fatalf("page slug state = %#v, want empty custom slug and slugID 1", pageData)
+	}
+	if got := contentPublicURL(pageData); got != "/page/1.html" {
+		t.Fatalf("contentPublicURL = %q, want /page/1.html", got)
+	}
+	if got := app.contentURL(ctx, pageData); got != "/page/1.html" {
+		t.Fatalf("contentURL = %q, want /page/1.html", got)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/page/1.html", nil)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("numeric page route status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/page/1", nil)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/page/1.html" {
+		t.Fatalf("numeric page canonical redirect = %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+
+	customID, err := app.Contents.Create(ctx, services.SaveContentInput{
+		Title:  "Custom Page",
+		Slug:   "custom-page",
+		Text:   "body",
+		Type:   models.ContentTypePage,
+		Status: models.ContentStatusPost,
+	}, adminID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	custom, err := app.Contents.ByID(ctx, customID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := contentPublicURL(custom); got != "/page/custom-page.html" {
+		t.Fatalf("custom contentPublicURL = %q, want /page/custom-page.html", got)
 	}
 }
 

@@ -413,12 +413,22 @@ func (a *App) adminPages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	pages, err := a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePage, Keywords: r.URL.Query().Get("keywords"), Limit: 200})
+	pages, err := a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePage, Status: r.URL.Query().Get("status"), Keywords: r.URL.Query().Get("keywords"), Limit: 200})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.renderAdmin(w, r, "pages.html", map[string]any{"Title": "页面", "Pages": pages, "Keywords": r.URL.Query().Get("keywords")})
+	publishedIDs := make([]int64, 0)
+	for _, p := range pages {
+		if p.Status == models.ContentStatusPost && p.DraftOf == 0 {
+			publishedIDs = append(publishedIDs, p.CID)
+		}
+	}
+	draftMap, _ := a.Contents.DraftMapForContents(r.Context(), publishedIDs)
+	if draftMap == nil {
+		draftMap = map[int64]bool{}
+	}
+	a.renderAdmin(w, r, "pages.html", map[string]any{"Title": "页面", "Pages": pages, "Keywords": r.URL.Query().Get("keywords"), "Status": r.URL.Query().Get("status"), "DraftMap": draftMap})
 }
 
 func (a *App) adminPageRoutes(w http.ResponseWriter, r *http.Request) {
@@ -651,6 +661,14 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 			"EditingDraft":       editingDraft,
 		})
 	case http.MethodPost:
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if r.FormValue("discard") == "1" {
+			a.discardContentDraftFromForm(w, r, typ, id)
+			return
+		}
 		input, err := parseContentForm(r, typ)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -731,6 +749,51 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
+}
+
+func (a *App) discardContentDraftFromForm(w http.ResponseWriter, r *http.Request, typ string, id int64) {
+	targetID := id
+	if targetID == 0 {
+		targetID, _ = strconv.ParseInt(r.FormValue("cid"), 10, 64)
+	}
+	if targetID <= 0 {
+		a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "草稿已丢弃。"})
+		return
+	}
+	if !a.canEditContent(w, r, targetID, typ) {
+		return
+	}
+	item, err := a.Contents.ByID(r.Context(), targetID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	redirectTo := contentListURL(typ)
+	switch {
+	case item.DraftOf > 0:
+		redirectTo = contentActionURL(typ, item.DraftOf)
+		err = a.Contents.DeleteDraft(r.Context(), item.CID)
+	case item.Status == models.ContentStatusDraft:
+		err = a.deleteContentWithAttachmentPolicy(r.Context(), item.CID)
+	case item.Status == models.ContentStatusPost:
+		redirectTo = contentActionURL(typ, item.CID)
+		if draft, draftErr := a.Contents.DraftForContent(r.Context(), item.CID); draftErr == nil && draft.CID > 0 {
+			err = a.Contents.DeleteDraft(r.Context(), draft.CID)
+		} else if draftErr != nil && !errors.Is(draftErr, sql.ErrNoRows) {
+			err = draftErr
+		}
+	default:
+		err = a.deleteContentWithAttachmentPolicy(r.Context(), item.CID)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	a.flashRedirect(w, r, redirectTo, http.StatusSeeOther, flashNotice{Type: "success", Message: "草稿已丢弃。"})
 }
 
 func (a *App) contentRevisions(w http.ResponseWriter, r *http.Request, typ string, id int64) {
@@ -2338,6 +2401,7 @@ func (a *App) renderPostContent(w http.ResponseWriter, r *http.Request, post mod
 
 func (a *App) frontPage(w http.ResponseWriter, r *http.Request) {
 	pageSlug := path.Base(strings.TrimSuffix(r.URL.Path, "/"))
+	pageSlug = strings.TrimSuffix(pageSlug, ".html")
 	pageData, err := a.Contents.PageBySlug(r.Context(), pageSlug)
 	if err != nil {
 		a.renderThemeStatus(w, r, "404.html", map[string]any{}, http.StatusNotFound)
@@ -4369,12 +4433,16 @@ func parseContentForm(r *http.Request, typ string) (services.SaveContentInput, e
 	categoryIDs := parseInt64Values(r.Form["category"])
 	tags := splitTags(r.FormValue("tags"))
 	fields := parseFieldInputs(r)
+	status := r.FormValue("status")
+	if status == "" {
+		status = models.ContentStatusDraft
+	}
 	return services.SaveContentInput{
 		Title:        strings.TrimSpace(r.FormValue("title")),
 		Slug:         strings.TrimSpace(r.FormValue("slug")),
 		Text:         strings.TrimSpace(r.FormValue("text")),
 		Type:         typ,
-		Status:       r.FormValue("status"),
+		Status:       status,
 		Password:     r.FormValue("password"),
 		Created:      created,
 		SortOrder:    sortOrder,
@@ -4662,7 +4730,7 @@ func joinMetaNames(items []models.Meta) string {
 func (a *App) contentURL(ctx context.Context, c models.Content) string {
 	switch c.Type {
 	case models.ContentTypePage:
-		pattern := a.option(ctx, "permalink_page", "/page/{slug}")
+		pattern := a.option(ctx, "permalink_page", "/page/{slug}.html")
 		return cleanPublicPath(applyContentPattern(pattern, c, a.pageDirectory(ctx, c)))
 	default:
 		pattern := a.option(ctx, "permalink_post", "/post/{slug}.html")
@@ -4867,7 +4935,7 @@ func (a *App) tryDynamicPermalink(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 	}
-	if vars, ok := matchPermalink(a.option(ctx, "permalink_page", "/page/{slug}"), r.URL.Path); ok {
+	if vars, ok := matchPermalink(a.option(ctx, "permalink_page", "/page/{slug}.html"), r.URL.Path); ok {
 		pageData, err := a.contentFromPermalinkVars(ctx, vars, models.ContentTypePage)
 		if err == nil && pageData.Status == models.ContentStatusPost && pageData.Created <= time.Now().Unix() {
 			if a.redirectCanonical(w, r, a.contentURL(ctx, pageData)) {
@@ -5022,7 +5090,7 @@ func contentRouteSlug(c models.Content) string {
 
 func contentPublicURL(c models.Content) string {
 	if c.Type == models.ContentTypePage {
-		return "/page/" + contentRouteSlug(c)
+		return "/page/" + contentRouteSlug(c) + ".html"
 	}
 	return "/post/" + contentRouteSlug(c) + ".html"
 }

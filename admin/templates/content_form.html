@@ -2,33 +2,18 @@
 <div class="page-head">
   <div>
     <h1>{{.Title}}</h1>
-    <p class="muted">{{if eq .Type "page"}}页面支持父级、排序和自定义模板。{{else}}文章支持分类、标签和公开度。{{end}}</p>
+    <p class="muted">{{if eq .Type "page"}}页面支持父级、排序和自定义模板。{{else}}文章支持分类和标签。{{end}}</p>
   </div>
   <mdui-button variant="outlined" href="{{if eq .Type "page"}}/admin/pages{{else}}/admin/posts{{end}}">返回</mdui-button>
 </div>
 {{if .Saved}}<div class="notice">已保存。</div>{{end}}
 {{if .EditingDraft}}<div class="notice">正在编辑草稿，发布后将替换已发布的版本。</div>{{end}}
-<form method="post" action="{{.Action}}" class="form-panel field-stack">
+<form method="post" action="{{.Action}}" class="form-panel field-stack" data-preserve-scroll>
   <input type="hidden" name="cid" value="{{if .FormCID}}{{.FormCID}}{{end}}">
   <input type="hidden" name="type" value="{{.Type}}">
   <mdui-text-field name="title" label="标题" value="{{.Content.Title}}" {{if fieldError .Errors "title"}}helper="{{fieldError .Errors "title"}}"{{end}} required></mdui-text-field>
   <mdui-text-field name="slug" label="固定链接" value="{{.Content.Slug}}" helper="{{if fieldError .Errors "slug"}}{{fieldError .Errors "slug"}}{{else}}留空时使用数字 ID{{end}}"></mdui-text-field>
   <mdui-text-field name="created" label="发布日期" value="{{date .Content.Created}}" helper="格式：2006-01-02 15:04"></mdui-text-field>
-  <label class="muted" for="status">公开度</label>
-  <select id="status" name="status">
-    {{if .EditingDraft}}
-    <option value="draft" {{if ne .Content.Status "publish"}}selected{{end}}>保存为编辑草稿</option>
-    <option value="publish" {{if eq .Content.Status "publish"}}selected{{end}}>发布修改</option>
-    {{else}}
-    <option value="publish" {{if eq .Content.Status "publish"}}selected{{end}}>公开</option>
-    <option value="draft" {{if eq .Content.Status "draft"}}selected{{end}}>草稿</option>
-    <option value="hidden" {{if eq .Content.Status "hidden"}}selected{{end}}>隐藏</option>
-    {{if eq .Type "post"}}
-    <option value="waiting" {{if eq .Content.Status "waiting"}}selected{{end}}>待审核</option>
-    <option value="private" {{if eq .Content.Status "private"}}selected{{end}}>私密</option>
-    {{end}}
-    {{end}}
-  </select>
   <mdui-text-field name="password" label="内容密码" value="{{.Content.Password}}"></mdui-text-field>
   {{if eq .Type "post"}}
   <fieldset class="fieldset">
@@ -56,7 +41,9 @@
     <label><input type="checkbox" name="allowPing" value="1" {{if checked .Content.AllowPing}}checked{{end}}> 允许被引用</label>
     <label><input type="checkbox" name="allowFeed" value="1" {{if checked .Content.AllowFeed}}checked{{end}}> 允许在聚合中出现</label>
   </fieldset>
-  <mdui-text-field id="content-text" name="text" label="正文" rows="16" autosize value="{{.Content.Text}}" {{if fieldError .Errors "text"}}helper="{{fieldError .Errors "text"}}"{{end}}></mdui-text-field>
+  <label class="muted" for="content-text">正文</label>
+  <textarea id="content-text" class="content-editor" name="text" rows="18" {{if fieldError .Errors "text"}}aria-describedby="content-text-error"{{end}}>{{.Content.Text}}</textarea>
+  {{if fieldError .Errors "text"}}<span id="content-text-error" class="field-error">{{fieldError .Errors "text"}}</span>{{end}}
   <section class="editor-media-panel">
     <div class="revision-summary">
       <strong>媒体插入</strong>
@@ -105,10 +92,9 @@
   <div class="autosave-status muted" aria-live="polite"></div>
   <div class="form-actions">
     {{if .PreviewURL}}<mdui-button variant="outlined" href="{{.PreviewURL}}" target="_blank">预览</mdui-button>{{end}}
-    <mdui-button type="submit"><mdui-icon slot="icon" name="edit"></mdui-icon>保存</mdui-button>
-    {{if .EditingDraft}}
-    <mdui-button type="submit" variant="outlined" formaction="{{if eq .Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{.PublishedID}}/discard" formmethod="post" formnovalidate>丢弃草稿</mdui-button>
-    {{end}}
+    <mdui-button type="submit" variant="outlined" name="status" value="draft"><mdui-icon slot="icon" name="save"></mdui-icon>保存草稿</mdui-button>
+    <mdui-button type="submit" name="status" value="publish"><mdui-icon slot="icon" name="publish"></mdui-icon>{{if eq .Type "page"}}发布页面{{else}}发布文章{{end}}</mdui-button>
+    <mdui-button type="submit" variant="outlined" name="discard" value="1" formnovalidate data-reset-scroll><mdui-icon slot="icon" name="delete_sweep"></mdui-icon>丢弃草稿</mdui-button>
   </div>
 </form>
 {{end}}

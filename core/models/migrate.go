@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-const CurrentSchemaVersion = 5
+const CurrentSchemaVersion = 6
 
 func Migrate(ctx context.Context, db *sql.DB, driver string) error {
 	var stmts []string
@@ -65,6 +65,7 @@ func RunVersionedMigrations(ctx context.Context, db *sql.DB) error {
 		{Version: 3, Run: migrateV3},
 		{Version: 4, Run: migrateV4},
 		{Version: 5, Run: migrateV5},
+		{Version: 6, Run: migrateV6},
 	}
 	for _, migration := range migrations {
 		if version >= migration.Version {
@@ -122,6 +123,15 @@ func migrateV5(ctx context.Context, db *sql.DB) error {
 	}
 	_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS gb_contents_slugId ON gb_contents (slugId)`)
 	return initializeContentSlugIDs(ctx, db)
+}
+
+func migrateV6(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `UPDATE gb_options SET value = ? WHERE name = ? AND user = 0 AND value = ?`, "/page/{slug}.html", "permalink_page", "/page/{slug}")
+	if err == nil {
+		return nil
+	}
+	_, err = db.ExecContext(ctx, `UPDATE gb_options SET value = $1 WHERE name = $2 AND "user" = 0 AND value = $3`, "/page/{slug}.html", "permalink_page", "/page/{slug}")
+	return err
 }
 
 func initializeContentSlugIDs(ctx context.Context, db *sql.DB) error {

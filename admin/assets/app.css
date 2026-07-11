@@ -262,6 +262,7 @@ body.admin-pjax-loading .admin-main {
 .filter-bar select,
 .field-stack select,
 .field-stack input[type="number"],
+.content-editor,
 select {
   min-height: 42px;
   padding: 0 12px;
@@ -269,6 +270,28 @@ select {
   border-radius: 6px;
   color: rgb(var(--mdui-color-on-surface));
   background: rgba(var(--mdui-color-surface-container-highest), var(--admin-input-opacity));
+}
+
+.content-editor {
+  width: 100%;
+  min-height: 360px;
+  padding: 12px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.65;
+  box-sizing: border-box;
+}
+
+.content-editor:focus {
+  border-color: rgb(var(--mdui-color-primary));
+  outline: 2px solid rgba(var(--mdui-color-primary), 0.18);
+  outline-offset: 0;
+}
+
+.field-error {
+  margin-top: -8px;
+  color: rgb(var(--mdui-color-error));
+  font-size: 12px;
 }
 
 mdui-text-field::part(container),
