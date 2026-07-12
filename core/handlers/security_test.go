@@ -1170,8 +1170,9 @@ func TestMediaUploadStoresMetadataUnderContentIDAndDeleteRemovesFile(t *testing.
 		t.Fatalf("attachments = %d, want 1", len(attachments))
 	}
 	meta := parseAttachmentMeta(attachments[0])
-	if !strings.HasPrefix(meta.Path, itoa(postID)+"/") || !strings.HasPrefix(meta.URL, "/uploads/"+itoa(postID)+"/") {
-		t.Fatalf("attachment path/url = %#v, want content-id bucket", meta)
+	wantBucket := "posts/" + itoa(postID) + "/"
+	if !strings.HasPrefix(meta.Path, wantBucket) || !strings.HasPrefix(meta.URL, "/uploads/"+wantBucket) {
+		t.Fatalf("attachment path/url = %#v, want post bucket %q", meta, wantBucket)
 	}
 	if !meta.IsImage || meta.Width != 1 || meta.Height != 1 || meta.MIME != "image/png" {
 		t.Fatalf("image metadata = %#v, want 1x1 image/png", meta)
@@ -1195,6 +1196,20 @@ func TestMediaUploadStoresMetadataUnderContentIDAndDeleteRemovesFile(t *testing.
 	}
 }
 
+func TestPageMediaUploadUsesPagesBucket(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	app.UploadDir = t.TempDir()
+	pageID := createPublishedPage(t, app, adminID, "media-page")
+	_, meta := uploadMedia(t, app, secret, adminID, pageID, "cover.png", tinyPNG(t))
+	wantBucket := "pages/" + itoa(pageID) + "/"
+	if !strings.HasPrefix(meta.Path, wantBucket) || !strings.HasPrefix(meta.URL, "/uploads/"+wantBucket) {
+		t.Fatalf("page attachment path/url = %#v, want page bucket %q", meta, wantBucket)
+	}
+	if _, err := os.Stat(filepath.Join(app.UploadDir, filepath.FromSlash(meta.Path))); err != nil {
+		t.Fatalf("page attachment file missing: %v", err)
+	}
+}
+
 func TestAdminManagementUploadUsesSeparateSettingsBucket(t *testing.T) {
 	app, secret, adminID := newSecurityTestApp(t)
 	app.UploadDir = t.TempDir()
@@ -1204,25 +1219,34 @@ func TestAdminManagementUploadUsesSeparateSettingsBucket(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	req := multipartUploadRequestBytes(t, "/admin/management/upload", map[string]string{"_csrf": adminToken(secret, adminID)}, "file", "background.png", tinyPNG(t))
-	setSession(t, req, secret, adminID)
-	rec := httptest.NewRecorder()
-	app.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("admin management upload status = %d, want 200: %s", rec.Code, rec.Body.String())
+	upload := func(filename string) string {
+		t.Helper()
+		req := multipartUploadRequestBytes(t, "/admin/management/upload", map[string]string{"_csrf": adminToken(secret, adminID)}, "file", filename, tinyPNG(t))
+		setSession(t, req, secret, adminID)
+		rec := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("admin management upload status = %d, want 200: %s", rec.Code, rec.Body.String())
+		}
+		var payload struct {
+			OK  bool   `json:"ok"`
+			URL string `json:"url"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if !payload.OK {
+			t.Fatalf("admin management upload payload = %#v, want ok", payload)
+		}
+		return payload.URL
 	}
-	var payload struct {
-		OK  bool   `json:"ok"`
-		URL string `json:"url"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
-		t.Fatal(err)
-	}
+	usedURL := upload("background.png")
+	unusedURL := upload("old-background.png")
 	prefix := "/uploads/" + adminSettingsUploadBucket + "/"
-	if !payload.OK || !strings.HasPrefix(payload.URL, prefix) {
-		t.Fatalf("admin management upload payload = %#v, want %s bucket", payload, prefix)
+	if !strings.HasPrefix(usedURL, prefix) || !strings.HasPrefix(unusedURL, prefix) {
+		t.Fatalf("admin management upload URLs = %q %q, want %s bucket", usedURL, unusedURL, prefix)
 	}
-	relPath := strings.TrimPrefix(payload.URL, "/uploads/")
+	relPath := strings.TrimPrefix(usedURL, "/uploads/")
 	if _, err := os.Stat(filepath.Join(app.UploadDir, filepath.FromSlash(relPath))); err != nil {
 		t.Fatalf("admin settings upload file missing: %v", err)
 	}
@@ -1232,6 +1256,114 @@ func TestAdminManagementUploadUsesSeparateSettingsBucket(t *testing.T) {
 	}
 	if len(after) != len(before) {
 		t.Fatalf("admin settings upload created attachment rows: before=%d after=%d", len(before), len(after))
+	}
+	if err := app.setOptionJSONForUser(ctx, adminAppearanceOptionKey, map[string]string{"desktop_background": usedURL}, 0); err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"_csrf": {adminToken(secret, adminID)}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/management/assets/clean", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("admin asset clean status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	usedPath := filepath.Join(app.UploadDir, filepath.FromSlash(strings.TrimPrefix(usedURL, "/uploads/")))
+	unusedPath := filepath.Join(app.UploadDir, filepath.FromSlash(strings.TrimPrefix(unusedURL, "/uploads/")))
+	if _, err := os.Stat(usedPath); err != nil {
+		t.Fatalf("used admin asset should remain: %v", err)
+	}
+	if _, err := os.Stat(unusedPath); !os.IsNotExist(err) {
+		t.Fatalf("unused admin asset should be removed: %v", err)
+	}
+	form = url.Values{"_csrf": {adminToken(secret, adminID)}, "name": {strings.TrimPrefix(usedURL, prefix)}}
+	req = httptest.NewRequest(http.MethodPost, "/admin/management/assets/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("admin asset delete status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(usedPath); !os.IsNotExist(err) {
+		t.Fatalf("admin asset should be deleted: %v", err)
+	}
+}
+
+func TestDefaultThemeUploadUsesSeparateSettingsBucket(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	app.UploadDir = t.TempDir()
+	ctx := context.Background()
+	before, err := app.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypeAttach, Status: "all", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload := func(filename string) string {
+		t.Helper()
+		req := multipartUploadRequestBytes(t, "/admin/themes/default/upload", map[string]string{"_csrf": adminToken(secret, adminID)}, "file", filename, tinyPNG(t))
+		setSession(t, req, secret, adminID)
+		rec := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("default theme upload status = %d, want 200: %s", rec.Code, rec.Body.String())
+		}
+		var payload struct {
+			OK  bool   `json:"ok"`
+			URL string `json:"url"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if !payload.OK {
+			t.Fatalf("default theme upload payload = %#v, want ok", payload)
+		}
+		return payload.URL
+	}
+	usedURL := upload("theme-cover.png")
+	unusedURL := upload("theme-unused.png")
+	prefix := "/uploads/" + themeSettingsUploadBucket + "/"
+	if !strings.HasPrefix(usedURL, prefix) || !strings.HasPrefix(unusedURL, prefix) {
+		t.Fatalf("theme upload URLs = %q %q, want %s bucket", usedURL, unusedURL, prefix)
+	}
+	after, err := app.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypeAttach, Status: "all", Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("theme settings upload created attachment rows: before=%d after=%d", len(before), len(after))
+	}
+	if err := app.setOptionJSONForUser(ctx, themeOptionKey("default"), map[string]string{"background_image": usedURL}, 0); err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{"_csrf": {adminToken(secret, adminID)}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/themes/default/assets/clean", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("theme asset clean status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	usedPath := filepath.Join(app.UploadDir, filepath.FromSlash(strings.TrimPrefix(usedURL, "/uploads/")))
+	unusedPath := filepath.Join(app.UploadDir, filepath.FromSlash(strings.TrimPrefix(unusedURL, "/uploads/")))
+	if _, err := os.Stat(usedPath); err != nil {
+		t.Fatalf("used theme asset should remain: %v", err)
+	}
+	if _, err := os.Stat(unusedPath); !os.IsNotExist(err) {
+		t.Fatalf("unused theme asset should be removed: %v", err)
+	}
+	form = url.Values{"_csrf": {adminToken(secret, adminID)}, "name": {strings.TrimPrefix(usedURL, prefix)}}
+	req = httptest.NewRequest(http.MethodPost, "/admin/themes/default/assets/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec = httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("theme asset delete status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(usedPath); !os.IsNotExist(err) {
+		t.Fatalf("theme asset should be deleted: %v", err)
 	}
 }
 
@@ -1281,7 +1413,7 @@ func TestMediaUploadSanitizesTraversalNameAndEnforcesSize(t *testing.T) {
 		t.Fatalf("attachments = %d, want 1", len(attachments))
 	}
 	meta := parseAttachmentMeta(attachments[0])
-	if strings.Contains(meta.Path, "..") || !strings.HasPrefix(meta.Path, itoa(postID)+"/") || meta.Name != "evil.png" {
+	if strings.Contains(meta.Path, "..") || !strings.HasPrefix(meta.Path, "posts/"+itoa(postID)+"/") || meta.Name != "evil.png" {
 		t.Fatalf("unsafe sanitized metadata: %#v", meta)
 	}
 }
@@ -1332,12 +1464,52 @@ func TestContentDeleteAttachmentPolicy(t *testing.T) {
 		ctx := context.Background()
 		postID := createPublishedPost(t, app, adminID, "delete-keep")
 		attachment, meta := uploadMedia(t, app, secret, adminID, postID, "photo.png", tinyPNG(t))
+		oldPath := filepath.Join(app.UploadDir, filepath.FromSlash(meta.Path))
 		deleteContentRequest(t, app, secret, adminID, postID)
-		if _, err := app.Contents.ByID(ctx, attachment.CID); err != nil {
+		updated, err := app.Contents.ByID(ctx, attachment.CID)
+		if err != nil {
 			t.Fatalf("attachment record should be kept: %v", err)
 		}
-		if _, err := os.Stat(filepath.Join(app.UploadDir, filepath.FromSlash(meta.Path))); err != nil {
-			t.Fatalf("attachment file should be kept: %v", err)
+		if updated.Parent != 0 {
+			t.Fatalf("attachment parent = %d, want detached", updated.Parent)
+		}
+		updatedMeta := parseAttachmentMeta(updated)
+		wantBucket := "unattached/" + itoa(postID) + "-post/"
+		if !strings.HasPrefix(updatedMeta.Path, wantBucket) || !strings.HasPrefix(updatedMeta.URL, "/uploads/"+wantBucket) {
+			t.Fatalf("detached attachment metadata = %#v, want bucket %q", updatedMeta, wantBucket)
+		}
+		if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+			t.Fatalf("old attachment file should move away: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(app.UploadDir, filepath.FromSlash(updatedMeta.Path))); err != nil {
+			t.Fatalf("detached attachment file should be kept: %v", err)
+		}
+	})
+	t.Run("keep-page", func(t *testing.T) {
+		app, secret, adminID := newSecurityTestApp(t)
+		app.UploadDir = t.TempDir()
+		ctx := context.Background()
+		pageID := createPublishedPage(t, app, adminID, "delete-page-keep")
+		attachment, meta := uploadMedia(t, app, secret, adminID, pageID, "cover.png", tinyPNG(t))
+		oldPath := filepath.Join(app.UploadDir, filepath.FromSlash(meta.Path))
+		deletePageRequest(t, app, secret, adminID, pageID)
+		updated, err := app.Contents.ByID(ctx, attachment.CID)
+		if err != nil {
+			t.Fatalf("page attachment record should be kept: %v", err)
+		}
+		if updated.Parent != 0 {
+			t.Fatalf("page attachment parent = %d, want detached", updated.Parent)
+		}
+		updatedMeta := parseAttachmentMeta(updated)
+		wantBucket := "unattached/" + itoa(pageID) + "-pages/"
+		if !strings.HasPrefix(updatedMeta.Path, wantBucket) || !strings.HasPrefix(updatedMeta.URL, "/uploads/"+wantBucket) {
+			t.Fatalf("detached page attachment metadata = %#v, want bucket %q", updatedMeta, wantBucket)
+		}
+		if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+			t.Fatalf("old page attachment file should move away: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(app.UploadDir, filepath.FromSlash(updatedMeta.Path))); err != nil {
+			t.Fatalf("detached page attachment file should be kept: %v", err)
 		}
 	})
 	t.Run("file", func(t *testing.T) {
@@ -2397,6 +2569,22 @@ func createPublishedPost(t *testing.T, app *App, authorID int64, slug string) in
 	return id
 }
 
+func createPublishedPage(t *testing.T, app *App, authorID int64, slug string) int64 {
+	t.Helper()
+	id, err := app.Contents.Create(context.Background(), services.SaveContentInput{
+		Title:        slug,
+		Slug:         slug,
+		Text:         "body",
+		Type:         models.ContentTypePage,
+		Status:       models.ContentStatusPost,
+		AllowComment: true,
+	}, authorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
 func uploadMedia(t *testing.T, app *App, secret string, adminID, parentID int64, filename string, content []byte) (models.Content, models.AttachmentMeta) {
 	t.Helper()
 	req := multipartUploadRequestBytes(t, "/admin/medias", map[string]string{"_csrf": adminToken(secret, adminID), "cid": itoa(parentID)}, "file", filename, content)
@@ -2427,6 +2615,19 @@ func deleteContentRequest(t *testing.T, app *App, secret string, adminID, cid in
 	app.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("delete content status = %d, want 303: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func deletePageRequest(t *testing.T, app *App, secret string, adminID, cid int64) {
+	t.Helper()
+	form := url.Values{"_csrf": {adminToken(secret, adminID)}}
+	req := httptest.NewRequest(http.MethodPost, "/admin/pages/"+itoa(cid)+"/delete", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("delete page status = %d, want 303: %s", rec.Code, rec.Body.String())
 	}
 }
 

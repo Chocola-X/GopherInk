@@ -22,11 +22,11 @@
     <mdui-button type="button" variant="outlined" class="file-select-button" data-file-target="media-upload-file"><mdui-icon slot="icon" name="attach_file"></mdui-icon>选择文件</mdui-button>
     <span class="file-name muted">未选择文件</span>
   </div>
-  <label class="muted" for="cid">关联内容</label>
-  <select id="cid" name="cid">
-    <option value="0">不关联</option>
-    {{range .Posts}}<option value="{{.CID}}">{{.Title}}</option>{{end}}
-  </select>
+  <mdui-select name="cid" label="关联内容" value="0">
+    <mdui-menu-item value="0">不关联</mdui-menu-item>
+    {{range .Posts}}<mdui-menu-item value="{{.CID}}">文章：{{.Title}}</mdui-menu-item>{{end}}
+    {{range .Pages}}<mdui-menu-item value="{{.CID}}">页面：{{.Title}}</mdui-menu-item>{{end}}
+  </mdui-select>
   <div class="form-actions"><mdui-button type="submit"><mdui-icon slot="icon" name="upload"></mdui-icon>上传</mdui-button></div>
 </form>
 <section class="table-panel" style="margin-top:16px">

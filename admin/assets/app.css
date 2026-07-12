@@ -374,6 +374,52 @@ mdui-select::part(text-field__container) {
   background: var(--swatch);
 }
 
+.asset-manager {
+  margin-top: 16px;
+}
+
+.asset-manager-head,
+.asset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.asset-manager-head h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.asset-manager-head p {
+  margin: 4px 0 0;
+}
+
+.asset-list,
+.asset-main {
+  display: grid;
+  gap: 8px;
+}
+
+.asset-row {
+  padding: 12px;
+  border: 1px solid rgba(var(--mdui-color-outline-variant), 0.72);
+  border-radius: 8px;
+  background: rgba(var(--mdui-color-surface-container-highest), var(--admin-input-opacity));
+}
+
+.asset-main {
+  min-width: 0;
+}
+
+.asset-main code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: rgb(var(--mdui-color-on-surface-variant));
+}
+
 .media-picker {
   display: flex;
   flex-wrap: wrap;
@@ -597,12 +643,18 @@ mdui-icon {
 
   .editor-upload,
   .schema-upload-row,
+  .asset-manager-head,
+  .asset-row,
   .inline-upload {
+    align-items: stretch;
+    flex-direction: column;
     justify-content: stretch;
   }
 
   .editor-upload mdui-button,
   .schema-upload-row mdui-button,
+  .asset-manager-head mdui-button,
+  .asset-row mdui-button,
   .inline-upload mdui-button,
   .file-control mdui-button {
     width: 100%;

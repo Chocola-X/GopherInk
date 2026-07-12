@@ -62,4 +62,38 @@
     <mdui-button type="submit"><mdui-icon slot="icon" name="save"></mdui-icon>保存</mdui-button>
   </div>
 </form>
+{{with .AssetManager}}
+<section class="form-panel field-stack asset-manager">
+  <div class="asset-manager-head">
+    <div>
+      <h2>{{.Title}}</h2>
+      {{if .Description}}<p class="muted">{{.Description}}</p>{{end}}
+    </div>
+    <form method="post" action="{{.CleanURL}}">
+      <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+      <mdui-button type="submit" variant="outlined"><mdui-icon slot="icon" name="cleaning_services"></mdui-icon>清理未使用素材</mdui-button>
+    </form>
+  </div>
+  {{if .Files}}
+    <div class="asset-list">
+      {{range .Files}}
+        <div class="asset-row">
+          <div class="asset-main">
+            <strong>{{.Name}}</strong>
+            <code>{{.URL}}</code>
+            <span class="muted">{{.SizeLabel}} · {{.Modified}}{{if .Used}} · 使用中{{else}} · 未使用{{end}}</span>
+          </div>
+          <form method="post" action="{{$.AssetManager.DeleteURL}}">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="name" value="{{.Name}}">
+            <mdui-button type="submit" variant="text"><mdui-icon slot="icon" name="delete"></mdui-icon>删除</mdui-button>
+          </form>
+        </div>
+      {{end}}
+    </div>
+  {{else}}
+    <span class="muted">暂无上传素材。</span>
+  {{end}}
+</section>
+{{end}}
 {{end}}

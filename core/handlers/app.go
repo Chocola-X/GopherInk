@@ -26,6 +26,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -116,6 +117,7 @@ func (a *App) Handler() http.Handler {
 		"/admin/plugins/":             a.adminPluginRoutes,
 		"/admin/management":           a.adminManagement,
 		"/admin/management/upload":    a.adminManagementUpload,
+		"/admin/management/assets/":   a.adminManagementAssets,
 		"/admin/medias":               a.adminMedias,
 		"/admin/medias/":              a.adminMediaRoutes,
 		"/admin/backup":               a.adminBackup,
@@ -1428,6 +1430,10 @@ func (a *App) adminThemeRoutes(w http.ResponseWriter, r *http.Request) {
 		a.adminThemeConfig(w, r, name)
 	case "files":
 		a.adminThemeFiles(w, r, name)
+	case "upload":
+		a.adminThemeUpload(w, r, name)
+	case "assets":
+		a.adminThemeAssets(w, r, name, parts[2:])
 	default:
 		http.NotFound(w, r)
 	}
@@ -1597,20 +1603,36 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 		http.NotFound(w, r)
 		return
 	}
+	uploadURL := ""
+	var assets *settingsAssetManager
+	if name == "default" {
+		uploadURL = "/admin/themes/" + name + "/upload"
+		assets = a.settingsAssetManager(r.Context(), settingsAssetManagerConfig{
+			Title:       "默认主题素材",
+			Description: "管理默认主题设置中上传到 /uploads/theme-settings/ 的图片素材。",
+			Bucket:      themeSettingsUploadBucket,
+			OptionKey:   themeOptionKey(name),
+			DeleteURL:   "/admin/themes/" + name + "/assets/delete",
+			CleanURL:    "/admin/themes/" + name + "/assets/clean",
+		})
+	}
 	a.schemaForm(w, r, schemaFormConfig{
-		Title:     "主题设置：" + name,
-		Template:  "schema_form.html",
-		BackURL:   "/admin/themes",
-		OptionKey: themeOptionKey(name),
-		Schema:    theme.ConfigSchema,
-		SavedURL:  r.URL.Path,
-		Saved:     r.URL.Query().Get("saved") == "1",
+		Title:        "主题设置：" + name,
+		Template:     "schema_form.html",
+		BackURL:      "/admin/themes",
+		OptionKey:    themeOptionKey(name),
+		Schema:       theme.ConfigSchema,
+		SavedURL:     r.URL.Path,
+		Saved:        r.URL.Query().Get("saved") == "1",
+		UploadURL:    uploadURL,
+		AssetManager: assets,
 	})
 }
 
 const (
 	adminAppearanceOptionKey  = "admin_appearance"
 	adminSettingsUploadBucket = "admin-settings"
+	themeSettingsUploadBucket = "theme-settings"
 )
 
 func (a *App) adminManagement(w http.ResponseWriter, r *http.Request) {
@@ -1626,6 +1648,14 @@ func (a *App) adminManagement(w http.ResponseWriter, r *http.Request) {
 		SavedURL:  r.URL.Path,
 		Saved:     r.URL.Query().Get("saved") == "1",
 		UploadURL: "/admin/management/upload",
+		AssetManager: a.settingsAssetManager(r.Context(), settingsAssetManagerConfig{
+			Title:       "后台个性化素材",
+			Description: "管理后台设置中上传到 /uploads/admin-settings/ 的图片素材。",
+			Bucket:      adminSettingsUploadBucket,
+			OptionKey:   adminAppearanceOptionKey,
+			DeleteURL:   "/admin/management/assets/delete",
+			CleanURL:    "/admin/management/assets/clean",
+		}),
 	})
 }
 
@@ -1773,15 +1803,16 @@ func (a *App) adminThemeFiles(w http.ResponseWriter, r *http.Request, name strin
 }
 
 type schemaFormConfig struct {
-	Title     string
-	Template  string
-	BackURL   string
-	OptionKey string
-	UserID    int64
-	Schema    []plugin.FieldSchema
-	SavedURL  string
-	Saved     bool
-	UploadURL string
+	Title        string
+	Template     string
+	BackURL      string
+	OptionKey    string
+	UserID       int64
+	Schema       []plugin.FieldSchema
+	SavedURL     string
+	Saved        bool
+	UploadURL    string
+	AssetManager *settingsAssetManager
 }
 
 func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormConfig) {
@@ -1798,7 +1829,7 @@ func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormC
 		if uploadURL == "" {
 			uploadURL = "/admin/schema/upload"
 		}
-		a.renderAdmin(w, r, cfg.Template, map[string]any{"Title": cfg.Title, "BackURL": cfg.BackURL, "Schema": cfg.Schema, "Values": values, "Saved": cfg.Saved, "UploadURL": uploadURL})
+		a.renderAdmin(w, r, cfg.Template, map[string]any{"Title": cfg.Title, "BackURL": cfg.BackURL, "Schema": cfg.Schema, "Values": values, "Saved": cfg.Saved, "UploadURL": uploadURL, "AssetManager": cfg.AssetManager})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -2040,6 +2071,206 @@ func (a *App) adminManagementUpload(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "url": url})
 }
 
+func (a *App) adminThemeUpload(w http.ResponseWriter, r *http.Request, name string) {
+	if name != "default" {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if !a.requireRole(w, r, "administrator") {
+		return
+	}
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "请选择要上传的文件", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+	url, err := a.saveThemeSettingUpload(r.Context(), file, header.Filename)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "url": url})
+}
+
+func (a *App) adminManagementAssets(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "administrator") {
+		return
+	}
+	action := strings.Trim(strings.TrimPrefix(r.URL.Path, "/admin/management/assets/"), "/")
+	a.handleSettingsAssets(w, r, settingsAssetManagerConfig{
+		Bucket:      adminSettingsUploadBucket,
+		OptionKey:   adminAppearanceOptionKey,
+		RedirectURL: "/admin/management",
+	}, action)
+}
+
+func (a *App) adminThemeAssets(w http.ResponseWriter, r *http.Request, name string, rest []string) {
+	if name != "default" {
+		http.NotFound(w, r)
+		return
+	}
+	if !a.requireRole(w, r, "administrator") {
+		return
+	}
+	action := ""
+	if len(rest) > 0 {
+		action = rest[0]
+	}
+	a.handleSettingsAssets(w, r, settingsAssetManagerConfig{
+		Bucket:      themeSettingsUploadBucket,
+		OptionKey:   themeOptionKey(name),
+		RedirectURL: "/admin/themes/" + name + "/config",
+	}, action)
+}
+
+func (a *App) handleSettingsAssets(w http.ResponseWriter, r *http.Request, cfg settingsAssetManagerConfig, action string) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	switch action {
+	case "delete":
+		if err := a.deleteSettingsAsset(cfg.Bucket, r.FormValue("name")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		a.flashRedirect(w, r, cfg.RedirectURL, http.StatusSeeOther, flashNotice{Type: "success", Message: "素材已删除。"})
+	case "clean":
+		used := a.usedSettingsAssetURLs(r.Context(), cfg.OptionKey, cfg.Bucket)
+		if _, err := a.cleanUnusedSettingsAssets(cfg.Bucket, used); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		a.flashRedirect(w, r, cfg.RedirectURL, http.StatusSeeOther, flashNotice{Type: "success", Message: "未使用素材已清理。"})
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+type settingsAssetManagerConfig struct {
+	Title       string
+	Description string
+	Bucket      string
+	OptionKey   string
+	DeleteURL   string
+	CleanURL    string
+	RedirectURL string
+}
+
+type settingsAssetManager struct {
+	Title       string
+	Description string
+	DeleteURL   string
+	CleanURL    string
+	Files       []settingsAssetFile
+}
+
+type settingsAssetFile struct {
+	Name      string
+	URL       string
+	SizeLabel string
+	Modified  string
+	Used      bool
+}
+
+func (a *App) settingsAssetManager(ctx context.Context, cfg settingsAssetManagerConfig) *settingsAssetManager {
+	used := a.usedSettingsAssetURLs(ctx, cfg.OptionKey, cfg.Bucket)
+	return &settingsAssetManager{
+		Title:       cfg.Title,
+		Description: cfg.Description,
+		DeleteURL:   cfg.DeleteURL,
+		CleanURL:    cfg.CleanURL,
+		Files:       a.settingsAssetFiles(cfg.Bucket, used),
+	}
+}
+
+func (a *App) usedSettingsAssetURLs(ctx context.Context, optionKey, bucket string) map[string]bool {
+	used := map[string]bool{}
+	values, err := a.optionJSONForUser(ctx, optionKey, 0)
+	if err != nil {
+		return used
+	}
+	prefix := "/uploads/" + strings.Trim(bucket, "/") + "/"
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if strings.HasPrefix(value, prefix) {
+			used[value] = true
+		}
+	}
+	return used
+}
+
+func (a *App) settingsAssetFiles(bucket string, used map[string]bool) []settingsAssetFile {
+	dir := filepath.Join(a.UploadDir, bucket)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	files := make([]settingsAssetFile, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		url := "/uploads/" + path.Join(bucket, entry.Name())
+		files = append(files, settingsAssetFile{
+			Name:      entry.Name(),
+			URL:       url,
+			SizeLabel: formatBytes(info.Size()),
+			Modified:  info.ModTime().Format("2006-01-02 15:04"),
+			Used:      used[url],
+		})
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name < files[j].Name
+	})
+	return files
+}
+
+func (a *App) deleteSettingsAsset(bucket, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" || path.Base(name) != name || filepath.Base(name) != name {
+		return fmt.Errorf("invalid asset name")
+	}
+	fullPath := filepath.Join(a.UploadDir, bucket, name)
+	if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func (a *App) cleanUnusedSettingsAssets(bucket string, used map[string]bool) (int, error) {
+	files := a.settingsAssetFiles(bucket, used)
+	removed := 0
+	for _, file := range files {
+		if file.Used {
+			continue
+		}
+		if err := a.deleteSettingsAsset(bucket, file.Name); err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
+}
+
 func (a *App) adminMedias(w http.ResponseWriter, r *http.Request) {
 	if !a.requireRole(w, r, "contributor") {
 		return
@@ -2059,11 +2290,14 @@ func (a *App) adminMedias(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		posts, _ := a.Contents.List(r.Context(), postQuery)
-		pages, _ := a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePage, Status: "all", Limit: 200})
+		var pages []models.Content
+		if roleRank(user.Role) >= roleRank("editor") {
+			pages, _ = a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePage, Status: "all", Limit: 200})
+		}
 		users, _ := a.Users.List(r.Context(), "")
 		views := a.mediaViews(medias, posts, pages, users)
 		views = filterMediaViews(views, r.URL.Query().Get("kind"), r.URL.Query().Get("author"), r.URL.Query().Get("keywords"))
-		a.renderAdmin(w, r, "medias.html", map[string]any{"Title": "附件", "Medias": views, "Posts": posts, "Saved": r.URL.Query().Get("saved") == "1", "Kind": r.URL.Query().Get("kind"), "Author": r.URL.Query().Get("author"), "Keywords": r.URL.Query().Get("keywords"), "Users": users})
+		a.renderAdmin(w, r, "medias.html", map[string]any{"Title": "附件", "Medias": views, "Posts": posts, "Pages": pages, "Saved": r.URL.Query().Get("saved") == "1", "Kind": r.URL.Query().Get("kind"), "Author": r.URL.Query().Get("author"), "Keywords": r.URL.Query().Get("keywords"), "Users": users})
 	case http.MethodPost:
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -2212,11 +2446,159 @@ func (a *App) deleteContentWithAttachmentPolicy(ctx context.Context, cid int64) 
 			}
 			_, _ = a.Plugins.ApplyActive(ctx, plugin.HookAttachmentAfterDelete, payload)
 		}
+	} else if policy == "keep" {
+		if err := a.detachContentAttachments(ctx, item, attachments); err != nil {
+			return err
+		}
 	}
 	if err := a.Contents.Delete(ctx, cid); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (a *App) detachContentAttachments(ctx context.Context, item models.Content, attachments []models.Content) error {
+	sourceBucket, ok := contentAttachmentBucket(item)
+	if !ok {
+		return nil
+	}
+	targetBucket, ok := detachedContentAttachmentBucket(item)
+	if !ok {
+		return nil
+	}
+	moved := map[string]string{}
+	sourceBuckets := []string{sourceBucket}
+	legacyBucket := strconv.FormatInt(item.CID, 10)
+	if legacyBucket != sourceBucket {
+		sourceBuckets = append(sourceBuckets, legacyBucket)
+	}
+	for _, bucket := range sourceBuckets {
+		next, err := a.moveUploadBucket(bucket, targetBucket)
+		if err != nil {
+			return err
+		}
+		for oldPath, newPath := range next {
+			moved[oldPath] = newPath
+		}
+	}
+	for _, attachment := range attachments {
+		meta := parseAttachmentMeta(attachment)
+		if meta.Path == "" && strings.HasPrefix(meta.URL, "/uploads/") {
+			meta.Path = strings.TrimPrefix(meta.URL, "/uploads/")
+		}
+		if nextPath, ok := moved[meta.Path]; ok {
+			meta.Path = nextPath
+		} else if nextPath := rehomeAttachmentPath(meta.Path, sourceBuckets, targetBucket); nextPath != "" {
+			meta.Path = nextPath
+		}
+		if meta.Path != "" {
+			meta.URL = "/uploads/" + meta.Path
+		}
+		text, _ := json.Marshal(meta)
+		title := attachment.Title
+		if title == "" {
+			title = meta.Name
+		}
+		slug := attachment.Slug
+		if slug == "" {
+			slug = strings.TrimSuffix(filepath.Base(meta.Name), filepath.Ext(meta.Name))
+		}
+		if err := a.Contents.UpdateAttachmentMeta(ctx, attachment.CID, title, slug, string(text), 0); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func detachedContentAttachmentBucket(item models.Content) (string, bool) {
+	switch item.Type {
+	case models.ContentTypePost:
+		return path.Join("unattached", strconv.FormatInt(item.CID, 10)+"-post"), true
+	case models.ContentTypePage:
+		return path.Join("unattached", strconv.FormatInt(item.CID, 10)+"-pages"), true
+	default:
+		return "", false
+	}
+}
+
+func rehomeAttachmentPath(rel string, sourceBuckets []string, targetBucket string) string {
+	rel = strings.TrimPrefix(path.Clean(strings.TrimSpace(rel)), "/")
+	if rel == "." || rel == "" {
+		return ""
+	}
+	for _, bucket := range sourceBuckets {
+		bucket = strings.TrimPrefix(path.Clean(bucket), "/")
+		if rel == bucket {
+			return targetBucket
+		}
+		if strings.HasPrefix(rel, bucket+"/") {
+			return path.Join(targetBucket, strings.TrimPrefix(rel, bucket+"/"))
+		}
+	}
+	return ""
+}
+
+func (a *App) moveUploadBucket(sourceBucket, targetBucket string) (map[string]string, error) {
+	moved := map[string]string{}
+	sourceBucket = strings.TrimPrefix(path.Clean(sourceBucket), "/")
+	targetBucket = strings.TrimPrefix(path.Clean(targetBucket), "/")
+	if sourceBucket == "." || sourceBucket == "" || targetBucket == "." || targetBucket == "" || sourceBucket == targetBucket {
+		return moved, nil
+	}
+	sourceDir := filepath.Join(a.UploadDir, filepath.FromSlash(sourceBucket))
+	info, err := os.Stat(sourceDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return moved, nil
+	}
+	if err != nil {
+		return moved, err
+	}
+	if !info.IsDir() {
+		return moved, nil
+	}
+	targetDir := filepath.Join(a.UploadDir, filepath.FromSlash(targetBucket))
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return moved, err
+	}
+	err = filepath.WalkDir(sourceDir, func(filePath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(sourceDir, filePath)
+		if err != nil {
+			return err
+		}
+		targetRel := filepath.ToSlash(rel)
+		targetSubdir := filepath.Join(targetDir, filepath.Dir(rel))
+		if err := os.MkdirAll(targetSubdir, 0755); err != nil {
+			return err
+		}
+		targetName := filepath.Base(rel)
+		if _, err := os.Stat(filepath.Join(targetSubdir, targetName)); err == nil {
+			targetName = uniqueUploadName(targetSubdir, targetName)
+			if dir := filepath.ToSlash(filepath.Dir(targetRel)); dir != "." {
+				targetRel = path.Join(dir, targetName)
+			} else {
+				targetRel = targetName
+			}
+		}
+		targetPath := filepath.Join(targetSubdir, targetName)
+		if err := os.Rename(filePath, targetPath); err != nil {
+			return err
+		}
+		moved[path.Join(sourceBucket, filepath.ToSlash(rel))] = path.Join(targetBucket, targetRel)
+		return nil
+	})
+	if err != nil {
+		return moved, err
+	}
+	if err := os.RemoveAll(sourceDir); err != nil {
+		return moved, err
+	}
+	return moved, nil
 }
 
 func (a *App) validateAttachmentParent(w http.ResponseWriter, r *http.Request, user models.User, rawCID string) (int64, bool) {
@@ -3176,9 +3558,9 @@ func (a *App) saveUpload(ctx context.Context, src io.Reader, original string, pa
 	if !mimeAllowedForExt(ext, mimeType) {
 		return meta, fmt.Errorf("文件内容与扩展名不匹配")
 	}
-	bucket := "unattached"
-	if parent > 0 {
-		bucket = strconv.FormatInt(parent, 10)
+	bucket, err := a.uploadBucketForParent(ctx, parent)
+	if err != nil {
+		return meta, err
 	}
 	dir := filepath.Join(a.UploadDir, bucket)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -3219,7 +3601,41 @@ func (a *App) saveUpload(ctx context.Context, src io.Reader, original string, pa
 	return meta, nil
 }
 
+func (a *App) uploadBucketForParent(ctx context.Context, parent int64) (string, error) {
+	if parent <= 0 {
+		return "unattached", nil
+	}
+	item, err := a.Contents.ByID(ctx, parent)
+	if err != nil {
+		return "", err
+	}
+	bucket, ok := contentAttachmentBucket(item)
+	if !ok {
+		return "", fmt.Errorf("attachments must target a post or page")
+	}
+	return bucket, nil
+}
+
+func contentAttachmentBucket(item models.Content) (string, bool) {
+	switch item.Type {
+	case models.ContentTypePost:
+		return path.Join("posts", strconv.FormatInt(item.CID, 10)), true
+	case models.ContentTypePage:
+		return path.Join("pages", strconv.FormatInt(item.CID, 10)), true
+	default:
+		return "", false
+	}
+}
+
 func (a *App) saveAdminSettingUpload(ctx context.Context, src io.Reader, original string) (string, error) {
+	return a.saveSettingsUpload(ctx, adminSettingsUploadBucket, src, original)
+}
+
+func (a *App) saveThemeSettingUpload(ctx context.Context, src io.Reader, original string) (string, error) {
+	return a.saveSettingsUpload(ctx, themeSettingsUploadBucket, src, original)
+}
+
+func (a *App) saveSettingsUpload(ctx context.Context, bucket string, src io.Reader, original string) (string, error) {
 	maxSize := int64(optionInt(a.option(ctx, "upload_max_size", "10485760"), 10485760))
 	if maxSize <= 0 {
 		maxSize = 10 << 20
@@ -3233,7 +3649,7 @@ func (a *App) saveAdminSettingUpload(ctx context.Context, src io.Reader, origina
 	}
 	name := sanitizeFilename(original)
 	if name == "" {
-		name = "admin-setting-image"
+		name = "setting-image"
 	}
 	if dangerousUpload(name) || !allowedUploadExt(name, a.option(ctx, "upload_allowed_exts", "")) {
 		return "", fmt.Errorf("不允许上传该文件类型")
@@ -3246,7 +3662,7 @@ func (a *App) saveAdminSettingUpload(ctx context.Context, src io.Reader, origina
 	if !mimeAllowedForExt(ext, mimeType) {
 		return "", fmt.Errorf("文件内容与扩展名不匹配")
 	}
-	dir := filepath.Join(a.UploadDir, adminSettingsUploadBucket)
+	dir := filepath.Join(a.UploadDir, bucket)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", err
 	}
@@ -3260,7 +3676,7 @@ func (a *App) saveAdminSettingUpload(ctx context.Context, src io.Reader, origina
 	if _, err := io.Copy(dst, bytes.NewReader(data)); err != nil {
 		return "", err
 	}
-	return "/uploads/" + path.Join(adminSettingsUploadBucket, targetName), nil
+	return "/uploads/" + path.Join(bucket, targetName), nil
 }
 
 func adminSettingImageExt(ext string) bool {
