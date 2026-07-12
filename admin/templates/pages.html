@@ -8,12 +8,12 @@
 </div>
 <form method="get" class="filter-bar">
   <mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field>
-  <select name="status">
-    <option value="all">全部状态</option>
-    <option value="publish" {{if eq .Status "publish"}}selected{{end}}>已发布</option>
-    <option value="draft" {{if eq .Status "draft"}}selected{{end}}>草稿</option>
-    <option value="hidden" {{if eq .Status "hidden"}}selected{{end}}>隐藏</option>
-  </select>
+  <mdui-select name="status" label="状态" value="{{if .Status}}{{.Status}}{{else}}all{{end}}">
+    <mdui-menu-item value="all">全部状态</mdui-menu-item>
+    <mdui-menu-item value="publish">已发布</mdui-menu-item>
+    <mdui-menu-item value="draft">草稿</mdui-menu-item>
+    <mdui-menu-item value="hidden">隐藏</mdui-menu-item>
+  </mdui-select>
   <mdui-button type="submit" variant="outlined">筛选</mdui-button>
 </form>
 <section class="table-panel">

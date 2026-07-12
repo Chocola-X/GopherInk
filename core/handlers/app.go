@@ -4063,21 +4063,22 @@ func (a *App) validPreviewToken(r *http.Request, c models.Content) bool {
 func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
 	lang := a.option(r.Context(), "site_language", "zh-CN")
 	funcs := template.FuncMap{
-		"date":             func(ts int64) string { return a.formatDate(r.Context(), ts, "post_date_format") },
-		"T":                func(key string) string { return i18n.T(lang, key) },
-		"statusLabel":      statusLabel,
-		"contentStatus":    contentStatusLabel,
-		"roleLabel":        roleLabel,
-		"excerpt":          render.Excerpt,
-		"containsMeta":     containsMeta,
-		"joinMetaNames":    joinMetaNames,
-		"checked":          checked,
-		"contentPublicURL": contentPublicURL,
-		"fieldError":       fieldError,
-		"fieldValue":       fieldValue,
-		"schemaValue":      schemaValue,
-		"schemaChecked":    schemaChecked,
-		"adminAvatarURL":   adminAvatarURL,
+		"date":                   func(ts int64) string { return a.formatDate(r.Context(), ts, "post_date_format") },
+		"T":                      func(key string) string { return i18n.T(lang, key) },
+		"statusLabel":            statusLabel,
+		"contentStatus":          contentStatusLabel,
+		"roleLabel":              roleLabel,
+		"excerpt":                render.Excerpt,
+		"containsMeta":           containsMeta,
+		"joinMetaNames":          joinMetaNames,
+		"checked":                checked,
+		"contentPublicURL":       contentPublicURL,
+		"fieldError":             fieldError,
+		"fieldValue":             fieldValue,
+		"schemaValue":            schemaValue,
+		"schemaChecked":          schemaChecked,
+		"schemaOptionsAreColors": schemaOptionsAreColors,
+		"adminAvatarURL":         adminAvatarURL,
 	}
 	tmpl, err := template.New("base.html").Funcs(funcs).ParseFS(admin.FS, "templates/base.html", "templates/"+page)
 	if err != nil {
@@ -5449,6 +5450,18 @@ func schemaValue(values map[string]string, name string) string {
 
 func schemaChecked(values map[string]string, name string) bool {
 	return checked(schemaValue(values, name))
+}
+
+func schemaOptionsAreColors(options []plugin.FieldOption) bool {
+	if len(options) == 0 {
+		return false
+	}
+	for _, option := range options {
+		if adminAppearanceHexColor(option.Value) == "" {
+			return false
+		}
+	}
+	return true
 }
 
 func (a *App) activePluginSet(ctx context.Context) map[string]bool {

@@ -8,18 +8,18 @@
 </div>
 <form method="get" class="filter-bar">
   <mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field>
-  <select name="status">
-    <option value="all">全部状态</option>
-    <option value="publish" {{if eq .Status "publish"}}selected{{end}}>已发布</option>
-    <option value="draft" {{if eq .Status "draft"}}selected{{end}}>草稿</option>
-    <option value="waiting" {{if eq .Status "waiting"}}selected{{end}}>待审核</option>
-    <option value="hidden" {{if eq .Status "hidden"}}selected{{end}}>隐藏</option>
-    <option value="private" {{if eq .Status "private"}}selected{{end}}>私密</option>
-  </select>
-  <select name="category">
-    <option value="0">所有分类</option>
-    {{range .Categories}}<option value="{{.MID}}" {{if eq $.Category .MID}}selected{{end}}>{{.Name}}</option>{{end}}
-  </select>
+  <mdui-select name="status" label="状态" value="{{if .Status}}{{.Status}}{{else}}all{{end}}">
+    <mdui-menu-item value="all">全部状态</mdui-menu-item>
+    <mdui-menu-item value="publish">已发布</mdui-menu-item>
+    <mdui-menu-item value="draft">草稿</mdui-menu-item>
+    <mdui-menu-item value="waiting">待审核</mdui-menu-item>
+    <mdui-menu-item value="hidden">隐藏</mdui-menu-item>
+    <mdui-menu-item value="private">私密</mdui-menu-item>
+  </mdui-select>
+  <mdui-select name="category" label="分类" value="{{.Category}}">
+    <mdui-menu-item value="0">所有分类</mdui-menu-item>
+    {{range .Categories}}<mdui-menu-item value="{{.MID}}">{{.Name}}</mdui-menu-item>{{end}}
+  </mdui-select>
   <mdui-button type="submit" variant="outlined">筛选</mdui-button>
 </form>
 <section class="table-panel">

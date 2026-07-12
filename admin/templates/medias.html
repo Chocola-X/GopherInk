@@ -17,7 +17,11 @@
   <mdui-button type="submit" variant="outlined">筛选</mdui-button>
 </form>
 <form method="post" enctype="multipart/form-data" class="form-panel field-stack">
-  <mdui-text-field type="file" name="file" label="选择文件"></mdui-text-field>
+  <div class="file-control">
+    <input type="file" id="media-upload-file" name="file" class="native-file-input" hidden>
+    <mdui-button type="button" variant="outlined" class="file-select-button" data-file-target="media-upload-file"><mdui-icon slot="icon" name="attach_file"></mdui-icon>选择文件</mdui-button>
+    <span class="file-name muted">未选择文件</span>
+  </div>
   <label class="muted" for="cid">关联内容</label>
   <select id="cid" name="cid">
     <option value="0">不关联</option>
@@ -46,8 +50,8 @@
         <td><div class="row-actions">
           <mdui-button type="button" variant="text" class="copy-text" data-copy="{{.URL}}">复制 URL</mdui-button>
           <form method="post" enctype="multipart/form-data" action="/admin/medias/{{.CID}}/replace" class="inline-upload">
-            <mdui-text-field type="file" name="file" label="替换"></mdui-text-field>
-            <mdui-button type="submit" variant="text">替换</mdui-button>
+            <input type="file" id="media-replace-{{.CID}}" name="file" class="native-file-input" data-auto-submit hidden>
+            <mdui-button type="button" variant="text" class="file-select-button" data-file-target="media-replace-{{.CID}}">替换</mdui-button>
           </form>
           <form method="post" action="/admin/medias/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
         </div></td>

@@ -107,6 +107,7 @@
     initTagInputs(root);
     initMediaPicker(root);
     initEditorUpload(root);
+    initNativeFileButtons(root);
     initCopyButtons(root);
     initSchemaForm(root);
     initAdminNotices(root);
@@ -340,32 +341,19 @@
         return;
       }
 
-      function selectedFile() {
-        if (fileField.files && fileField.files.length) {
-          return fileField.files[0];
-        }
-        var input = fileField.querySelector && fileField.querySelector('input[type="file"]');
-        if (input && input.files && input.files.length) {
-          return input.files[0];
-        }
-        if (fileField.shadowRoot) {
-          input = fileField.shadowRoot.querySelector('input[type="file"]');
-          if (input && input.files && input.files.length) {
-            return input.files[0];
-          }
-        }
-        return null;
-      }
-
       button.addEventListener("click", function () {
+        fileField.value = "";
+        fileField.click();
+      });
+
+      fileField.addEventListener("change", function () {
         var csrf = csrfToken();
-        var file = selectedFile();
+        var file = fileField.files && fileField.files.length ? fileField.files[0] : null;
         if (!csrf) {
-          button.textContent = "令牌失效";
+          setButtonLabel(button, "令牌失效");
           return;
         }
         if (!file) {
-          button.textContent = "请选择文件";
           return;
         }
         var data = new FormData();
@@ -374,6 +362,8 @@
         if (cid && cid.value) {
           data.set("cid", cid.value);
         }
+        button.loading = true;
+        setButtonLabel(button, "上传中");
         fetch("/admin/medias", {
           method: "POST",
           body: data,
@@ -386,10 +376,55 @@
           return res.json();
         }).then(function (payload) {
           appendToEditor(payload.markdown || payload.url || "");
-          button.textContent = "已插入";
-        }).catch(function () {
-          button.textContent = "上传失败";
+          setButtonLabel(button, "已插入");
+        }).catch(function (err) {
+          showMessage("上传失败：" + err.message);
+          setButtonLabel(button, "上传并插入");
+        }).finally(function () {
+          fileField.value = "";
+          button.loading = false;
         });
+      });
+    });
+  }
+
+  function initNativeFileButtons(root) {
+    query(root, ".file-select-button").forEach(function (button) {
+      if (bound(button, "adminFileButtonBound")) {
+        return;
+      }
+      button.addEventListener("click", function () {
+        var id = button.dataset.fileTarget || "";
+        var input = id ? document.getElementById(id) : null;
+        if (!input) {
+          input = button.closest("form") && button.closest("form").querySelector(".native-file-input");
+        }
+        if (!input) {
+          return;
+        }
+        input.value = "";
+        input.click();
+      });
+    });
+
+    query(root, ".native-file-input").forEach(function (input) {
+      if (bound(input, "adminNativeFileBound")) {
+        return;
+      }
+      input.addEventListener("change", function () {
+        var file = input.files && input.files.length ? input.files[0] : null;
+        var control = input.closest(".file-control") || input.closest(".inline-upload");
+        var label = control && control.querySelector(".file-name");
+        if (label) {
+          label.textContent = file ? file.name : "未选择文件";
+        }
+        if (file && input.hasAttribute("data-auto-submit") && input.form) {
+          if (typeof input.form.requestSubmit === "function") {
+            input.form.requestSubmit();
+          } else {
+            input.form.submit();
+          }
+        }
       });
     });
   }
@@ -418,22 +453,12 @@
       }
       var uploadURL = form.dataset.schemaUploadUrl || "/admin/schema/upload";
 
-      query(form, ".schema-swatch").forEach(function (button) {
-        button.addEventListener("click", function () {
-          var wrap = button.closest(".schema-swatches");
-          var target = wrap && form.querySelector('[name="' + cssEscape(wrap.dataset.target || "") + '"]');
-          if (target) {
-            target.value = button.dataset.color || "";
-            target.dispatchEvent(new Event("input", { bubbles: true }));
-          }
-        });
-      });
-
-      query(form, ".schema-pick-file").forEach(function (button) {
+      query(form, ".schema-upload-button").forEach(function (button) {
         button.addEventListener("click", function () {
           var field = button.closest(".schema-image-field");
           var fileInput = field && field.querySelector(".schema-native-file");
           if (fileInput) {
+            fileInput.value = "";
             fileInput.click();
           }
         });
@@ -442,27 +467,19 @@
       query(form, ".schema-native-file").forEach(function (input) {
         input.addEventListener("change", function () {
           var field = input.closest(".schema-image-field");
-          var label = field && field.querySelector(".schema-file-name");
-          if (label) {
-            label.textContent = input.files && input.files[0] ? input.files[0].name : "未选择文件";
-          }
-        });
-      });
-
-      query(form, ".schema-upload-button").forEach(function (button) {
-        button.addEventListener("click", function () {
-          var field = button.closest(".schema-image-field");
-          var fileInput = field && field.querySelector(".schema-native-file");
-          if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+          var button = field && field.querySelector(".schema-upload-button");
+          var file = input.files && input.files.length ? input.files[0] : null;
+          if (!button || !file) {
             return;
           }
           var data = new FormData();
-          data.append("file", fileInput.files[0]);
+          data.append("file", file);
           var csrf = csrfToken();
           if (csrf) {
             data.append("_csrf", csrf);
           }
           button.loading = true;
+          setButtonLabel(button, "上传中");
           fetch(uploadURL, { method: "POST", body: data, credentials: "same-origin" })
             .then(function (response) {
               if (!response.ok) {
@@ -478,11 +495,14 @@
                 target.value = result.url;
                 target.dispatchEvent(new Event("input", { bubbles: true }));
               }
+              setButtonLabel(button, "已填入");
             })
             .catch(function (err) {
               showMessage("上传失败：" + err.message);
+              setButtonLabel(button, "上传并填入");
             })
             .finally(function () {
+              input.value = "";
               button.loading = false;
             });
         });
@@ -966,6 +986,17 @@
       return;
     }
     submitter.loading = loading;
+  }
+
+  function setButtonLabel(button, text) {
+    var label = button && button.querySelector && button.querySelector(".button-label");
+    if (label) {
+      label.textContent = text;
+      return;
+    }
+    if (button) {
+      button.textContent = text;
+    }
   }
 
   function replaceChildren(target, source) {

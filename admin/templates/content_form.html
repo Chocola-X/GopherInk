@@ -50,8 +50,8 @@
       <span class="muted">上传文件会保存到 data/uploads/{{if .FormCID}}{{.FormCID}}{{else}}unattached{{end}} 并插入 Markdown。</span>
     </div>
     <div class="editor-upload">
-      <mdui-text-field type="file" name="file" class="editor-upload-file" label="上传附件"></mdui-text-field>
-      <mdui-button type="button" variant="outlined" class="editor-upload-button"><mdui-icon slot="icon" name="upload"></mdui-icon>上传并插入</mdui-button>
+      <input type="file" name="file" class="editor-upload-file" hidden>
+      <mdui-button type="button" variant="outlined" class="editor-upload-button"><mdui-icon slot="icon" name="upload"></mdui-icon><span class="button-label">上传并插入</span></mdui-button>
     </div>
     <div class="media-picker">
       {{range .MediaLibrary}}

@@ -248,7 +248,11 @@ body.admin-pjax-loading .admin-main {
 
 .field-stack {
   display: grid;
-  gap: 16px;
+  gap: 20px;
+}
+
+.schema-form {
+  gap: 24px;
 }
 
 .filter-bar {
@@ -325,10 +329,49 @@ mdui-select::part(text-field__container) {
 }
 
 .editor-upload {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.file-control {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
-  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
+}
+
+.file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schema-image-field,
+.schema-color-field,
+.schema-option-field {
+  display: grid;
+  gap: 12px;
+}
+
+.schema-upload-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.schema-color-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.schema-color-chip {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 1px solid rgb(var(--mdui-color-outline-variant));
+  border-radius: 50%;
+  background: var(--swatch);
 }
 
 .media-picker {
@@ -469,9 +512,7 @@ tbody tr:hover {
 }
 
 .inline-upload {
-  display: grid;
-  grid-template-columns: 150px auto;
-  gap: 8px;
+  display: inline-flex;
   align-items: center;
 }
 
@@ -550,9 +591,21 @@ mdui-icon {
     grid-template-columns: 1fr;
   }
 
-  .editor-upload,
-  .inline-upload {
+  .file-control {
     grid-template-columns: 1fr;
+  }
+
+  .editor-upload,
+  .schema-upload-row,
+  .inline-upload {
+    justify-content: stretch;
+  }
+
+  .editor-upload mdui-button,
+  .schema-upload-row mdui-button,
+  .inline-upload mdui-button,
+  .file-control mdui-button {
+    width: 100%;
   }
 
   .custom-field-row,
