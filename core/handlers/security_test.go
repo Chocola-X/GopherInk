@@ -1367,6 +1367,68 @@ func TestDefaultThemeUploadUsesSeparateSettingsBucket(t *testing.T) {
 	}
 }
 
+func TestEditorMediaSourceFiltering(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	postA := createPublishedPost(t, app, adminID, "media-source-a")
+	postB := createPublishedPost(t, app, adminID, "media-source-b")
+	createAttachmentMeta(t, app, adminID, postA, models.AttachmentMeta{Name: "a.png", URL: "/uploads/posts/a/a.png", Path: "posts/a/a.png", Type: "png", MIME: "image/png", IsImage: true, Size: 12})
+	createAttachmentMeta(t, app, adminID, postB, models.AttachmentMeta{Name: "b.pdf", URL: "/uploads/posts/b/b.pdf", Path: "posts/b/b.pdf", Type: "pdf", MIME: "application/pdf", Size: 34})
+	createAttachmentMeta(t, app, adminID, 0, models.AttachmentMeta{Name: "loose.zip", URL: "/uploads/unattached/loose.zip", Path: "unattached/loose.zip", Type: "zip", MIME: "application/zip", Size: 56})
+
+	getItems := func(target string) []editorMediaItem {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		setSession(t, req, secret, adminID)
+		rec := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("editor media status = %d, want 200: %s", rec.Code, rec.Body.String())
+		}
+		var payload struct {
+			OK    bool              `json:"ok"`
+			Items []editorMediaItem `json:"items"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if !payload.OK {
+			t.Fatalf("editor media payload not ok: %#v", payload)
+		}
+		return payload.Items
+	}
+
+	if items := getItems("/admin/medias/editor?source=__none"); len(items) != 0 {
+		t.Fatalf("none source items = %#v, want empty", items)
+	}
+	items := getItems("/admin/medias/editor?source=__unattached")
+	if len(items) != 1 || items[0].Name != "loose.zip" || items[0].Icon != "folder_zip" {
+		t.Fatalf("unattached source items = %#v, want loose zip", items)
+	}
+	items = getItems("/admin/medias/editor?source=content:" + itoa(postB))
+	if len(items) != 1 || items[0].Name != "b.pdf" || items[0].Icon != "description" || !strings.Contains(items[0].Markdown, "[b.pdf]") {
+		t.Fatalf("post source items = %#v, want pdf markdown item", items)
+	}
+	items = getItems("/admin/medias/editor?source=current&parent=" + itoa(postA))
+	if len(items) != 1 || items[0].Name != "a.png" || !items[0].IsImage {
+		t.Fatalf("current source items = %#v, want image item", items)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/posts/new", nil)
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("new post form status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if strings.Contains(body, "loose.zip") || strings.Contains(body, "b.pdf") {
+		t.Fatalf("new post form should not render existing media by default: %s", body)
+	}
+	if !strings.Contains(body, "孤立附件") || !strings.Contains(body, "文章 #"+itoa(postA)) {
+		t.Fatalf("new post form missing media source options: %s", body)
+	}
+}
+
 func TestMediaUploadRejectsDangerousExtension(t *testing.T) {
 	app, secret, adminID := newSecurityTestApp(t)
 	app.UploadDir = t.TempDir()
@@ -2603,6 +2665,20 @@ func uploadMedia(t *testing.T, app *App, secret string, adminID, parentID int64,
 	}
 	item := attachments[0]
 	return item, parseAttachmentMeta(item)
+}
+
+func createAttachmentMeta(t *testing.T, app *App, authorID, parentID int64, meta models.AttachmentMeta) int64 {
+	t.Helper()
+	text, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slug := strings.TrimSuffix(filepath.Base(meta.Name), filepath.Ext(meta.Name))
+	id, err := app.Contents.CreateAttachmentMeta(context.Background(), meta.Name, slug, string(text), authorID, parentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
 
 func deleteContentRequest(t *testing.T, app *App, secret string, adminID, cid int64) {

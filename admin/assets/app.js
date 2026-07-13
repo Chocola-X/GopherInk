@@ -3,6 +3,7 @@
   var pjaxAbort = null;
   var pjaxReady = false;
   var lastSubmitter = null;
+  var lastEditorSelection = null;
 
   function ready(fn) {
     if (document.readyState === "loading") {
@@ -163,7 +164,11 @@
       function updateContentID(id) {
         id = parseInt(id || "0", 10);
         if (id > 0) {
+          var changed = cidInput.value !== String(id);
           cidInput.value = String(id);
+          if (changed) {
+            document.dispatchEvent(new CustomEvent("goblog:content-id", { detail: { cid: id } }));
+          }
         }
       }
 
@@ -307,14 +312,75 @@
   }
 
   function initMediaPicker(root) {
-    query(root, ".media-pick").forEach(function (button) {
-      if (bound(button, "adminMediaPickBound")) {
+    var editor = document.querySelector("#content-text");
+    if (editor && !editor.dataset.adminEditorSelectionBound) {
+      editor.dataset.adminEditorSelectionBound = "1";
+      ["focus", "click", "keyup", "mouseup", "select", "input"].forEach(function (eventName) {
+        editor.addEventListener(eventName, function () {
+          rememberEditorSelection(editor);
+        });
+      });
+    }
+
+    query(root, ".media-picker").forEach(function (picker) {
+      if (bound(picker, "adminMediaPickerBound")) {
         return;
       }
-      button.addEventListener("click", function () {
+      picker.addEventListener("click", function (event) {
+        var button = event.target.closest(".media-pick");
+        if (!button || !picker.contains(button)) {
+          return;
+        }
         appendToEditor(button.dataset.markdown || "");
       });
     });
+
+    query(root, ".editor-media-current").forEach(function (panel) {
+      if (bound(panel, "adminCurrentMediaBound")) {
+        return;
+      }
+      loadCurrentEditorMedia(panel);
+      document.addEventListener("goblog:content-id", function (event) {
+        if (!document.documentElement.contains(panel)) {
+          return;
+        }
+        if (event.detail && event.detail.cid) {
+          panel.dataset.parentId = String(event.detail.cid);
+          loadCurrentEditorMedia(panel);
+        }
+      });
+      document.addEventListener("goblog:media-uploaded", function () {
+        if (!document.documentElement.contains(panel)) {
+          return;
+        }
+        loadCurrentEditorMedia(panel);
+      });
+    });
+
+    query(root, ".editor-media-library").forEach(function (panel) {
+      if (bound(panel, "adminLibraryMediaBound")) {
+        return;
+      }
+      var select = panel.querySelector(".media-source-select");
+      if (!select) {
+        return;
+      }
+      select.addEventListener("change", function () {
+        loadLibraryEditorMedia(panel);
+      });
+      loadLibraryEditorMedia(panel);
+    });
+  }
+
+  function rememberEditorSelection(editor) {
+    if (!editor || typeof editor.selectionStart !== "number") {
+      return;
+    }
+    lastEditorSelection = {
+      editor: editor,
+      start: editor.selectionStart,
+      end: editor.selectionEnd
+    };
   }
 
   function appendToEditor(text) {
@@ -323,10 +389,131 @@
       return;
     }
     var current = editor.value || "";
-    var prefix = current && !/\n$/.test(current) ? "\n\n" : "";
-    editor.value = current + prefix + text + "\n";
+    var start = current.length;
+    var end = current.length;
+    if (document.activeElement === editor && typeof editor.selectionStart === "number") {
+      start = editor.selectionStart;
+      end = editor.selectionEnd;
+    }
+    if (lastEditorSelection && lastEditorSelection.editor === editor) {
+      start = lastEditorSelection.start;
+      end = lastEditorSelection.end;
+    }
+    start = Math.max(0, Math.min(start, current.length));
+    end = Math.max(start, Math.min(end, current.length));
+    var prefix = start > 0 && current.charAt(start - 1) !== "\n" ? "\n\n" : "";
+    var suffix = end < current.length && current.charAt(end) !== "\n" ? "\n\n" : "\n";
+    var insert = prefix + text + suffix;
+    editor.value = current.slice(0, start) + insert + current.slice(end);
+    var nextCursor = start + insert.length;
     editor.dispatchEvent(new Event("input", { bubbles: true }));
     editor.focus();
+    if (typeof editor.setSelectionRange === "function") {
+      editor.setSelectionRange(nextCursor, nextCursor);
+      rememberEditorSelection(editor);
+    }
+  }
+
+  function loadCurrentEditorMedia(panel) {
+    var parentID = parseInt(panel.dataset.parentId || "0", 10);
+    var picker = panel.querySelector(".media-picker-current");
+    if (!picker) {
+      return;
+    }
+    if (!parentID) {
+      renderMediaItems(picker, [], picker.dataset.emptyText || "当前内容暂无附件。");
+      return;
+    }
+    loadEditorMedia(panel.dataset.editorMediaUrl || "/admin/medias/editor", {
+      source: "current",
+      parent: String(parentID)
+    }, picker, picker.dataset.emptyText || "当前内容暂无附件。");
+  }
+
+  function loadLibraryEditorMedia(panel) {
+    var picker = panel.querySelector(".media-picker-library");
+    var select = panel.querySelector(".media-source-select");
+    if (!picker || !select) {
+      return;
+    }
+    var source = select.value || "__none";
+    var emptyText = source === "__none" ? "请选择附件来源。" : "该来源暂无附件。";
+    if (source === "__none") {
+      renderMediaItems(picker, [], emptyText);
+      return;
+    }
+    loadEditorMedia(panel.dataset.editorMediaUrl || "/admin/medias/editor", {
+      source: source
+    }, picker, emptyText);
+  }
+
+  function loadEditorMedia(url, params, picker, emptyText) {
+    picker.innerHTML = '<span class="muted">加载中...</span>';
+    var query = new URLSearchParams(params);
+    fetch(url + "?" + query.toString(), {
+      headers: { "Accept": "application/json" },
+      credentials: "same-origin"
+    }).then(function (res) {
+      if (!res.ok) {
+        throw new Error("media load failed");
+      }
+      return res.json();
+    }).then(function (payload) {
+      renderMediaItems(picker, payload.items || [], emptyText);
+    }).catch(function () {
+      renderMediaItems(picker, [], "附件加载失败。");
+    });
+  }
+
+  function renderMediaItems(picker, items, emptyText) {
+    if (!items.length) {
+      picker.innerHTML = '<span class="muted">' + escapeHTML(emptyText || "暂无可插入附件。") + '</span>';
+      return;
+    }
+    picker.innerHTML = items.map(mediaItemHTML).join("");
+  }
+
+  function mediaItemHTML(item) {
+    var title = "插入 " + (item.name || item.url || "附件");
+    var meta = [item.sizeLabel || "", item.mime || ""].filter(Boolean).join(" · ");
+    var preview = item.isImage && item.url
+      ? '<img src="' + escapeHTML(item.url) + '" alt="">'
+      : '<span class="media-file-icon"><mdui-icon name="' + escapeHTML(item.icon || "insert_drive_file") + '"></mdui-icon></span>';
+    return '<button type="button" class="media-pick media-pick-' + escapeHTML(item.kind || "file") + '" data-markdown="' + escapeHTML(item.markdown || item.url || "") + '" title="' + escapeHTML(title) + '">' +
+      preview +
+      '<span class="media-name">' + escapeHTML(item.name || item.url || "附件") + '</span>' +
+      (meta ? '<small>' + escapeHTML(meta) + '</small>' : '') +
+      '</button>';
+  }
+
+  function ensureEditorContentID(form) {
+    var cidInput = form && form.querySelector('input[name="cid"]');
+    var cid = cidInput ? parseInt(cidInput.value || "0", 10) : 0;
+    if (cid > 0) {
+      return Promise.resolve(cid);
+    }
+    if (!form) {
+      return Promise.resolve(0);
+    }
+    var data = new FormData(form);
+    data.set("_csrf", csrfToken());
+    return fetch("/admin/autosave", {
+      method: "POST",
+      body: data,
+      credentials: "same-origin"
+    }).then(function (res) {
+      if (!res.ok) {
+        throw new Error("autosave failed");
+      }
+      return res.json();
+    }).then(function (payload) {
+      var nextID = parseInt(payload.cid || "0", 10);
+      if (cidInput && nextID > 0) {
+        cidInput.value = String(nextID);
+        document.dispatchEvent(new CustomEvent("goblog:content-id", { detail: { cid: nextID } }));
+      }
+      return nextID;
+    });
   }
 
   function initEditorUpload(root) {
@@ -349,6 +536,7 @@
       fileField.addEventListener("change", function () {
         var csrf = csrfToken();
         var file = fileField.files && fileField.files.length ? fileField.files[0] : null;
+        var form = panel.closest("form");
         if (!csrf) {
           setButtonLabel(button, "令牌失效");
           return;
@@ -356,19 +544,24 @@
         if (!file) {
           return;
         }
-        var data = new FormData();
-        data.set("_csrf", csrf);
-        data.set("file", file);
-        if (cid && cid.value) {
-          data.set("cid", cid.value);
-        }
         button.loading = true;
-        setButtonLabel(button, "上传中");
-        fetch("/admin/medias", {
-          method: "POST",
-          body: data,
-          headers: { "Accept": "application/json" },
-          credentials: "same-origin"
+        setButtonLabel(button, "准备草稿");
+        ensureEditorContentID(form).then(function (contentID) {
+          var data = new FormData();
+          data.set("_csrf", csrf);
+          data.set("file", file);
+          if (contentID > 0) {
+            data.set("cid", String(contentID));
+          } else if (cid && cid.value) {
+            data.set("cid", cid.value);
+          }
+          setButtonLabel(button, "上传中");
+          return fetch("/admin/medias", {
+            method: "POST",
+            body: data,
+            headers: { "Accept": "application/json" },
+            credentials: "same-origin"
+          });
         }).then(function (res) {
           if (!res.ok) {
             throw new Error("upload failed");
@@ -376,6 +569,7 @@
           return res.json();
         }).then(function (payload) {
           appendToEditor(payload.markdown || payload.url || "");
+          document.dispatchEvent(new CustomEvent("goblog:media-uploaded", { detail: payload }));
           setButtonLabel(button, "已插入");
         }).catch(function (err) {
           showMessage("上传失败：" + err.message);

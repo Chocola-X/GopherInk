@@ -325,6 +325,19 @@ mdui-select::part(text-field__container) {
 
 .editor-media-panel {
   display: grid;
+  gap: 16px;
+}
+
+.editor-media-current,
+.editor-media-library {
+  display: grid;
+  gap: 12px;
+}
+
+.editor-media-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   gap: 12px;
 }
 
@@ -424,31 +437,60 @@ mdui-select::part(text-field__container) {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  min-height: 42px;
 }
 
 .media-pick {
   display: grid;
-  width: 92px;
-  height: 72px;
-  place-items: center;
+  grid-template-rows: 74px auto auto;
+  width: 128px;
+  min-height: 132px;
+  align-items: center;
   overflow: hidden;
   border: 1px solid rgb(var(--mdui-color-outline-variant));
   border-radius: 8px;
   color: rgb(var(--mdui-color-on-surface));
-  background: rgb(var(--mdui-color-surface-container));
+  background: rgba(var(--mdui-color-surface-container), var(--admin-card-opacity));
   cursor: pointer;
 }
 
 .media-pick img {
   width: 100%;
-  height: 100%;
+  height: 74px;
   object-fit: cover;
 }
 
-.media-pick span {
-  padding: 6px;
+.media-file-icon {
+  display: grid;
+  width: 100%;
+  height: 74px;
+  place-items: center;
+  color: rgb(var(--mdui-color-primary));
+  background: rgba(var(--mdui-color-primary-container), 0.5);
+}
+
+.media-file-icon mdui-icon {
+  font-size: 32px;
+}
+
+.media-name,
+.media-pick small {
+  min-width: 0;
+  padding: 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-name {
+  padding-top: 8px;
   font-size: 12px;
-  overflow-wrap: anywhere;
+}
+
+.media-pick small {
+  padding-bottom: 8px;
+  color: rgb(var(--mdui-color-on-surface-variant));
+  font-size: 11px;
 }
 
 .custom-field-row {
@@ -643,6 +685,7 @@ mdui-icon {
 
   .editor-upload,
   .schema-upload-row,
+  .editor-media-section-head,
   .asset-manager-head,
   .asset-row,
   .inline-upload {

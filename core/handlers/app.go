@@ -123,6 +123,7 @@ func (a *App) Handler() http.Handler {
 		"/admin/backup":               a.adminBackup,
 		"/admin/upgrade":              a.adminUpgrade,
 		"/admin/autosave":             a.adminAutosave,
+		"/admin/medias/editor":        a.adminEditorMedia,
 		"/admin/tags/search":          a.adminTagSearch,
 		"/admin/ajax/tags":            a.adminTagSearch,
 		"/admin/ajax/preferences":     a.adminAjaxPreferences,
@@ -639,7 +640,6 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 			revisionID = publishedID
 		}
 		revisions, _ := a.Contents.Revisions(r.Context(), revisionID)
-		mediaLibrary, _ := a.editorMediaLibrary(r)
 		preview := a.previewURL(r, item)
 		if editingDraft && !draftExists {
 			preview = ""
@@ -659,7 +659,7 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 			"Fields":             fields,
 			"Revisions":          revisions,
 			"PreviewURL":         preview,
-			"MediaLibrary":       mediaLibrary,
+			"EditorMediaSources": a.editorMediaSources(r),
 			"EditingDraft":       editingDraft,
 		})
 	case http.MethodPost:
@@ -847,7 +847,6 @@ func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ stri
 		revisionID = publishedID
 	}
 	revisions, _ := a.Contents.Revisions(r.Context(), revisionID)
-	mediaLibrary, _ := a.editorMediaLibrary(r)
 	a.renderAdmin(w, r, "content_form.html", map[string]any{
 		"Title":              contentFormTitle(typ, id),
 		"Content":            item,
@@ -863,7 +862,7 @@ func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ stri
 		"Fields":             fields,
 		"Revisions":          revisions,
 		"PreviewURL":         a.previewURL(r, item),
-		"MediaLibrary":       mediaLibrary,
+		"EditorMediaSources": a.editorMediaSources(r),
 		"EditingDraft":       publishedID > 0,
 	})
 }
@@ -3380,6 +3379,7 @@ func (a *App) mediaViews(items, posts, pages []models.Content, users []models.Us
 			Name:        meta.Name,
 			URL:         meta.URL,
 			Kind:        mediaKind(meta),
+			Icon:        mediaIcon(meta),
 			MIME:        meta.MIME,
 			SizeLabel:   formatBytes(meta.Size),
 			AuthorName:  authors[item.AuthorID],
@@ -3411,6 +3411,149 @@ func (a *App) editorMediaLibrary(r *http.Request) ([]mediaView, error) {
 	pages, _ := a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePage, Status: "all", Limit: 200})
 	users, _ := a.Users.List(r.Context(), "")
 	return a.mediaViews(items, posts, pages, users), nil
+}
+
+func (a *App) editorMediaSources(r *http.Request) []editorMediaSource {
+	user, _ := a.currentUser(r)
+	sources := []editorMediaSource{
+		{Value: "__none", Label: "不选择"},
+		{Value: "__unattached", Label: "孤立附件"},
+	}
+	postQuery := services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Limit: 200}
+	if roleRank(user.Role) < roleRank("editor") {
+		postQuery.AuthorID = user.UID
+	}
+	posts, _ := a.Contents.List(r.Context(), postQuery)
+	for _, post := range posts {
+		if post.DraftOf > 0 {
+			continue
+		}
+		sources = append(sources, editorMediaSource{
+			Value: "content:" + strconv.FormatInt(post.CID, 10),
+			Label: fmt.Sprintf("文章 #%d：%s", post.CID, post.Title),
+		})
+	}
+	if roleRank(user.Role) >= roleRank("editor") {
+		pages, _ := a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePage, Status: models.ContentStatusPost, Limit: 200})
+		for _, page := range pages {
+			if page.DraftOf > 0 {
+				continue
+			}
+			sources = append(sources, editorMediaSource{
+				Value: "content:" + strconv.FormatInt(page.CID, 10),
+				Label: fmt.Sprintf("页面 #%d：%s", page.CID, page.Title),
+			})
+		}
+	}
+	return sources
+}
+
+func (a *App) adminEditorMedia(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet)
+		return
+	}
+	if !a.requireRole(w, r, "contributor") {
+		return
+	}
+	items, err := a.editorMediaForSource(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	views := a.mediaViewsForRequest(r, items)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "items": editorMediaItems(views)})
+}
+
+func (a *App) editorMediaForSource(r *http.Request) ([]models.Content, error) {
+	user, _ := a.currentUser(r)
+	source := strings.TrimSpace(r.URL.Query().Get("source"))
+	query := services.ContentQuery{Type: models.ContentTypeAttach, Status: "all", Limit: 200}
+	if roleRank(user.Role) < roleRank("editor") {
+		query.AuthorID = user.UID
+	}
+	switch {
+	case source == "" || source == "__none":
+		return []models.Content{}, nil
+	case source == "__unattached":
+		items, err := a.Contents.List(r.Context(), query)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]models.Content, 0, len(items))
+		for _, item := range items {
+			if item.Parent == 0 {
+				out = append(out, item)
+			}
+		}
+		return out, nil
+	case source == "current":
+		parentID, _ := strconv.ParseInt(r.URL.Query().Get("parent"), 10, 64)
+		if parentID <= 0 {
+			return []models.Content{}, nil
+		}
+		if !a.canUseEditorMediaParent(r, parentID, false) {
+			return nil, fmt.Errorf("permission denied")
+		}
+		query.Parent = parentID
+		return a.Contents.List(r.Context(), query)
+	case strings.HasPrefix(source, "content:"):
+		parentID, err := strconv.ParseInt(strings.TrimPrefix(source, "content:"), 10, 64)
+		if err != nil || parentID <= 0 {
+			return nil, fmt.Errorf("invalid media source")
+		}
+		if !a.canUseEditorMediaParent(r, parentID, true) {
+			return nil, fmt.Errorf("permission denied")
+		}
+		query.Parent = parentID
+		return a.Contents.List(r.Context(), query)
+	default:
+		return nil, fmt.Errorf("invalid media source")
+	}
+}
+
+func (a *App) canUseEditorMediaParent(r *http.Request, parentID int64, requirePublished bool) bool {
+	parent, err := a.Contents.ByID(r.Context(), parentID)
+	if err != nil {
+		return false
+	}
+	if parent.Type != models.ContentTypePost && parent.Type != models.ContentTypePage {
+		return false
+	}
+	if requirePublished && (parent.Status != models.ContentStatusPost || parent.DraftOf > 0) {
+		return false
+	}
+	user, _ := a.currentUser(r)
+	if roleRank(user.Role) >= roleRank("editor") {
+		return true
+	}
+	return parent.Type == models.ContentTypePost && parent.AuthorID == user.UID
+}
+
+func (a *App) mediaViewsForRequest(r *http.Request, items []models.Content) []mediaView {
+	posts, _ := a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePost, Status: "all", Limit: 200})
+	pages, _ := a.Contents.List(r.Context(), services.ContentQuery{Type: models.ContentTypePage, Status: "all", Limit: 200})
+	users, _ := a.Users.List(r.Context(), "")
+	return a.mediaViews(items, posts, pages, users)
+}
+
+func editorMediaItems(views []mediaView) []editorMediaItem {
+	items := make([]editorMediaItem, 0, len(views))
+	for _, view := range views {
+		items = append(items, editorMediaItem{
+			CID:       view.CID,
+			Name:      view.Name,
+			URL:       view.URL,
+			Kind:      view.Kind,
+			MIME:      view.MIME,
+			SizeLabel: view.SizeLabel,
+			Markdown:  view.Markdown,
+			IsImage:   view.Meta.IsImage,
+			Icon:      view.Icon,
+		})
+	}
+	return items
 }
 
 func filterMediaViews(items []mediaView, kind, author, keywords string) []mediaView {
@@ -3471,6 +3614,19 @@ func mediaKind(meta models.AttachmentMeta) string {
 		return "archive"
 	}
 	return "file"
+}
+
+func mediaIcon(meta models.AttachmentMeta) string {
+	switch mediaKind(meta) {
+	case "image":
+		return "image"
+	case "document":
+		return "description"
+	case "archive":
+		return "folder_zip"
+	default:
+		return "insert_drive_file"
+	}
 }
 
 func attachmentMarkdown(meta models.AttachmentMeta) string {
@@ -4098,11 +4254,29 @@ type mediaView struct {
 	Name        string
 	URL         string
 	Kind        string
+	Icon        string
 	MIME        string
 	SizeLabel   string
 	AuthorName  string
 	ParentTitle string
 	Markdown    string
+}
+
+type editorMediaSource struct {
+	Value string
+	Label string
+}
+
+type editorMediaItem struct {
+	CID       int64  `json:"cid"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	Kind      string `json:"kind"`
+	MIME      string `json:"mime"`
+	SizeLabel string `json:"sizeLabel"`
+	Markdown  string `json:"markdown"`
+	IsImage   bool   `json:"isImage"`
+	Icon      string `json:"icon"`
 }
 
 type backupData struct {

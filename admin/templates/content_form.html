@@ -47,20 +47,32 @@
   <section class="editor-media-panel">
     <div class="revision-summary">
       <strong>媒体插入</strong>
-      <span class="muted">上传文件会保存到 data/uploads/{{if .FormCID}}{{.FormCID}}{{else}}unattached{{end}} 并插入 Markdown。</span>
+      <span class="muted">上传文件会保存到当前{{if eq .Type "page"}}页面{{else}}文章{{end}}的附件目录，并插入 Markdown。</span>
+    </div>
+    <div class="editor-media-current" data-editor-media-url="/admin/medias/editor" data-parent-id="{{if .FormCID}}{{.FormCID}}{{end}}">
+      <div class="editor-media-section-head">
+        <strong>当前内容附件</strong>
+        <span class="muted">仅显示当前草稿或正在编辑内容上传的文件。</span>
+      </div>
+      <div class="media-picker media-picker-current" data-empty-text="当前内容暂无附件。">
+        <span class="muted">当前内容暂无附件。</span>
+      </div>
     </div>
     <div class="editor-upload">
       <input type="file" name="file" class="editor-upload-file" hidden>
       <mdui-button type="button" variant="outlined" class="editor-upload-button"><mdui-icon slot="icon" name="upload"></mdui-icon><span class="button-label">上传并插入</span></mdui-button>
     </div>
-    <div class="media-picker">
-      {{range .MediaLibrary}}
-      <button type="button" class="media-pick" data-markdown="{{.Markdown}}" title="插入 {{.Name}}">
-        {{if .Meta.IsImage}}<img src="{{.URL}}" alt="">{{else}}<span>{{.Name}}</span>{{end}}
-      </button>
-      {{else}}
-      <span class="muted">暂无可插入附件。</span>
-      {{end}}
+    <div class="editor-media-library" data-editor-media-url="/admin/medias/editor">
+      <div class="editor-media-section-head">
+        <strong>快捷插入已有附件</strong>
+        <span class="muted">选择来源后只展示对应附件。</span>
+      </div>
+      <mdui-select class="media-source-select" label="附件来源" value="__none">
+        {{range .EditorMediaSources}}<mdui-menu-item value="{{.Value}}">{{.Label}}</mdui-menu-item>{{end}}
+      </mdui-select>
+      <div class="media-picker media-picker-library" data-empty-text="请选择附件来源。">
+        <span class="muted">请选择附件来源。</span>
+      </div>
     </div>
   </section>
   <fieldset class="fieldset custom-fields">
