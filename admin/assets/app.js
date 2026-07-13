@@ -690,7 +690,7 @@
           return;
         }
         copyToClipboard(value).then(function () {
-          if (button.classList.contains("media-copy-button")) {
+          if (button.classList.contains("media-copy-button") || button.classList.contains("copy-notice-button")) {
             showMessage("URL 已复制", { type: "info" });
           } else {
             button.textContent = "已复制";

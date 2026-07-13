@@ -606,6 +606,17 @@ mdui-select::part(text-field__container) {
   color: rgb(var(--mdui-color-on-surface-variant));
 }
 
+.asset-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.asset-actions form {
+  margin: 0;
+}
+
 .media-picker {
   display: flex;
   flex-wrap: wrap;
@@ -1089,6 +1100,12 @@ mdui-icon {
   .asset-preview {
     width: 64px;
     height: 64px;
+  }
+
+  .asset-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 
   .admin-main {

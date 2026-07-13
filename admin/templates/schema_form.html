@@ -86,11 +86,14 @@
               <span class="muted">{{.SizeLabel}} · {{.Modified}}{{if .Used}} · 使用中{{else}} · 未使用{{end}}</span>
             </div>
           </div>
-          <form method="post" action="{{$.AssetManager.DeleteURL}}">
-            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
-            <input type="hidden" name="name" value="{{.Name}}">
-            <mdui-button type="submit" variant="text"><mdui-icon slot="icon" name="delete"></mdui-icon>删除</mdui-button>
-          </form>
+          <div class="asset-actions">
+            <mdui-button type="button" variant="text" class="copy-text copy-notice-button" data-copy="{{.URL}}"><mdui-icon slot="icon" name="content_copy"></mdui-icon>复制相对 URL</mdui-button>
+            <form method="post" action="{{$.AssetManager.DeleteURL}}">
+              <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="name" value="{{.Name}}">
+              <mdui-button type="submit" variant="text"><mdui-icon slot="icon" name="delete"></mdui-icon>删除</mdui-button>
+            </form>
+          </div>
         </div>
       {{end}}
     </div>

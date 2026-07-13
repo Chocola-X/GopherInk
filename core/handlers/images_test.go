@@ -187,3 +187,36 @@ func TestMediaPageUsesDirectUploadAndCompactTable(t *testing.T) {
 		t.Fatalf("media page still contains the old upload or address layout")
 	}
 }
+
+func TestSettingsAssetCardsCopyRelativeURL(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	app.UploadDir = t.TempDir()
+	ctx := context.Background()
+	adminAsset, err := app.saveAdminSettingUpload(ctx, bytes.NewReader(tinyPNG(t)), "admin-copy.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	themeAsset, err := app.saveThemeSettingUpload(ctx, bytes.NewReader(tinyPNG(t)), "theme-copy.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range []struct {
+		path string
+		url  string
+	}{
+		{path: "/admin/management", url: adminAsset.URL},
+		{path: "/admin/themes/default/config", url: themeAsset.URL},
+	} {
+		req := httptest.NewRequest(http.MethodGet, check.path, nil)
+		setSession(t, req, secret, adminID)
+		rec := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d", check.path, rec.Code)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "copy-notice-button") || !strings.Contains(body, `data-copy="`+check.url+`"`) || !strings.Contains(body, "复制相对 URL") {
+			t.Fatalf("GET %s missing relative URL copy action for %s", check.path, check.url)
+		}
+	}
+}
