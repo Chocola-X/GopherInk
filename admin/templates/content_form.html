@@ -106,12 +106,12 @@
       {{range .Fields}}
       <div class="custom-field-row">
         <mdui-text-field name="field_name" label="字段名" value="{{.Name}}"></mdui-text-field>
-        <select name="field_type">
-          <option value="str" {{if eq .Type "str"}}selected{{end}}>字符串</option>
-          <option value="int" {{if eq .Type "int"}}selected{{end}}>整数</option>
-          <option value="float" {{if eq .Type "float"}}selected{{end}}>浮点数</option>
-          <option value="json" {{if eq .Type "json"}}selected{{end}}>JSON</option>
-        </select>
+        <mdui-select name="field_type" label="类型" value="{{.Type}}">
+          <mdui-menu-item value="str">字符串</mdui-menu-item>
+          <mdui-menu-item value="int">整数</mdui-menu-item>
+          <mdui-menu-item value="float">浮点数</mdui-menu-item>
+          <mdui-menu-item value="json">JSON</mdui-menu-item>
+        </mdui-select>
         <mdui-text-field name="field_value" label="值" value="{{fieldValue .}}"></mdui-text-field>
         <mdui-button-icon type="button" class="remove-field" title="删除字段"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
       </div>

@@ -299,7 +299,7 @@
       function row() {
         var wrapper = document.createElement("div");
         wrapper.className = "custom-field-row";
-        wrapper.innerHTML = '<mdui-text-field name="field_name" label="字段名"></mdui-text-field><select name="field_type"><option value="str">字符串</option><option value="int">整数</option><option value="float">浮点数</option><option value="json">JSON</option></select><mdui-text-field name="field_value" label="值"></mdui-text-field><mdui-button-icon type="button" class="remove-field" title="删除字段"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>';
+        wrapper.innerHTML = '<mdui-text-field name="field_name" label="字段名"></mdui-text-field><mdui-select name="field_type" label="类型" value="str"><mdui-menu-item value="str">字符串</mdui-menu-item><mdui-menu-item value="int">整数</mdui-menu-item><mdui-menu-item value="float">浮点数</mdui-menu-item><mdui-menu-item value="json">JSON</mdui-menu-item></mdui-select><mdui-text-field name="field_value" label="值"></mdui-text-field><mdui-button-icon type="button" class="remove-field" title="删除字段"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>';
         return wrapper;
       }
 
