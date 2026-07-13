@@ -42,7 +42,32 @@
     <label><input type="checkbox" name="allowFeed" value="1" {{if checked .Content.AllowFeed}}checked{{end}}> 允许在聚合中出现</label>
   </fieldset>
   <label class="muted" for="content-text">正文</label>
-  <textarea id="content-text" class="content-editor" name="text" rows="18" {{if fieldError .Errors "text"}}aria-describedby="content-text-error"{{end}}>{{.Content.Text}}</textarea>
+  <div class="markdown-editor-wrap" data-markdown-editor data-preview-url="/admin/markdown/preview">
+    <div class="markdown-toolbar" aria-label="Markdown 工具栏">
+      <div class="markdown-toolbar-group">
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="heading" title="标题"><mdui-icon name="title"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="bold" title="粗体"><mdui-icon name="format_bold"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="italic" title="斜体"><mdui-icon name="format_italic"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="quote" title="引用"><mdui-icon name="format_quote"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="inline-code" title="行内代码"><mdui-icon name="code"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="code-block" title="代码块"><mdui-icon name="data_object"></mdui-icon></mdui-button-icon>
+      </div>
+      <div class="markdown-toolbar-group">
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="link" title="链接"><mdui-icon name="link"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="image" title="图片"><mdui-icon name="image"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="unordered-list" title="无序列表"><mdui-icon name="format_list_bulleted"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="ordered-list" title="有序列表"><mdui-icon name="format_list_numbered"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="hr" title="分隔线"><mdui-icon name="horizontal_rule"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" class="markdown-tool" data-md-action="more" title="摘要分隔"><mdui-icon name="content_cut"></mdui-icon></mdui-button-icon>
+      </div>
+      <mdui-button type="button" variant="outlined" class="markdown-preview-toggle" data-md-mode="preview"><mdui-icon slot="icon" name="visibility"></mdui-icon><span class="button-label">预览模式</span></mdui-button>
+    </div>
+    <div class="markdown-editor-shell">
+      <pre class="markdown-highlight" aria-hidden="true"></pre>
+      <textarea id="content-text" class="content-editor markdown-source" name="text" rows="18" spellcheck="false" {{if fieldError .Errors "text"}}aria-describedby="content-text-error"{{end}}>{{.Content.Text}}</textarea>
+    </div>
+    <div class="markdown-preview mdui-prose" hidden></div>
+  </div>
   {{if fieldError .Errors "text"}}<span id="content-text-error" class="field-error">{{fieldError .Errors "text"}}</span>{{end}}
   <section class="editor-media-panel">
     <div class="revision-summary">

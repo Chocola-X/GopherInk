@@ -1430,6 +1430,40 @@ func TestEditorMediaSourceFiltering(t *testing.T) {
 	if !strings.Contains(body, "孤立附件") || !strings.Contains(body, "文章 #"+itoa(postA)) {
 		t.Fatalf("new post form missing media source options: %s", body)
 	}
+	if !strings.Contains(body, `data-markdown-editor`) || !strings.Contains(body, `data-md-action="bold"`) || !strings.Contains(body, `markdown-preview-toggle`) {
+		t.Fatalf("new post form missing markdown editor controls: %s", body)
+	}
+}
+
+func TestAdminMarkdownPreviewRendersMarkdown(t *testing.T) {
+	app, secret, adminID := newSecurityTestApp(t)
+	form := url.Values{
+		"_csrf": {adminToken(secret, adminID)},
+		"type":  {models.ContentTypePost},
+		"title": {"Preview"},
+		"text":  {"# Preview\n\n<script>alert(1)</script>\n\n**bold**"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/markdown/preview", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	setSession(t, req, secret, adminID)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("markdown preview status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var payload struct {
+		OK   bool   `json:"ok"`
+		HTML string `json:"html"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.OK || !strings.Contains(payload.HTML, "<h1") || !strings.Contains(payload.HTML, "<strong>bold</strong>") {
+		t.Fatalf("markdown preview payload = %#v", payload)
+	}
+	if strings.Contains(payload.HTML, "<script>") {
+		t.Fatalf("markdown preview rendered unsafe script: %s", payload.HTML)
+	}
 }
 
 func TestMediaUploadRejectsDangerousExtension(t *testing.T) {

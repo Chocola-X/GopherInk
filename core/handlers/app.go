@@ -123,6 +123,7 @@ func (a *App) Handler() http.Handler {
 		"/admin/backup":               a.adminBackup,
 		"/admin/upgrade":              a.adminUpgrade,
 		"/admin/autosave":             a.adminAutosave,
+		"/admin/markdown/preview":     a.adminMarkdownPreview,
 		"/admin/medias/editor":        a.adminEditorMedia,
 		"/admin/tags/search":          a.adminTagSearch,
 		"/admin/ajax/tags":            a.adminTagSearch,
@@ -1916,6 +1917,46 @@ func (a *App) adminAutosave(w http.ResponseWriter, r *http.Request) {
 	item, _ := a.Contents.ByID(r.Context(), previewID)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cid": responseID, "preview": a.previewURL(r, item)})
+}
+
+func (a *App) adminMarkdownPreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+	if !a.requireRole(w, r, "contributor") {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	typ := r.FormValue("type")
+	if typ == "" {
+		typ = models.ContentTypePost
+	}
+	if typ != models.ContentTypePost && typ != models.ContentTypePage {
+		http.Error(w, "unsupported content type", http.StatusBadRequest)
+		return
+	}
+	user, _ := a.currentUser(r)
+	if typ == models.ContentTypePage && roleRank(user.Role) < roleRank("editor") {
+		http.Error(w, "permission denied", http.StatusForbidden)
+		return
+	}
+	content := models.Content{
+		Title:  r.FormValue("title"),
+		Text:   r.FormValue("text"),
+		Type:   typ,
+		Status: models.ContentStatusDraft,
+	}
+	html, err := a.renderContentHTML(r.Context(), content, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "html": string(html)})
 }
 
 func (a *App) adminTagSearch(w http.ResponseWriter, r *http.Request) {

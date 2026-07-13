@@ -4,6 +4,7 @@
   var pjaxReady = false;
   var lastSubmitter = null;
   var lastEditorSelection = null;
+  var markdownEditorLoading = null;
 
   function ready(fn) {
     if (document.readyState === "loading") {
@@ -108,6 +109,7 @@
     initTagInputs(root);
     initMediaPicker(root);
     initEditorUpload(root);
+    initMarkdownEditor(root);
     initNativeFileButtons(root);
     initCopyButtons(root);
     initSchemaForm(root);
@@ -133,6 +135,33 @@
         input.value = csrf;
         form.appendChild(input);
       }
+    });
+  }
+
+  function initMarkdownEditor(root) {
+    if (!(root || document).querySelector("[data-markdown-editor]")) {
+      return;
+    }
+    if (window.GoBlogMarkdownEditor && typeof window.GoBlogMarkdownEditor.init === "function") {
+      window.GoBlogMarkdownEditor.init(root || document);
+      return;
+    }
+    if (!markdownEditorLoading) {
+      markdownEditorLoading = new Promise(function (resolve, reject) {
+        var script = document.createElement("script");
+        script.src = "/admin/assets/markdown-editor.js";
+        script.defer = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    markdownEditorLoading.then(function () {
+      if (window.GoBlogMarkdownEditor && typeof window.GoBlogMarkdownEditor.init === "function") {
+        window.GoBlogMarkdownEditor.init(root || document);
+      }
+    }).catch(function () {
+      showMessage("Markdown 编辑器加载失败");
     });
   }
 

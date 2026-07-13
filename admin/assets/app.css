@@ -292,6 +292,147 @@ select {
   outline-offset: 0;
 }
 
+.markdown-editor-wrap {
+  display: grid;
+  gap: 10px;
+}
+
+.markdown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px;
+  border: 1px solid rgb(var(--mdui-color-outline-variant));
+  border-radius: 8px;
+  background: rgba(var(--mdui-color-surface-container), var(--admin-card-opacity));
+}
+
+.markdown-toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.markdown-preview-toggle {
+  flex: 0 0 auto;
+}
+
+.markdown-editor-shell {
+  position: relative;
+  min-height: 360px;
+}
+
+.markdown-editor-shell .content-editor {
+  position: relative;
+  z-index: 1;
+  min-height: 360px;
+}
+
+.markdown-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: rgba(var(--mdui-color-on-surface), 0.78);
+  font: inherit;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.markdown-highlight-enabled .content-editor {
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: rgb(var(--mdui-color-primary));
+}
+
+.markdown-highlight-enabled .content-editor::selection {
+  background: rgba(var(--mdui-color-primary), 0.26);
+}
+
+.markdown-preview {
+  box-sizing: border-box;
+  min-height: 360px;
+  padding: 16px;
+  overflow-wrap: anywhere;
+  border: 1px solid rgb(var(--mdui-color-outline-variant));
+  border-radius: 8px;
+  color: rgb(var(--mdui-color-on-surface));
+  background: rgba(var(--mdui-color-surface-container-highest), var(--admin-input-opacity));
+}
+
+.markdown-preview > :first-child {
+  margin-top: 0;
+}
+
+.markdown-preview > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-preview img {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-preview pre {
+  overflow-x: auto;
+  padding: 12px;
+  border-radius: 6px;
+  background: rgba(var(--mdui-color-surface-container-lowest), 0.72);
+}
+
+.md-heading {
+  color: rgb(var(--mdui-color-primary));
+  font-weight: 700;
+}
+
+.md-quote {
+  color: rgb(var(--mdui-color-tertiary));
+}
+
+.md-list {
+  color: rgb(var(--mdui-color-secondary));
+}
+
+.md-rule {
+  color: rgba(var(--mdui-color-on-surface-variant), 0.78);
+}
+
+.md-code,
+.md-inline-code {
+  color: rgb(var(--mdui-color-error));
+}
+
+.md-link {
+  color: rgb(var(--mdui-color-primary));
+  text-decoration: underline;
+}
+
+.md-strong {
+  font-weight: 700;
+}
+
+.md-em {
+  font-style: italic;
+}
+
+.markdown-link-dialog-body {
+  display: grid;
+  gap: 14px;
+  min-width: min(28rem, calc(100vw - 48px));
+  padding-top: 4px;
+}
+
 .field-error {
   margin-top: -8px;
   color: rgb(var(--mdui-color-error));
