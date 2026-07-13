@@ -78,10 +78,13 @@
     <div class="asset-list">
       {{range .Files}}
         <div class="asset-row">
-          <div class="asset-main">
-            <strong>{{.Name}}</strong>
-            <code>{{.URL}}</code>
-            <span class="muted">{{.SizeLabel}} · {{.Modified}}{{if .Used}} · 使用中{{else}} · 未使用{{end}}</span>
+          <div class="asset-main-wrap">
+            <img class="asset-preview" src="{{.URL}}" alt="">
+            <div class="asset-main">
+              <strong>{{.Name}}</strong>
+              <code>{{.URL}}</code>
+              <span class="muted">{{.SizeLabel}} · {{.Modified}}{{if .Used}} · 使用中{{else}} · 未使用{{end}}</span>
+            </div>
           </div>
           <form method="post" action="{{$.AssetManager.DeleteURL}}">
             <input type="hidden" name="_csrf" value="{{$.CSRF}}">

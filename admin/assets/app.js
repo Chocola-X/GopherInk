@@ -327,6 +327,11 @@
         return;
       }
       picker.addEventListener("click", function (event) {
+        var copy = event.target.closest(".media-url-copy");
+        if (copy && picker.contains(copy)) {
+          copyMediaURL(copy);
+          return;
+        }
         var button = event.target.closest(".media-pick");
         if (!button || !picker.contains(button)) {
           return;
@@ -479,11 +484,29 @@
     var preview = item.isImage && item.url
       ? '<img src="' + escapeHTML(item.url) + '" alt="">'
       : '<span class="media-file-icon"><mdui-icon name="' + escapeHTML(item.icon || "insert_drive_file") + '"></mdui-icon></span>';
-    return '<button type="button" class="media-pick media-pick-' + escapeHTML(item.kind || "file") + '" data-markdown="' + escapeHTML(item.markdown || item.url || "") + '" title="' + escapeHTML(title) + '">' +
-      preview +
-      '<span class="media-name">' + escapeHTML(item.name || item.url || "附件") + '</span>' +
-      (meta ? '<small>' + escapeHTML(meta) + '</small>' : '') +
-      '</button>';
+    return '<div class="media-pick-card media-pick-' + escapeHTML(item.kind || "file") + '">' +
+      '<button type="button" class="media-pick" data-markdown="' + escapeHTML(item.markdown || item.url || "") + '" title="' + escapeHTML(title) + '">' +
+        preview +
+        '<span class="media-name">' + escapeHTML(item.name || item.url || "附件") + '</span>' +
+        (meta ? '<small>' + escapeHTML(meta) + '</small>' : '') +
+      '</button>' +
+      '<div class="media-url-actions">' +
+        '<mdui-button type="button" variant="text" class="media-url-copy" data-copy-url="' + escapeHTML(item.absoluteURL || item.url || "") + '">绝对URL</mdui-button>' +
+        '<mdui-button type="button" variant="text" class="media-url-copy" data-copy-url="' + escapeHTML(item.relativeURL || item.url || "") + '">相对URL</mdui-button>' +
+      '</div>' +
+      '</div>';
+  }
+
+  function copyMediaURL(button) {
+    var value = button.dataset.copyUrl || "";
+    if (!value) {
+      return;
+    }
+    copyToClipboard(value).then(function () {
+      showMessage("URL 已复制", { type: "info" });
+    }).catch(function () {
+      showMessage("复制失败");
+    });
   }
 
   function ensureEditorContentID(form) {
@@ -630,13 +653,35 @@
       }
       button.addEventListener("click", function () {
         var value = button.dataset.copy || "";
-        if (!value || !navigator.clipboard) {
+        if (!value) {
           return;
         }
-        navigator.clipboard.writeText(value).then(function () {
+        copyToClipboard(value).then(function () {
           button.textContent = "已复制";
         }).catch(function () {});
       });
+    });
+  }
+
+  function copyToClipboard(value) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      return navigator.clipboard.writeText(value);
+    }
+    return new Promise(function (resolve, reject) {
+      var input = document.createElement("textarea");
+      input.value = value;
+      input.setAttribute("readonly", "");
+      input.style.position = "fixed";
+      input.style.left = "-9999px";
+      document.body.appendChild(input);
+      input.select();
+      try {
+        document.execCommand("copy") ? resolve() : reject(new Error("copy failed"));
+      } catch (err) {
+        reject(err);
+      } finally {
+        input.remove();
+      }
     });
   }
 

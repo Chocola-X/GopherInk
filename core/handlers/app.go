@@ -3462,8 +3462,9 @@ func (a *App) adminEditorMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	views := a.mediaViewsForRequest(r, items)
+	baseURL := strings.TrimRight(a.option(r.Context(), "base_url", ""), "/")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "items": editorMediaItems(views)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "items": editorMediaItems(views, baseURL)})
 }
 
 func (a *App) editorMediaForSource(r *http.Request) ([]models.Content, error) {
@@ -3538,19 +3539,25 @@ func (a *App) mediaViewsForRequest(r *http.Request, items []models.Content) []me
 	return a.mediaViews(items, posts, pages, users)
 }
 
-func editorMediaItems(views []mediaView) []editorMediaItem {
+func editorMediaItems(views []mediaView, baseURL string) []editorMediaItem {
 	items := make([]editorMediaItem, 0, len(views))
 	for _, view := range views {
+		relativeURL := rootRelativeAssetURL(view.URL)
+		if relativeURL == "" {
+			relativeURL = view.URL
+		}
 		items = append(items, editorMediaItem{
-			CID:       view.CID,
-			Name:      view.Name,
-			URL:       view.URL,
-			Kind:      view.Kind,
-			MIME:      view.MIME,
-			SizeLabel: view.SizeLabel,
-			Markdown:  view.Markdown,
-			IsImage:   view.Meta.IsImage,
-			Icon:      view.Icon,
+			CID:         view.CID,
+			Name:        view.Name,
+			URL:         view.URL,
+			RelativeURL: relativeURL,
+			AbsoluteURL: absolutePublicURL(baseURL, relativeURL),
+			Kind:        view.Kind,
+			MIME:        view.MIME,
+			SizeLabel:   view.SizeLabel,
+			Markdown:    view.Markdown,
+			IsImage:     view.Meta.IsImage,
+			Icon:        view.Icon,
 		})
 	}
 	return items
@@ -3617,12 +3624,22 @@ func mediaKind(meta models.AttachmentMeta) string {
 }
 
 func mediaIcon(meta models.AttachmentMeta) string {
-	switch mediaKind(meta) {
-	case "image":
+	mimeType := strings.ToLower(meta.MIME)
+	ext := strings.ToLower(strings.TrimPrefix(meta.Type, "."))
+	switch {
+	case mediaKind(meta) == "image":
 		return "image"
-	case "document":
+	case ext == "pdf" || mimeType == "application/pdf":
+		return "picture_as_pdf"
+	case strings.HasPrefix(mimeType, "audio/") || ext == "mp3" || ext == "wav" || ext == "flac":
+		return "audio_file"
+	case strings.HasPrefix(mimeType, "video/") || ext == "mp4" || ext == "webm" || ext == "mov":
+		return "video_file"
+	case ext == "xls" || ext == "xlsx" || ext == "csv":
+		return "table_chart"
+	case mediaKind(meta) == "document":
 		return "description"
-	case "archive":
+	case mediaKind(meta) == "archive":
 		return "folder_zip"
 	default:
 		return "insert_drive_file"
@@ -4268,15 +4285,17 @@ type editorMediaSource struct {
 }
 
 type editorMediaItem struct {
-	CID       int64  `json:"cid"`
-	Name      string `json:"name"`
-	URL       string `json:"url"`
-	Kind      string `json:"kind"`
-	MIME      string `json:"mime"`
-	SizeLabel string `json:"sizeLabel"`
-	Markdown  string `json:"markdown"`
-	IsImage   bool   `json:"isImage"`
-	Icon      string `json:"icon"`
+	CID         int64  `json:"cid"`
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	RelativeURL string `json:"relativeURL"`
+	AbsoluteURL string `json:"absoluteURL"`
+	Kind        string `json:"kind"`
+	MIME        string `json:"mime"`
+	SizeLabel   string `json:"sizeLabel"`
+	Markdown    string `json:"markdown"`
+	IsImage     bool   `json:"isImage"`
+	Icon        string `json:"icon"`
 }
 
 type backupData struct {
@@ -5483,6 +5502,34 @@ func absolutePublicURL(baseURL, raw string) string {
 		return raw
 	}
 	return base.ResolveReference(ref).String()
+}
+
+func rootRelativeAssetURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//") {
+		return raw
+	}
+	u, err := neturl.Parse(raw)
+	if err == nil && u.IsAbs() {
+		if u.Path != "" {
+			out := u.EscapedPath()
+			if u.RawQuery != "" {
+				out += "?" + u.RawQuery
+			}
+			if u.Fragment != "" {
+				out += "#" + u.Fragment
+			}
+			return out
+		}
+		return raw
+	}
+	if strings.HasPrefix(raw, "uploads/") || strings.HasPrefix(raw, "theme/") {
+		return "/" + raw
+	}
+	return raw
 }
 
 func archivePath(year, month, day int) string {

@@ -5,6 +5,7 @@
 </section>
 {{end}}
 {{$defaultCover := themeValue .ThemeConfig "default_cover"}}
+{{$defaultCover = assetURL $defaultCover}}
 {{$decor := themeValue .ThemeConfig "enable_decor" "1"}}
 <section class="article">
   {{range .Posts}}

@@ -46,6 +46,7 @@ func init() {
 			"themeOpacity": themeOpacity,
 			"gravatar":     gravatarURL,
 			"avatarURL":    avatarURL,
+			"assetURL":     assetURL,
 			"safeHTML":     func(value string) template.HTML { return template.HTML(value) },
 			"readingTime":  readingTime,
 			"daysSince":    daysSince,
@@ -130,9 +131,23 @@ func gravatarURL(email string, size int) string {
 
 func avatarURL(values map[string]string, fallbackEmail string, size int) string {
 	if url := themeValue(values, "profile_avatar"); url != "" {
-		return url
+		return assetURL(url)
 	}
 	return gravatarURL(themeValue(values, "profile_email", fallbackEmail), size)
+}
+
+func assetURL(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if strings.HasPrefix(value, "//") || strings.HasPrefix(value, "/") || strings.HasPrefix(value, "./") || strings.HasPrefix(value, "../") || strings.HasPrefix(value, "#") {
+		return value
+	}
+	if u, err := url.Parse(value); err == nil && u.Scheme != "" {
+		return value
+	}
+	return "/" + value
 }
 
 func readingTime(text string) string {

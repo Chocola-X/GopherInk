@@ -37,7 +37,11 @@
       <tr>
         <td>
           <div class="media-cell">
-            {{if .Meta.IsImage}}<img src="{{.URL}}" alt="">{{end}}
+            {{if .Meta.IsImage}}
+              <img src="{{.URL}}" alt="">
+            {{else}}
+              <span class="media-cell-icon"><mdui-icon name="{{.Icon}}"></mdui-icon></span>
+            {{end}}
             <a href="{{.URL}}" target="_blank" rel="noreferrer">{{.Name}}</a>
           </div>
         </td>

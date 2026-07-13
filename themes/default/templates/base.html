@@ -9,7 +9,7 @@
   <meta name="keywords" content="{{index .Site "site_keywords"}}">
   <meta name="generator" content="GoBlog">
   {{if .CurrentURL}}<link rel="canonical" href="{{.CurrentURL}}">{{end}}
-  {{with themeValue .ThemeConfig "favicon"}}<link rel="icon" href="{{.}}">{{end}}
+  {{with assetURL (themeValue .ThemeConfig "favicon")}}<link rel="icon" href="{{.}}">{{end}}
   <meta property="og:type" content="{{if .Post}}article{{else}}website{{end}}">
   <meta property="og:title" content="{{if .Post}}{{.Post.Title}}{{else}}{{if .Title}}{{.Title}}{{else}}{{index .Site "site_title"}}{{end}}{{end}}">
   <meta property="og:description" content="{{if .Post}}{{excerpt .Post.Text 160}}{{else}}{{index .Site "site_description"}}{{end}}">
@@ -38,8 +38,8 @@
   <div class="background" aria-hidden="true">
     {{if themeValue .ThemeConfig "background_image"}}
       <picture>
-        {{with themeValue .ThemeConfig "mobile_background_image"}}<source media="(max-width: 720px)" srcset="{{.}}">{{end}}
-        <img src="{{themeValue .ThemeConfig "background_image"}}" alt="">
+        {{with assetURL (themeValue .ThemeConfig "mobile_background_image")}}<source media="(max-width: 720px)" srcset="{{.}}">{{end}}
+        <img src="{{assetURL (themeValue .ThemeConfig "background_image")}}" alt="">
       </picture>
     {{end}}
     <div class="index-filter"></div>
@@ -100,7 +100,7 @@
       {{if eq (themeValue .ThemeConfig "show_profile" "1") "1"}}
       <section class="mdui-card mdui-hoverable sidebar-info">
         <div class="sidebar-info-img">
-          <div class="sidebar-info-bg"{{with themeValue .ThemeConfig "sidebar_image"}} style="--sidebar-bg-image: url('{{.}}')"{{end}}></div>
+          <div class="sidebar-info-bg"{{with assetURL (themeValue .ThemeConfig "sidebar_image")}} style="--sidebar-bg-image: url('{{.}}')"{{end}}></div>
           <img class="sidebar-avatar" src="{{avatarURL .ThemeConfig .ProfileEmail 160}}" alt="">
         </div>
         <div class="sidebar-info-body">

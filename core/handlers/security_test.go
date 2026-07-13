@@ -1405,8 +1405,11 @@ func TestEditorMediaSourceFiltering(t *testing.T) {
 		t.Fatalf("unattached source items = %#v, want loose zip", items)
 	}
 	items = getItems("/admin/medias/editor?source=content:" + itoa(postB))
-	if len(items) != 1 || items[0].Name != "b.pdf" || items[0].Icon != "description" || !strings.Contains(items[0].Markdown, "[b.pdf]") {
+	if len(items) != 1 || items[0].Name != "b.pdf" || items[0].Icon != "picture_as_pdf" || !strings.Contains(items[0].Markdown, "[b.pdf]") {
 		t.Fatalf("post source items = %#v, want pdf markdown item", items)
+	}
+	if items[0].RelativeURL != "/uploads/posts/b/b.pdf" || items[0].AbsoluteURL != "http://localhost:8080/uploads/posts/b/b.pdf" {
+		t.Fatalf("post source URLs = relative %q absolute %q", items[0].RelativeURL, items[0].AbsoluteURL)
 	}
 	items = getItems("/admin/medias/editor?source=current&parent=" + itoa(postA))
 	if len(items) != 1 || items[0].Name != "a.png" || !items[0].IsImage {

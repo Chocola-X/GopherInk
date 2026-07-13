@@ -17,6 +17,22 @@ func TestAvatarURLPrefersConfiguredImage(t *testing.T) {
 	}
 }
 
+func TestAssetURLNormalizesUploadRelativePath(t *testing.T) {
+	tests := map[string]string{
+		"uploads/posts/1/cover.png":        "/uploads/posts/1/cover.png",
+		"/uploads/posts/1/cover.png":       "/uploads/posts/1/cover.png",
+		"https://example.com/cover.png":    "https://example.com/cover.png",
+		"//cdn.example.com/cover.png":      "//cdn.example.com/cover.png",
+		"../assets/cover.png":              "../assets/cover.png",
+		"data:image/gif;base64,R0lGODlhAQ": "data:image/gif;base64,R0lGODlhAQ",
+	}
+	for input, want := range tests {
+		if got := assetURL(input); got != want {
+			t.Fatalf("assetURL(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestReadingTimeUsesAtLeastOneMinute(t *testing.T) {
 	if got := readingTime("<p>短文</p>"); got != "1 分钟" {
 		t.Fatalf("readingTime() = %q, want one minute", got)

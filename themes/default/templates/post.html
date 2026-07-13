@@ -1,9 +1,10 @@
 {{define "content"}}
 {{$cover := fieldString .Fields "cover"}}
 {{if not $cover}}{{$cover = themeValue .ThemeConfig "default_cover"}}{{end}}
+{{$cover = assetURL $cover}}
 {{$decor := themeValue .ThemeConfig "enable_decor" "1"}}
-{{$postEndImg := themeValue .ThemeConfig "post_end_image"}}
-{{$commentBgImg := themeValue .ThemeConfig "comment_bg_image"}}
+{{$postEndImg := assetURL (themeValue .ThemeConfig "post_end_image")}}
+{{$commentBgImg := assetURL (themeValue .ThemeConfig "comment_bg_image")}}
 <article class="mdui-card post-card">
   <header class="post-card-media{{if not $cover}} post-card-media-normal{{end}}">
     {{if and (eq $decor "1") $cover}}<div class="index-img" style="background-image: url('{{$cover}}')"></div>{{end}}
