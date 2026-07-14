@@ -99,6 +99,13 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if m.authenticatedAdminBackendRequest(r) {
+			next.ServeHTTP(w, r)
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				m.invalidatePublicData()
+			}
+			return
+		}
 		ip := clientIP(r)
 		now := time.Now()
 		if m.isBanned(ip, now) {
@@ -164,6 +171,14 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 	})
 }
 
+func (m *wafManager) authenticatedAdminBackendRequest(r *http.Request) bool {
+	if !isBackendPath(r.URL.Path) {
+		return false
+	}
+	user, ok := m.app.currentUser(r)
+	return ok && roleRank(user.Role) >= roleRank("administrator")
+}
+
 func (m *wafManager) pluginRouteMayHandle(r *http.Request) bool {
 	for _, route := range m.app.Plugins.Routes() {
 		if route.Plugin != "" && !m.app.Plugins.IsActive(route.Plugin) {
@@ -185,6 +200,10 @@ func (m *wafManager) pluginRouteMayHandle(r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+func isBackendPath(value string) bool {
+	return value == "/admin" || strings.HasPrefix(value, "/admin/")
 }
 
 func (m *wafManager) currentConfig(ctx context.Context) wafConfig {

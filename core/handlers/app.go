@@ -2167,7 +2167,15 @@ func (a *App) adminOptionsWAF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys := wafOptionKeys()
-	if r.Method == http.MethodPost {
+	switch r.Method {
+	case http.MethodGet:
+		options, err := a.Options.All(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		a.renderAdmin(w, r, "options_waf.html", map[string]any{"Title": "WAF", "Options": options, "Saved": r.URL.Query().Get("saved") == "1"})
+	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -2175,15 +2183,23 @@ func (a *App) adminOptionsWAF(w http.ResponseWriter, r *http.Request) {
 		if err := validateWAFOptions(r); err != nil {
 			options, _ := a.Options.All(r.Context())
 			for _, key := range keys {
-				options[key] = r.FormValue(key)
+				options[key] = wafFormValue(r, key)
 			}
 			a.renderAdmin(w, r, "options_waf.html", map[string]any{"Title": "WAF", "Options": options, "Error": err.Error()})
 			return
 		}
-	}
-	a.optionsForm(w, r, "WAF", "options_waf.html", keys)
-	if r.Method == http.MethodPost && a.WAF != nil {
-		a.WAF.invalidatePublicData()
+		for _, key := range keys {
+			if err := a.Options.Set(r.Context(), key, wafFormValue(r, key)); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		if a.WAF != nil {
+			a.WAF.invalidatePublicData()
+		}
+		a.flashRedirect(w, r, r.URL.Path, http.StatusSeeOther, flashNotice{Type: "success", Message: "设置已保存。"})
+	default:
+		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
 }
 
@@ -2209,7 +2225,7 @@ func validateWAFOptions(r *http.Request) error {
 		"waf_invalid_path_enabled", "waf_search_rate_enabled", "waf_login_ban_enabled",
 	}
 	for _, key := range boolKeys {
-		if value := r.FormValue(key); value != "0" && value != "1" {
+		if value := wafFormValue(r, key); value != "0" && value != "1" {
 			return fmt.Errorf("WAF 开关参数无效")
 		}
 	}
@@ -2248,6 +2264,33 @@ func validateWAFOptions(r *http.Request) error {
 		}
 	}
 	return nil
+}
+
+func wafFormValue(r *http.Request, key string) string {
+	if wafBoolOptionSet()[key] {
+		for _, value := range r.Form[key] {
+			if strings.TrimSpace(value) == "1" {
+				return "1"
+			}
+		}
+		return "0"
+	}
+	return r.FormValue(key)
+}
+
+func wafBoolOptionSet() map[string]bool {
+	return map[string]bool{
+		"waf_enabled":                true,
+		"waf_url_index_enabled":      true,
+		"waf_cache_enabled":          true,
+		"waf_dynamic_rate_enabled":   true,
+		"waf_static_rate_enabled":    true,
+		"waf_upload_rate_enabled":    true,
+		"waf_attachment_ban_enabled": true,
+		"waf_invalid_path_enabled":   true,
+		"waf_search_rate_enabled":    true,
+		"waf_login_ban_enabled":      true,
+	}
 }
 
 func (a *App) optionsForm(w http.ResponseWriter, r *http.Request, title, tmpl string, keys []string) {
