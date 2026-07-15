@@ -2841,6 +2841,17 @@ type schemaFormConfig struct {
 	AssetManager *settingsAssetManager
 }
 
+type schemaFieldView struct {
+	Field  plugin.FieldSchema
+	Values map[string]string
+}
+
+type schemaFieldGroup struct {
+	Title  string
+	Class  string
+	Fields []schemaFieldView
+}
+
 func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormConfig) {
 	switch r.Method {
 	case http.MethodGet:
@@ -2855,7 +2866,7 @@ func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormC
 		if uploadURL == "" {
 			uploadURL = "/admin/schema/upload"
 		}
-		a.renderAdmin(w, r, cfg.Template, map[string]any{"Title": cfg.Title, "BackURL": cfg.BackURL, "Schema": cfg.Schema, "Values": values, "Saved": cfg.Saved, "UploadURL": uploadURL, "AssetManager": cfg.AssetManager})
+		a.renderAdmin(w, r, cfg.Template, map[string]any{"Title": cfg.Title, "BackURL": cfg.BackURL, "Schema": cfg.Schema, "SchemaGroups": schemaGroups(cfg.Schema, values), "Values": values, "Saved": cfg.Saved, "UploadURL": uploadURL, "AssetManager": cfg.AssetManager})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -6713,6 +6724,7 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 		"schemaValue":            schemaValue,
 		"schemaChecked":          schemaChecked,
 		"schemaOptionsAreColors": schemaOptionsAreColors,
+		"schemaFieldClass":       schemaFieldClass,
 		"adminAvatarURL": func(mail string, size int) string {
 			return a.emailAvatarURL(r.Context(), mail, size)
 		},
@@ -8217,6 +8229,60 @@ func schemaValue(values map[string]string, name string) string {
 		return ""
 	}
 	return values[name]
+}
+
+func schemaGroups(schema []plugin.FieldSchema, values map[string]string) []schemaFieldGroup {
+	if len(schema) == 0 {
+		return nil
+	}
+	groups := make([]schemaFieldGroup, 0, 4)
+	indexByTitle := map[string]int{}
+	for _, field := range schema {
+		title := strings.TrimSpace(field.Group)
+		if title == "" {
+			title = "设置"
+		}
+		index, ok := indexByTitle[title]
+		if !ok {
+			index = len(groups)
+			indexByTitle[title] = index
+			groups = append(groups, schemaFieldGroup{Title: title, Class: schemaGroupClass(title)})
+		}
+		groups[index].Fields = append(groups[index].Fields, schemaFieldView{Field: field, Values: values})
+	}
+	return groups
+}
+
+func schemaGroupClass(title string) string {
+	switch strings.TrimSpace(title) {
+	case "资料卡":
+		return "schema-group-profile"
+	case "配色和透明度":
+		return "schema-group-colors"
+	case "背景和装饰图片":
+		return "schema-group-media"
+	case "侧栏和导航":
+		return "schema-group-navigation"
+	case "页脚":
+		return "schema-group-footer"
+	default:
+		return "schema-group-default"
+	}
+}
+
+func schemaFieldClass(field plugin.FieldSchema) string {
+	classes := []string{"schema-field"}
+	wide := field.Wide
+	switch field.Type {
+	case plugin.FieldTextarea, plugin.FieldImage:
+		wide = true
+	case plugin.FieldCheckbox, plugin.FieldRadio, plugin.FieldSelect:
+		classes = append(classes, "schema-choice-field")
+	}
+	if wide {
+		classes = append(classes, "schema-field-wide")
+	}
+	return strings.Join(classes, " ")
 }
 
 func schemaChecked(values map[string]string, name string) bool {

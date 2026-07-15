@@ -1,3 +1,59 @@
+{{define "schema_field"}}
+<div class="{{schemaFieldClass .Field}}">
+  {{if eq .Field.Type "textarea"}}
+    <mdui-text-field name="{{.Field.Name}}" label="{{.Field.Label}}" rows="7" autosize>{{schemaValue .Values .Field.Name}}</mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+  {{else if eq .Field.Type "password"}}
+    <mdui-text-field type="password" name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}"></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+  {{else if eq .Field.Type "number"}}
+    <mdui-text-field type="number" {{if .Field.Min}}min="{{.Field.Min}}"{{end}} {{if .Field.Max}}max="{{.Field.Max}}"{{end}} {{if .Field.Step}}step="{{.Field.Step}}"{{end}} name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}"></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+  {{else if eq .Field.Type "color"}}
+    <mdui-text-field name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}" placeholder="#RRGGBB"></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+  {{else if eq .Field.Type "image"}}
+    <div class="schema-image-field">
+      <mdui-text-field name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}" class="schema-image-input"></mdui-text-field>
+      {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+      <div class="schema-upload-row">
+        <input type="file" name="{{.Field.Name}}_file" accept="image/*" class="schema-native-file" hidden>
+        <mdui-button type="button" variant="outlined" class="schema-upload-button" data-target="{{.Field.Name}}">
+          <mdui-icon slot="icon" name="upload"></mdui-icon><span class="button-label">上传并填入</span>
+        </mdui-button>
+      </div>
+    </div>
+  {{else if eq .Field.Type "checkbox"}}
+    <div class="schema-option-field">
+      <mdui-checkbox name="{{.Field.Name}}" value="1" {{if schemaChecked .Values .Field.Name}}checked{{end}}>{{.Field.Label}}</mdui-checkbox>
+      {{if .Field.Description}}<span class="muted">{{.Field.Description}}</span>{{end}}
+    </div>
+  {{else if eq .Field.Type "radio"}}
+    <div class="schema-option-field">
+      <span class="muted">{{.Field.Label}}</span>
+      <mdui-radio-group name="{{.Field.Name}}" value="{{schemaValue .Values .Field.Name}}">
+        {{range .Field.Options}}<mdui-radio value="{{.Value}}">{{.Label}}</mdui-radio>{{end}}
+      </mdui-radio-group>
+      {{if .Field.Description}}<span class="muted">{{.Field.Description}}</span>{{end}}
+    </div>
+  {{else if eq .Field.Type "select"}}
+    <div class="schema-option-field">
+      <mdui-select name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}">
+        {{if schemaOptionsAreColors .Field.Options}}
+          {{range .Field.Options}}<mdui-menu-item value="{{.Value}}"><span class="schema-color-option"><span class="schema-color-chip" style="--swatch: {{.Value}}"></span>{{.Label}} · {{.Value}}</span></mdui-menu-item>{{end}}
+        {{else}}
+          {{range .Field.Options}}<mdui-menu-item value="{{.Value}}">{{.Label}}</mdui-menu-item>{{end}}
+        {{end}}
+      </mdui-select>
+      {{if .Field.Description}}<span class="muted">{{.Field.Description}}</span>{{end}}
+    </div>
+  {{else}}
+    <mdui-text-field name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}"></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+  {{end}}
+</div>
+{{end}}
+
 {{define "content"}}
 <div class="page-head">
   <div>
@@ -9,52 +65,11 @@
 {{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
 <form method="post" class="form-panel field-stack schema-form" data-schema-upload-url="{{.UploadURL}}">
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
-  {{range .Schema}}
-    {{if eq .Type "textarea"}}
-      <mdui-text-field name="{{.Name}}" label="{{.Label}}" rows="5" autosize helper="{{.Description}}">{{schemaValue $.Values .Name}}</mdui-text-field>
-    {{else if eq .Type "password"}}
-      <mdui-text-field type="password" name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
-    {{else if eq .Type "number"}}
-      <mdui-text-field type="number" {{if .Min}}min="{{.Min}}"{{end}} {{if .Max}}max="{{.Max}}"{{end}} {{if .Step}}step="{{.Step}}"{{end}} name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
-    {{else if eq .Type "color"}}
-      <mdui-text-field name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}" placeholder="#RRGGBB"></mdui-text-field>
-    {{else if eq .Type "image"}}
-      <div class="schema-image-field">
-        <mdui-text-field name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}" class="schema-image-input"></mdui-text-field>
-        <div class="schema-upload-row">
-          <input type="file" name="{{.Name}}_file" accept="image/*" class="schema-native-file" hidden>
-          <mdui-button type="button" variant="outlined" class="schema-upload-button" data-target="{{.Name}}">
-            <mdui-icon slot="icon" name="upload"></mdui-icon><span class="button-label">上传并填入</span>
-          </mdui-button>
-        </div>
-      </div>
-    {{else if eq .Type "checkbox"}}
-      <div class="schema-option-field">
-        <mdui-checkbox name="{{.Name}}" value="1" {{if schemaChecked $.Values .Name}}checked{{end}}>{{.Label}}</mdui-checkbox>
-        {{if .Description}}<span class="muted">{{.Description}}</span>{{end}}
-      </div>
-    {{else if eq .Type "radio"}}
-      <div class="schema-option-field">
-        <span class="muted">{{.Label}}</span>
-        <mdui-radio-group name="{{.Name}}" value="{{schemaValue $.Values .Name}}">
-          {{range .Options}}<mdui-radio value="{{.Value}}">{{.Label}}</mdui-radio>{{end}}
-        </mdui-radio-group>
-        {{if .Description}}<span class="muted">{{.Description}}</span>{{end}}
-      </div>
-    {{else if eq .Type "select"}}
-      <div class="schema-option-field">
-        <mdui-select name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}">
-          {{if schemaOptionsAreColors .Options}}
-            {{range .Options}}<mdui-menu-item value="{{.Value}}"><span class="schema-color-option"><span class="schema-color-chip" style="--swatch: {{.Value}}"></span>{{.Label}} · {{.Value}}</span></mdui-menu-item>{{end}}
-          {{else}}
-            {{range .Options}}<mdui-menu-item value="{{.Value}}">{{.Label}}</mdui-menu-item>{{end}}
-          {{end}}
-        </mdui-select>
-        {{if .Description}}<span class="muted">{{.Description}}</span>{{end}}
-      </div>
-    {{else}}
-      <mdui-text-field name="{{.Name}}" label="{{.Label}}" value="{{schemaValue $.Values .Name}}" helper="{{.Description}}"></mdui-text-field>
-    {{end}}
+  {{range .SchemaGroups}}
+    <fieldset class="fieldset schema-group {{.Class}}">
+      {{if .Title}}<legend>{{.Title}}</legend>{{end}}
+      {{range .Fields}}{{template "schema_field" .}}{{end}}
+    </fieldset>
   {{else}}
     <span class="muted">没有可配置项目。</span>
   {{end}}

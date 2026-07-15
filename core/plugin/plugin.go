@@ -319,6 +319,7 @@ type FieldOption struct {
 type FieldSchema struct {
 	Name        string
 	Label       string
+	Group       string
 	Type        FieldType
 	Default     string
 	Description string
@@ -328,6 +329,7 @@ type FieldSchema struct {
 	Options     []FieldOption
 	ForTypes    []string
 	ReadOnly    bool
+	Wide        bool
 }
 
 type PluginInfo struct {
