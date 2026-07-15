@@ -68,6 +68,10 @@
       return;
     }
 
+    function compactDrawer() {
+      return window.matchMedia("(max-width: 720px)").matches;
+    }
+
     function setDrawer(open, persist) {
       if (open) {
         drawer.setAttribute("open", "");
@@ -75,7 +79,7 @@
         drawer.removeAttribute("open");
       }
       document.body.classList.toggle("admin-drawer-open", open);
-      document.body.classList.remove("admin-drawer-modal");
+      document.body.classList.toggle("admin-drawer-modal", open && compactDrawer());
       if (persist !== false) {
         localStorage.setItem("goblogAdminDrawerOpen", open ? "1" : "0");
       }
@@ -97,6 +101,12 @@
     window.addEventListener("keydown", function (event) {
       if (event.key === "Escape" && drawer.hasAttribute("open")) {
         setDrawer(false);
+      }
+    });
+
+    window.addEventListener("resize", function () {
+      if (drawer.hasAttribute("open")) {
+        document.body.classList.toggle("admin-drawer-modal", compactDrawer());
       }
     });
   }
@@ -1169,7 +1179,7 @@
     });
 
     document.body.classList.toggle("admin-drawer-open", !!drawerOpen);
-    document.body.classList.remove("admin-drawer-modal");
+    document.body.classList.toggle("admin-drawer-modal", !!drawerOpen && window.matchMedia("(max-width: 720px)").matches);
 
     var currentTitle = document.querySelector(".admin-appbar mdui-top-app-bar-title");
     var nextTitle = doc.querySelector(".admin-appbar mdui-top-app-bar-title");

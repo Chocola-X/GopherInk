@@ -115,7 +115,8 @@ body.admin-drawer-open:not(.admin-drawer-modal) .admin-layout-main {
 }
 
 body.admin-drawer-modal .drawer-scrim {
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .admin-nav {
