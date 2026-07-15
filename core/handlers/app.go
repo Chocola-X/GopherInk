@@ -590,6 +590,24 @@ func (a *App) contentRoutes(w http.ResponseWriter, r *http.Request, prefix, typ 
 		if !a.canEditContent(w, r, id, typ) {
 			return
 		}
+		if r.Method == http.MethodPost {
+			rid, _ := strconv.ParseInt(r.FormValue("rid"), 10, 64)
+			if err := a.Contents.DeleteRevision(r.Context(), id, rid); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					http.NotFound(w, r)
+					return
+				}
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			a.flashRedirect(w, r, contentRevisionsURL(typ, id), http.StatusSeeOther, flashNotice{Type: "success", Message: "修订版本已删除。"})
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet+", "+http.MethodPost)
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
 		a.contentRevisions(w, r, typ, id)
 	case "restore":
 		if r.Method != http.MethodPost {
@@ -8025,6 +8043,14 @@ func contentActionURL(typ string, id int64) string {
 		return base + "/new"
 	}
 	return fmt.Sprintf("%s/%d/edit", base, id)
+}
+
+func contentRevisionsURL(typ string, id int64) string {
+	base := "/admin/posts"
+	if typ == models.ContentTypePage {
+		base = "/admin/pages"
+	}
+	return fmt.Sprintf("%s/%d/revisions", base, id)
 }
 
 func contentFormTitle(typ string, id int64) string {

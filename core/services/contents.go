@@ -1120,6 +1120,22 @@ func (s *ContentService) RevisionByID(ctx context.Context, rid int64) (models.Re
 	return r, err
 }
 
+func (s *ContentService) DeleteRevision(ctx context.Context, cid, rid int64) error {
+	ctx = WithWriter(ctx)
+	res, err := s.db.ExecContext(ctx, `DELETE FROM gb_revisions WHERE cid = ? AND rid = ?`, cid, rid)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (s *ContentService) RestoreRevision(ctx context.Context, cid, rid int64) (int64, error) {
 	ctx = WithWriter(ctx)
 	revision, err := s.RevisionByID(ctx, rid)

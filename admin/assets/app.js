@@ -126,6 +126,7 @@
     initSchemaForm(root);
     initImageProcessingOptions(root);
     initCommentProcessingOptions(root);
+    initRevisionCards(root);
     initAdminNotices(root);
   }
 
@@ -918,6 +919,28 @@
       }
       enabled.addEventListener("change", syncIntervalVisibility);
       syncIntervalVisibility();
+    });
+  }
+
+  function initRevisionCards(root) {
+    query(root, ".revision-card").forEach(function (card) {
+      if (bound(card, "adminRevisionCardBound")) {
+        return;
+      }
+      var button = card.querySelector(".revision-toggle");
+      var excerpt = card.querySelector(".revision-excerpt");
+      var full = card.querySelector(".revision-full");
+      if (!button || !excerpt || !full) {
+        return;
+      }
+      var openLabel = button.dataset.openLabel || "查看";
+      var closeLabel = button.dataset.closeLabel || "收起";
+      button.addEventListener("click", function () {
+        var expanded = card.classList.toggle("revision-card-expanded");
+        excerpt.hidden = expanded;
+        full.hidden = !expanded;
+        button.textContent = expanded ? closeLabel : openLabel;
+      });
     });
   }
 

@@ -3,27 +3,33 @@
   <div><h1>修订版本</h1><p class="muted">{{.Content.Title}}</p></div>
   <mdui-button variant="outlined" href="{{if eq .Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{.Content.CID}}/edit">返回编辑</mdui-button>
 </div>
-<section class="table-panel">
-  <table>
-    <thead><tr><th>时间</th><th>标题</th><th>状态</th><th>摘要</th><th></th></tr></thead>
-    <tbody>
-    {{range .Revisions}}
-      <tr>
-        <td>{{date .Created}}</td>
-        <td><strong>{{.Title}}</strong><br><span class="muted">{{.Slug}}</span></td>
-        <td>{{statusLabel .Status}}</td>
-        <td>{{excerpt .Text 80}}</td>
-        <td>
-          <form method="post" action="{{if eq $.Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{$.Content.CID}}/restore">
-            <input type="hidden" name="rid" value="{{.RID}}">
-            <mdui-button type="submit" variant="outlined">恢复</mdui-button>
-          </form>
-        </td>
-      </tr>
-    {{else}}
-      <tr><td colspan="5" class="muted">暂无修订版本。</td></tr>
-    {{end}}
-    </tbody>
-  </table>
+<section class="revision-list">
+  {{range .Revisions}}
+  <article class="revision-card">
+    <div class="revision-main">
+      <div class="revision-meta">
+        <span>{{datetime .Created}}</span>
+        <span>{{statusLabel .Status}}</span>
+      </div>
+      <strong>{{.Title}}</strong>
+      {{if .Slug}}<span class="muted">{{.Slug}}</span>{{end}}
+      <p class="revision-excerpt">{{excerpt .Text 120}}</p>
+      <p class="revision-full" hidden>{{.Text}}</p>
+    </div>
+    <div class="revision-actions">
+      <mdui-button type="button" variant="text" class="revision-toggle" data-open-label="查看" data-close-label="收起">查看</mdui-button>
+      <form method="post" action="{{if eq $.Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{$.Content.CID}}/restore">
+        <input type="hidden" name="rid" value="{{.RID}}">
+        <mdui-button type="submit" variant="outlined">恢复</mdui-button>
+      </form>
+      <form method="post" action="{{if eq $.Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{$.Content.CID}}/revisions">
+        <input type="hidden" name="rid" value="{{.RID}}">
+        <mdui-button type="submit" variant="outlined">删除</mdui-button>
+      </form>
+    </div>
+  </article>
+  {{else}}
+  <div class="revision-empty muted">暂无修订版本。</div>
+  {{end}}
 </section>
 {{end}}

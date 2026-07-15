@@ -252,6 +252,39 @@ func TestEditingDraftLifecyclePreservesPublishedUntilPublish(t *testing.T) {
 	}
 }
 
+func TestDeleteRevisionRequiresMatchingContentID(t *testing.T) {
+	service := newContentTestService(t)
+	ctx := context.Background()
+	firstID, err := service.Create(ctx, SaveContentInput{Title: "First", Slug: "first-delete-revision", Text: "one", Type: models.ContentTypePost, Status: models.ContentStatusPost}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondID, err := service.Create(ctx, SaveContentInput{Title: "Second", Slug: "second-delete-revision", Text: "two", Type: models.ContentTypePost, Status: models.ContentStatusPost}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Update(ctx, secondID, SaveContentInput{Title: "Second changed", Slug: "second-delete-revision", Text: "changed", Type: models.ContentTypePost, Status: models.ContentStatusPost}); err != nil {
+		t.Fatal(err)
+	}
+	revisions, err := service.Revisions(ctx, secondID)
+	if err != nil || len(revisions) == 0 {
+		t.Fatalf("expected revision, got %v %#v", err, revisions)
+	}
+	if err := service.DeleteRevision(ctx, firstID, revisions[0].RID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("DeleteRevision wrong cid err = %v, want sql.ErrNoRows", err)
+	}
+	if err := service.DeleteRevision(ctx, secondID, revisions[0].RID); err != nil {
+		t.Fatal(err)
+	}
+	revisions, err = service.Revisions(ctx, secondID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revisions) != 0 {
+		t.Fatalf("revision was not deleted: %#v", revisions)
+	}
+}
+
 func TestContentFieldValidationJSONIncrementAndRevisionLimit(t *testing.T) {
 	service := newContentTestService(t)
 	ctx := context.Background()
