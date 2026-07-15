@@ -1480,10 +1480,18 @@ func (a *App) adminComments(w http.ResponseWriter, r *http.Request) {
 	views := make([]commentView, 0, len(comments))
 	for _, comment := range comments {
 		comment = a.filterComment(r.Context(), comment)
-		views = append(views, commentView{Comment: comment, AvatarURL: a.commentAvatarURL(r.Context(), comment, 48)})
+		views = append(views, commentView{
+			Comment:       comment,
+			AvatarURL:     a.commentAvatarURL(r.Context(), comment, 48),
+			ContentURL:    commentContentURL(comment),
+			AdminEditURL:  commentInlineURL(r, "edit", comment.COID),
+			AdminReplyURL: commentInlineURL(r, "reply", comment.COID),
+		})
 	}
 	pager := pagination{Page: page, PageSize: pageSize, Total: total, TotalPages: totalPages, PrevURL: pageURL(r, page-1), NextURL: pageURL(r, page+1), HasPrev: page > 1, HasNext: page < totalPages}
-	a.renderAdmin(w, r, "comments.html", map[string]any{"Title": "评论", "Comments": views, "Status": status, "Keywords": r.URL.Query().Get("keywords"), "CID": cid, "Type": typ, "Pagination": pager})
+	editID, _ := strconv.ParseInt(r.URL.Query().Get("edit"), 10, 64)
+	replyID, _ := strconv.ParseInt(r.URL.Query().Get("reply"), 10, 64)
+	a.renderAdmin(w, r, "comments.html", map[string]any{"Title": "评论", "Comments": views, "Status": status, "Keywords": r.URL.Query().Get("keywords"), "CID": cid, "Type": typ, "Pagination": pager, "EditID": editID, "ReplyID": replyID})
 }
 
 func (a *App) adminCommentRoutes(w http.ResponseWriter, r *http.Request) {
@@ -1602,23 +1610,21 @@ func (a *App) commentForm(w http.ResponseWriter, r *http.Request, id int64, repl
 	}
 	switch r.Method {
 	case http.MethodGet:
-		title := "编辑评论"
+		mode := "edit"
 		if reply {
-			title = "回复评论"
+			mode = "reply"
 		}
-		replyAuthor := ""
-		if reply {
-			if user, ok := a.currentUser(r); ok {
-				replyAuthor = firstNonEmpty(user.ScreenName, user.Name)
-			}
-		}
-		a.renderAdmin(w, r, "comment_form.html", map[string]any{"Title": title, "Comment": comment, "Reply": reply, "ReplyAuthor": replyAuthor, "Action": r.URL.Path})
+		http.Redirect(w, r, commentInlineURL(r, mode, id), http.StatusSeeOther)
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		input := services.SaveCommentInput{CID: comment.CID, Author: strings.TrimSpace(r.FormValue("author")), Mail: strings.TrimSpace(r.FormValue("mail")), URL: strings.TrimSpace(r.FormValue("url")), Text: strings.TrimSpace(r.FormValue("text")), Status: r.FormValue("status")}
+		status := r.FormValue("status")
+		if status == "" {
+			status = comment.Status
+		}
+		input := services.SaveCommentInput{CID: comment.CID, Author: strings.TrimSpace(r.FormValue("author")), Mail: strings.TrimSpace(r.FormValue("mail")), URL: strings.TrimSpace(r.FormValue("url")), IP: strings.TrimSpace(r.FormValue("ip")), Text: strings.TrimSpace(r.FormValue("text")), Status: status, Type: comment.Type}
 		if reply {
 			input.Parent = comment.COID
 			input.OwnerID = comment.OwnerID
@@ -1633,6 +1639,19 @@ func (a *App) commentForm(w http.ResponseWriter, r *http.Request, id int64, repl
 			}
 			if input.Status == "" {
 				input.Status = "approved"
+			}
+		} else {
+			if input.Author == "" {
+				input.Author = comment.Author
+			}
+			if input.Mail == "" {
+				input.Mail = comment.Mail
+			}
+			if input.URL == "" {
+				input.URL = comment.URL
+			}
+			if input.IP == "" {
+				input.IP = comment.IP
 			}
 		}
 		if errs := validateCommentInput(input); !errs.Empty() {
@@ -6266,13 +6285,16 @@ type archiveLink struct {
 
 type commentView struct {
 	models.Comment
-	Level      int
-	BodyHTML   template.HTML
-	AuthorHTML template.HTML
-	AvatarURL  string
-	ReplyURL   string
-	Anchor     string
-	Pending    bool
+	Level         int
+	BodyHTML      template.HTML
+	AuthorHTML    template.HTML
+	AvatarURL     string
+	ContentURL    string
+	AdminEditURL  string
+	AdminReplyURL string
+	ReplyURL      string
+	Anchor        string
+	Pending       bool
 }
 
 type publicCommentIdentity struct {
@@ -6799,8 +6821,10 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 	lang := a.option(r.Context(), "site_language", "zh-CN")
 	funcs := template.FuncMap{
 		"date":                   func(ts int64) string { return a.formatDate(r.Context(), ts, "post_date_format") },
+		"datetime":               formatDate,
 		"T":                      func(key string) string { return i18n.T(lang, key) },
 		"statusLabel":            statusLabel,
+		"commentStatusLabel":     commentStatusLabel,
 		"contentStatus":          contentStatusLabel,
 		"roleLabel":              roleLabel,
 		"excerpt":                render.Excerpt,
@@ -7509,6 +7533,17 @@ func statusLabel(status string) string {
 	}
 }
 
+func commentStatusLabel(status string) string {
+	switch status {
+	case "waiting":
+		return "待审核"
+	case "spam":
+		return "垃圾"
+	default:
+		return "已发布"
+	}
+}
+
 func contentStatusLabel(c models.Content) string {
 	if c.Status == models.ContentStatusPost && c.Created > time.Now().Unix() {
 		return "定时发布"
@@ -7961,6 +7996,17 @@ func contentPublicURL(c models.Content) string {
 		return "/page/" + contentRouteSlug(c) + ".html"
 	}
 	return "/post/" + contentRouteSlug(c) + ".html"
+}
+
+func commentContentURL(comment models.Comment) string {
+	if comment.CID <= 0 || strings.TrimSpace(comment.Title) == "" {
+		return ""
+	}
+	typ := comment.ContentType
+	if typ == "" {
+		typ = models.ContentTypePost
+	}
+	return contentPublicURL(models.Content{CID: comment.CID, Slug: comment.Slug, Type: typ})
 }
 
 func contentListURL(typ string) string {
@@ -8910,11 +8956,21 @@ func pageURL(r *http.Request, page int) string {
 		page = 1
 	}
 	q := r.URL.Query()
+	q.Del("edit")
+	q.Del("reply")
 	q.Set("page", strconv.Itoa(page))
 	if len(q) == 0 {
 		return r.URL.Path
 	}
 	return r.URL.Path + "?" + q.Encode()
+}
+
+func commentInlineURL(r *http.Request, mode string, id int64) string {
+	q := r.URL.Query()
+	q.Del("edit")
+	q.Del("reply")
+	q.Set(mode, strconv.FormatInt(id, 10))
+	return "/admin/comments?" + q.Encode() + "#comment-" + strconv.FormatInt(id, 10)
 }
 
 func commentPageURL(r *http.Request, page int) string {

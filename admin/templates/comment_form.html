@@ -7,6 +7,7 @@
   <mdui-text-field name="author" label="作者" value="{{.Comment.Author}}" {{if fieldError .Errors "author"}}helper="{{fieldError .Errors "author"}}"{{end}} required></mdui-text-field>
   <mdui-text-field name="mail" label="邮箱" value="{{.Comment.Mail}}" {{if fieldError .Errors "mail"}}helper="{{fieldError .Errors "mail"}}"{{end}}></mdui-text-field>
   <mdui-text-field name="url" label="网址" value="{{.Comment.URL}}" {{if fieldError .Errors "url"}}helper="{{fieldError .Errors "url"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="ip" label="IP" value="{{.Comment.IP}}"></mdui-text-field>
   {{end}}
   <mdui-select name="status" label="状态" value="{{if .Reply}}approved{{else}}{{.Comment.Status}}{{end}}">
     <mdui-menu-item value="approved">已通过</mdui-menu-item>

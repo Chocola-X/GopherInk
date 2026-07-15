@@ -78,7 +78,7 @@ func (s *CommentService) ListPage(ctx context.Context, query CommentQuery) ([]mo
 	}
 	sqlQuery := `
 		SELECT cm.coid, cm.cid, cm.created, COALESCE(cm.author,''), cm.authorId, cm.ownerId, COALESCE(cm.mail,''), COALESCE(cm.url,''), COALESCE(cm.ip,''), COALESCE(cm.agent,''), COALESCE(cm.text,''), cm.type, cm.status, cm.parent,
-			COALESCE(c.title,''), COALESCE(c.slug,'')
+			COALESCE(c.title,''), COALESCE(c.slug,''), COALESCE(c.type,'')
 		FROM gb_comments cm LEFT JOIN gb_contents c ON c.cid = cm.cid
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY cm.created DESC, cm.coid DESC`
@@ -95,7 +95,7 @@ func (s *CommentService) ListPage(ctx context.Context, query CommentQuery) ([]mo
 	var comments []models.Comment
 	for rows.Next() {
 		var c models.Comment
-		if err := rows.Scan(&c.COID, &c.CID, &c.Created, &c.Author, &c.AuthorID, &c.OwnerID, &c.Mail, &c.URL, &c.IP, &c.Agent, &c.Text, &c.Type, &c.Status, &c.Parent, &c.Title, &c.Slug); err != nil {
+		if err := rows.Scan(&c.COID, &c.CID, &c.Created, &c.Author, &c.AuthorID, &c.OwnerID, &c.Mail, &c.URL, &c.IP, &c.Agent, &c.Text, &c.Type, &c.Status, &c.Parent, &c.Title, &c.Slug, &c.ContentType); err != nil {
 			return nil, err
 		}
 		comments = append(comments, c)
@@ -321,7 +321,7 @@ func (s *CommentService) SaveReturningID(ctx context.Context, input SaveCommentI
 		if typ == "" {
 			typ = currentType
 		}
-		_, err := s.db.ExecContext(ctx, `UPDATE gb_comments SET author = ?, mail = ?, url = ?, text = ?, status = ?, type = ? WHERE coid = ?`, input.Author, input.Mail, input.URL, input.Text, status, typ, id)
+		_, err := s.db.ExecContext(ctx, `UPDATE gb_comments SET author = ?, mail = ?, url = ?, ip = ?, text = ?, status = ?, type = ? WHERE coid = ?`, input.Author, input.Mail, input.URL, input.IP, input.Text, status, typ, id)
 		if err == nil && cid > 0 {
 			err = s.refreshContentCount(ctx, cid)
 		}

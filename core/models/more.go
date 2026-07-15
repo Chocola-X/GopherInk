@@ -12,22 +12,23 @@ type Meta struct {
 }
 
 type Comment struct {
-	COID     int64
-	CID      int64
-	Created  int64
-	Author   string
-	AuthorID int64
-	OwnerID  int64
-	Mail     string
-	URL      string
-	IP       string
-	Agent    string
-	Text     string
-	Type     string
-	Status   string
-	Parent   int64
-	Title    string
-	Slug     string
+	COID        int64
+	CID         int64
+	Created     int64
+	Author      string
+	AuthorID    int64
+	OwnerID     int64
+	Mail        string
+	URL         string
+	IP          string
+	Agent       string
+	Text        string
+	Type        string
+	Status      string
+	Parent      int64
+	Title       string
+	Slug        string
+	ContentType string
 }
 
 type AttachmentMeta struct {

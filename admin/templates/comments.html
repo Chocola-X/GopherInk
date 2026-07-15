@@ -17,40 +17,101 @@
   {{if .CID}}<input type="hidden" name="cid" value="{{.CID}}">{{end}}
   <mdui-button type="submit" variant="outlined">筛选</mdui-button>
 </form>
-<form method="post" action="/admin/comments/batch">
+
+<form id="comment-batch" method="post" action="/admin/comments/batch">
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
-  <div class="bulk-actions">
-    <mdui-button type="submit" name="action" value="approved" variant="tonal">批量通过</mdui-button>
-    <mdui-button type="submit" name="action" value="waiting" variant="tonal">批量待审</mdui-button>
-    <mdui-button type="submit" name="action" value="spam" variant="tonal">批量垃圾</mdui-button>
-    <mdui-button type="submit" name="action" value="delete" variant="outlined">批量删除</mdui-button>
-  </div>
-  <section class="table-panel"><table>
-    <thead><tr><th></th><th class="comment-avatar-column">头像</th><th>作者</th><th>内容</th><th>状态</th><th>日期</th><th></th></tr></thead>
-    <tbody>{{range .Comments}}<tr>
-      <td><mdui-checkbox name="id" value="{{.COID}}" aria-label="选择评论"></mdui-checkbox></td>
-      <td class="comment-avatar-column"><img class="admin-comment-avatar" src="{{.AvatarURL}}" alt="" loading="lazy" referrerpolicy="no-referrer"></td>
-      <td><strong>{{.Author}}</strong><br><span class="muted">{{.Mail}} {{.IP}}</span></td>
-      <td>{{.Text}}<br><span class="muted">{{.Type}} 于 {{.Title}}</span></td>
-      <td>{{.Status}}</td><td>{{date .Created}}</td>
-      <td><div class="row-actions">
-        <mdui-button type="submit" formaction="/admin/comments/{{.COID}}/mark" name="status" value="approved" variant="text">通过</mdui-button>
-        <mdui-button type="submit" formaction="/admin/comments/{{.COID}}/mark" name="status" value="waiting" variant="text">待审</mdui-button>
-        <mdui-button type="submit" formaction="/admin/comments/{{.COID}}/mark" name="status" value="spam" variant="text">垃圾</mdui-button>
-        <mdui-button-icon href="/admin/comments/{{.COID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
-        <mdui-button href="/admin/comments/{{.COID}}/reply" variant="text">回复</mdui-button>
-        <mdui-button-icon type="submit" formaction="/admin/comments/{{.COID}}/delete" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
-      </div></td>
-    </tr>{{else}}<tr><td colspan="7" class="muted">没有评论。</td></tr>{{end}}</tbody>
-  </table></section>
 </form>
+<form id="comment-clear-spam" method="post" action="/admin/comments/clear-spam">
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+</form>
+<div class="bulk-actions">
+  <mdui-button form="comment-batch" type="submit" name="action" value="approved" variant="tonal">批量通过</mdui-button>
+  <mdui-button form="comment-batch" type="submit" name="action" value="waiting" variant="tonal">批量待审</mdui-button>
+  <mdui-button form="comment-batch" type="submit" name="action" value="spam" variant="tonal">批量垃圾</mdui-button>
+  <mdui-button form="comment-batch" type="submit" name="action" value="delete" variant="outlined">批量删除</mdui-button>
+  <mdui-button form="comment-clear-spam" type="submit" variant="outlined">清空垃圾评论</mdui-button>
+</div>
+
+<section class="comment-list-panel">
+  {{range .Comments}}
+  <div class="comment-list-entry">
+    <article class="comment-list-card" id="comment-{{.COID}}">
+      <div class="comment-select"><mdui-checkbox form="comment-batch" name="id" value="{{.COID}}" aria-label="选择评论"></mdui-checkbox></div>
+      <img class="admin-comment-avatar" src="{{.AvatarURL}}" alt="" loading="lazy" referrerpolicy="no-referrer">
+      <div class="comment-author-cell">
+        {{if .URL}}<a class="comment-author-link" href="{{.URL}}" target="_blank" rel="noreferrer">{{.Author}}</a>{{else}}<strong>{{.Author}}</strong>{{end}}
+        <span class="muted">{{.Mail}}</span>
+        {{if .IP}}<span class="muted">{{.IP}}</span>{{end}}
+        <span class="muted">{{datetime .Created}}</span>
+      </div>
+      <div class="comment-content-cell">
+        <div class="comment-content-title">在（{{if .ContentURL}}<a href="{{.ContentURL}}" target="_blank" rel="noreferrer">{{if .Title}}{{.Title}}{{else}}关联内容不存在{{end}}</a>{{else}}<strong>{{if .Title}}{{.Title}}{{else}}关联内容不存在{{end}}</strong>{{end}}）评论：</div>
+        <p>{{.Text}}</p>
+      </div>
+      <div class="comment-status-cell"><span class="comment-status comment-status-{{.Status}}">{{commentStatusLabel .Status}}</span></div>
+      <div class="comment-actions-cell">
+        <div class="comment-row-actions">
+          <form method="post" action="/admin/comments/{{.COID}}/mark">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="status" value="approved">
+            <mdui-button-icon class="comment-action-approved" type="submit" title="通过"><mdui-icon name="check_circle"></mdui-icon></mdui-button-icon>
+          </form>
+          <form method="post" action="/admin/comments/{{.COID}}/mark">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="status" value="waiting">
+            <mdui-button-icon class="comment-action-waiting" type="submit" title="待审"><mdui-icon name="hourglass_empty"></mdui-icon></mdui-button-icon>
+          </form>
+          <form method="post" action="/admin/comments/{{.COID}}/mark">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+            <input type="hidden" name="status" value="spam">
+            <mdui-button-icon class="comment-action-spam" type="submit" title="垃圾"><mdui-icon name="report"></mdui-icon></mdui-button-icon>
+          </form>
+          <mdui-button-icon href="{{.AdminEditURL}}" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+          <mdui-button-icon href="{{.AdminReplyURL}}" title="回复"><mdui-icon name="reply"></mdui-icon></mdui-button-icon>
+          <form method="post" action="/admin/comments/{{.COID}}/delete">
+            <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+            <mdui-button-icon class="comment-action-delete" type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
+          </form>
+        </div>
+      </div>
+    </article>
+    {{if eq $.ReplyID .COID}}
+    <form method="post" action="/admin/comments/{{.COID}}/reply" class="comment-inline-form comment-reply-form">
+      <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="status" value="approved">
+      <mdui-text-field name="text" label="回复内容" rows="4" autosize required></mdui-text-field>
+      <div class="form-actions">
+        <mdui-button href="/admin/comments#comment-{{.COID}}" variant="text">取消</mdui-button>
+        <mdui-button type="submit"><mdui-icon slot="icon" name="send"></mdui-icon>回复</mdui-button>
+      </div>
+    </form>
+    {{end}}
+    {{if eq $.EditID .COID}}
+    <form method="post" action="/admin/comments/{{.COID}}/edit" class="comment-inline-form comment-edit-form">
+      <input type="hidden" name="_csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="status" value="{{.Status}}">
+      <div class="comment-edit-meta">
+        <mdui-text-field name="author" label="昵称" value="{{.Author}}" required></mdui-text-field>
+        <mdui-text-field name="mail" label="邮箱" value="{{.Mail}}"></mdui-text-field>
+        <mdui-text-field name="url" label="网站" value="{{.URL}}"></mdui-text-field>
+        <mdui-text-field name="ip" label="IP" value="{{.IP}}"></mdui-text-field>
+      </div>
+      <mdui-text-field name="text" label="评论内容" rows="5" autosize required>{{.Text}}</mdui-text-field>
+      <div class="form-actions">
+        <mdui-button href="/admin/comments#comment-{{.COID}}" variant="text">取消</mdui-button>
+        <mdui-button type="submit"><mdui-icon slot="icon" name="save"></mdui-icon>保存</mdui-button>
+      </div>
+    </form>
+    {{end}}
+  </div>
+  {{else}}
+  <div class="comment-list-empty muted">没有评论。</div>
+  {{end}}
+</section>
+
 <nav class="pagination" aria-label="评论分页">
   {{if .Pagination.HasPrev}}<mdui-button href="{{.Pagination.PrevURL}}" variant="text"><mdui-icon slot="icon" name="chevron_left"></mdui-icon>上一页</mdui-button>{{end}}
   <span class="muted">第 {{.Pagination.Page}} / {{.Pagination.TotalPages}} 页，共 {{.Pagination.Total}} 条</span>
   {{if .Pagination.HasNext}}<mdui-button href="{{.Pagination.NextURL}}" variant="text">下一页<mdui-icon slot="end-icon" name="chevron_right"></mdui-icon></mdui-button>{{end}}
 </nav>
-<form method="post" action="/admin/comments/clear-spam" class="form-actions">
-  <input type="hidden" name="_csrf" value="{{.CSRF}}">
-  <mdui-button type="submit" variant="outlined">清空垃圾评论</mdui-button>
-</form>
 {{end}}
