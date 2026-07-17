@@ -65,7 +65,7 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 		"site_title":                    "GopherInk",
 		"site_description":              "一个极简的 Go 博客",
 		"site_keywords":                 "",
-		"base_url":                      "http://localhost:8080",
+		"base_url":                      "http://localhost:8086",
 		"site_language":                 "zh-CN",
 		"site_timezone":                 "Local",
 		"active_theme":                  "default",

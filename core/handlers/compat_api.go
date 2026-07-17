@@ -916,7 +916,7 @@ func (a *App) fetchExternalText(ctx context.Context, rawURL string) (string, err
 func (a *App) siteOptions(ctx context.Context) map[string]string {
 	site, err := a.Options.All(ctx)
 	if err != nil {
-		return map[string]string{"site_title": "GopherInk", "base_url": "http://localhost:8080"}
+		return map[string]string{"site_title": "GopherInk", "base_url": "http://localhost:8086"}
 	}
 	return site
 }

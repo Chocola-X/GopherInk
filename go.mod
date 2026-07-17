@@ -10,9 +10,11 @@ require (
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/crypto v0.53.0
 	golang.org/x/image v0.44.0
+	golang.org/x/term v0.44.0
 )
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/ebitengine/purego v0.10.1 // indirect
+	golang.org/x/sys v0.46.0 // indirect
 )

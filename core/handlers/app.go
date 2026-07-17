@@ -76,6 +76,16 @@ func New(contents *services.ContentService, metas *services.MetaService, comment
 	if uploadDir == "" {
 		uploadDir = filepath.Join(dataDir, "uploads")
 	}
+	return NewWithPaths(contents, metas, comments, users, options, plugins, dataDir, uploadDir)
+}
+
+func NewWithPaths(contents *services.ContentService, metas *services.MetaService, comments *services.CommentService, users *services.UserService, options *services.OptionService, plugins *plugin.Manager, dataDir, uploadDir string) *App {
+	if strings.TrimSpace(dataDir) == "" {
+		dataDir = "data"
+	}
+	if strings.TrimSpace(uploadDir) == "" {
+		uploadDir = filepath.Join(dataDir, "uploads")
+	}
 	httpClient, _ := compathttp.New(compathttp.Config{Timeout: 5 * time.Second, UserAgent: "GopherInk/0.5.0", Retries: 1})
 	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}}
 	app.WAF = newWAFManager(app)

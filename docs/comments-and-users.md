@@ -121,6 +121,8 @@ https://weavatar.com/avatar/{hash}?s={size}
 
 会话 Cookie 是签名数据，不是服务端 Session ID。`auth_secret` 必须保密且在实例间一致；更改它会让所有现有会话和相关签名失效。
 
+后台无法登录时，可使用 `gopherink user list` 查询用户 ID，再通过 `gopherink user reset-password --id ID` 重置密码。命令直接读取启动配置指向的数据库，使用与后台相同的 bcrypt 和 `authCode` 轮换逻辑，但不会启动 HTTP 服务。完整用法见 [安装与配置](installation-and-configuration.md#用户应急命令)。
+
 ## CSRF
 
 核心按用途生成每日 HMAC 令牌，包括登录、注册、安装、评论、后台和部分公开动作。令牌用途不应混用；新增 POST/PUT/DELETE 管理入口时应沿用后台 CSRF 校验，而不是只检查登录 Cookie。
@@ -134,4 +136,3 @@ comment, reply, edit, pingback, trackback
 ```
 
 回复和编辑还会触发各自的前后钩子；状态变更、删除、渲染和头像也有独立钩子。完整 payload 和示例见 [插件与钩子开发](plugins-and-hooks.md)。
-

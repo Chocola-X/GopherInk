@@ -1,15 +1,17 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,54 +20,77 @@ import (
 	"github.com/Chocola-X/GopherInk/core/plugin"
 	"github.com/Chocola-X/GopherInk/core/services"
 
-	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
-	cfg := loadConfig()
+	if err := run(os.Args[1:]); err != nil && !errors.Is(err, flag.ErrHelp) {
+		log.Fatal(err)
+	}
+}
+
+func run(args []string) error {
+	if len(args) > 0 {
+		switch args[0] {
+		case "config":
+			return runConfigCommand(args[1:])
+		case "user", "users":
+			return runUserCommand(args[1:])
+		case "help", "-help", "--help", "-h":
+			printUsage()
+			return nil
+		}
+	}
+	cfg, err := loadConfig(args, true)
+	if err != nil {
+		return err
+	}
+	return serve(cfg)
+}
+
+func serve(cfg config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	db, err := openDB(cfg)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer db.Close()
 	serviceDB := services.DB(services.NewSQLDB(db, cfg.DBDriver))
 	if cfg.DBReadDSN != "" {
 		readDB, err := openDB(config{DBDriver: cfg.DBDriver, DBDSN: cfg.DBReadDSN})
 		if err != nil {
-			log.Fatalf("read database health check failed: %v", err)
+			return fmt.Errorf("read database health check failed: %w", err)
 		}
 		defer readDB.Close()
 		serviceDB = services.NewDBRouter(db, readDB, cfg.DBDriver)
 	}
 
 	if err := models.InitializeSchema(ctx, db, cfg.DBDriver); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	setupCtx := services.WithWriter(ctx)
 
 	options := services.NewOptionService(serviceDB)
 	if err := options.EnsureDefaults(setupCtx); err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	users := services.NewUserService(serviceDB)
 	userCount, err := users.Count(setupCtx)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defaultAdminReady := false
 	if shouldCreateDefaultAdmin(userCount, cfg) {
 		if err := users.EnsureDefaultAdmin(setupCtx, cfg.AdminUser, cfg.AdminPassword, cfg.AdminMail); err != nil {
-			log.Fatal(err)
+			return err
 		}
 		defaultAdminReady = true
 	} else if userCount == 0 {
-		log.Printf("web install is available at http://localhost%s/install", cfg.Addr)
+		log.Printf("web install is available at %s/install", localServiceURL(cfg))
 	} else {
 		defaultAdminReady = true
 	}
@@ -73,63 +98,23 @@ func main() {
 	contents := services.NewContentService(serviceDB)
 	metas := services.NewMetaService(serviceDB)
 	if err := metas.EnsureDefaultCategory(setupCtx); err != nil {
-		log.Fatal(err)
+		return err
 	}
 	comments := services.NewCommentService(serviceDB)
-	app := handlers.New(contents, metas, comments, users, options, plugin.Default)
+	app := handlers.NewWithPaths(contents, metas, comments, users, options, plugin.Default, cfg.DataDir, cfg.UploadDir)
+	handler, err := allowNetworks(app.Handler(), cfg.AllowedCIDRs)
+	if err != nil {
+		return err
+	}
 
-	log.Printf("GopherInk listening on %s", cfg.Addr)
+	log.Printf("GopherInk listening on %s; allowed client networks: %s", cfg.Addr, strings.Join(cfg.AllowedCIDRs, ", "))
 	if defaultAdminReady {
-		log.Printf("admin: http://localhost%s/admin", cfg.Addr)
+		log.Printf("admin: %s/admin", localServiceURL(cfg))
 	}
-	if err := http.ListenAndServe(cfg.Addr, app.Handler()); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+	if err := http.ListenAndServe(cfg.Addr, handler); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
 	}
-}
-
-type config struct {
-	Addr          string
-	DBDriver      string
-	DBDSN         string
-	DBReadDSN     string
-	DBWriteDSN    string
-	AdminUser     string
-	AdminPassword string
-	AdminMail     string
-	WebInstall    bool
-	AdminExplicit bool
-}
-
-func loadConfig() config {
-	driver := os.Getenv("GOPHERINK_DB_DRIVER")
-	dsn := os.Getenv("GOPHERINK_DB_DSN")
-	if driver == "" {
-		driver = chooseDriver()
-	}
-	if dsn == "" && (driver == "sqlite" || driver == "sqlite3") {
-		dsn = filepath.Join("data", "gopherink.db")
-	}
-	writeDSN := os.Getenv("GOPHERINK_DB_WRITE_DSN")
-	if writeDSN != "" {
-		dsn = writeDSN
-	}
-
-	_, adminUserSet := os.LookupEnv("GOPHERINK_ADMIN_USER")
-	_, adminPasswordSet := os.LookupEnv("GOPHERINK_ADMIN_PASSWORD")
-	_, adminMailSet := os.LookupEnv("GOPHERINK_ADMIN_MAIL")
-
-	return config{
-		Addr:          env("GOPHERINK_ADDR", ":8080"),
-		DBDriver:      driver,
-		DBDSN:         dsn,
-		DBReadDSN:     os.Getenv("GOPHERINK_DB_READ_DSN"),
-		DBWriteDSN:    writeDSN,
-		AdminUser:     env("GOPHERINK_ADMIN_USER", "admin"),
-		AdminPassword: env("GOPHERINK_ADMIN_PASSWORD", "admin123"),
-		AdminMail:     env("GOPHERINK_ADMIN_MAIL", "admin@example.com"),
-		WebInstall:    envBool("GOPHERINK_WEB_INSTALL", true),
-		AdminExplicit: adminUserSet || adminPasswordSet || adminMailSet,
-	}
+	return nil
 }
 
 func shouldCreateDefaultAdmin(userCount int, cfg config) bool {
@@ -137,30 +122,6 @@ func shouldCreateDefaultAdmin(userCount int, cfg config) bool {
 		return false
 	}
 	return !cfg.WebInstall || cfg.AdminExplicit
-}
-
-func chooseDriver() string {
-	defaultDSN := filepath.Join("data", "gopherink.db")
-	if _, err := os.Stat(defaultDSN); err == nil {
-		return "sqlite"
-	}
-	info, err := os.Stdin.Stat()
-	if err != nil || (info.Mode()&os.ModeCharDevice) == 0 {
-		return "sqlite"
-	}
-	fmt.Print("首次启动，请选择数据库后端 [sqlite/mariadb/mysql/postgres]，默认 sqlite: ")
-	reader := bufio.NewReader(os.Stdin)
-	line, _ := reader.ReadString('\n')
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "mariadb":
-		return "mariadb"
-	case "mysql":
-		return "mysql"
-	case "postgres", "postgresql", "pgx":
-		return "postgres"
-	default:
-		return "sqlite"
-	}
 }
 
 func openDB(cfg config) (*sql.DB, error) {
@@ -191,21 +152,108 @@ func openDB(cfg config) (*sql.DB, error) {
 	return db, nil
 }
 
-func env(key, fallback string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
+func allowNetworks(next http.Handler, cidrs []string) (http.Handler, error) {
+	networks := make([]*net.IPNet, 0, len(cidrs))
+	for _, item := range cidrs {
+		_, network, err := net.ParseCIDR(item)
+		if err != nil {
+			return nil, fmt.Errorf("parse allowed client network %q: %w", item, err)
+		}
+		networks = append(networks, network)
 	}
-	return fallback
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			host = r.RemoteAddr
+		}
+		ip := net.ParseIP(strings.TrimSpace(host))
+		for _, network := range networks {
+			if ip != nil && network.Contains(ip) {
+				next.ServeHTTP(w, r)
+				return
+			}
+		}
+		http.Error(w, "client network is not allowed", http.StatusForbidden)
+	}), nil
 }
 
-func envBool(key string, fallback bool) bool {
-	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
-	switch value {
-	case "1", "true", "yes", "on":
-		return true
-	case "0", "false", "no", "off":
-		return false
-	default:
-		return fallback
+func localServiceURL(cfg config) string {
+	host := cfg.ListenHost
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
 	}
+	return "http://" + net.JoinHostPort(host, strconv.Itoa(cfg.ListenPort))
+}
+
+func printUsage() {
+	fmt.Println(`GopherInk 0.5.0
+
+用法
+  gopherink [启动参数]
+      启动 HTTP 服务。参数只对本次进程生效，不写入配置文件。
+
+  gopherink config [配置参数]
+      将设置保存到 data/config.json 后退出，不启动服务。
+      不带配置参数时进入交互式配置向导。
+
+  gopherink user list
+      列出数据库中的用户 ID、用户名、显示名、角色和邮箱。
+
+  gopherink user reset-password --id ID
+  gopherink user reset-password --name USERNAME
+      重置指定用户密码并使其现有登录会话失效。
+
+启动与持久化配置参数
+  -p, --port PORT          HTTP 监听端口，默认 8086
+  --host IP                HTTP 服务绑定 IP，默认 0.0.0.0
+  --allow-cidr CIDR        允许访问的客户端 IP/CIDR；可重复或逗号分隔
+  --db-type TYPE           sqlite、mysql、mariadb 或 postgres
+  --db-host IP             MySQL/PostgreSQL 数据库地址
+  --db-port PORT           外部数据库端口
+  --db-name NAME           外部数据库名称，默认 gopherink
+  --db-user USER           数据库用户名
+  --db-password PASSWORD   数据库密码；使用交互向导可避免终端回显
+  --sqlite-path PATH       SQLite 数据库文件，默认 data/gopherink.db
+  --upload-dir PATH        上传文件系统根目录，默认 data/uploads
+
+仅限本次启动的高级数据库参数
+  --db-dsn DSN             直接指定主数据库 DSN
+  --db-read-dsn DSN        指定只读数据库 DSN
+  --db-write-dsn DSN       指定写数据库 DSN
+
+用户密码重置参数
+  --id ID                  按用户 ID 定位
+  --name USERNAME          按用户名定位
+  --password-stdin         从标准输入第一行读取密码，适合自动化
+  --password PASSWORD      直接传入密码，不推荐，可能留在 Shell 历史中
+
+配置优先级
+  内置默认值 < data/config.json < 环境变量 < 本次 CLI 参数
+  GOPHERINK_DATA_DIR 可改变 data 目录及 config.json 所在位置。
+
+常用环境变量
+  GOPHERINK_ADDR                    HTTP 绑定地址，例如 127.0.0.1:8086
+  GOPHERINK_LISTEN_CIDRS            允许网段，多个使用逗号分隔
+  GOPHERINK_DB_DRIVER               数据库类型
+  GOPHERINK_DB_DSN                  主数据库 DSN
+  GOPHERINK_DB_HOST / GOPHERINK_DB_PORT
+                                      结构化数据库地址和端口
+  GOPHERINK_DB_NAME / GOPHERINK_DB_USER
+                                      数据库名称和用户名
+  GOPHERINK_DB_PASSWORD             数据库密码
+  GOPHERINK_SQLITE_PATH             SQLite 文件位置
+  GOPHERINK_UPLOAD_DIR              上传目录
+  GOPHERINK_DATA_DIR                数据根目录，默认 data
+
+示例
+  gopherink -p 8848
+  gopherink config -p 8848
+  gopherink config --allow-cidr 127.0.0.1 --allow-cidr 10.0.0.0/8
+  gopherink config --db-type postgres --db-host 10.0.0.8 --db-port 5432 \
+    --db-name gopherink --db-user blog
+  gopherink user list
+  gopherink user reset-password --id 1
+  printf 'new-password\n' | gopherink user reset-password --id 1 --password-stdin
+
+更多说明请查看 docs/installation-and-configuration.md。`)
 }
