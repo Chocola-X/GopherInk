@@ -22,6 +22,7 @@ const (
 	defaultDataDir    = "data"
 	defaultListenHost = "0.0.0.0"
 	defaultListenPort = 8086
+	defaultTLSPort    = 443
 )
 
 type databaseSettings struct {
@@ -40,10 +41,17 @@ type listenSettings struct {
 	AllowedCIDRs []string `json:"allowed_cidrs"`
 }
 
+type tlsSettings struct {
+	Enabled  bool   `json:"enabled"`
+	CertFile string `json:"cert_file"`
+	KeyFile  string `json:"key_file"`
+}
+
 type storedConfig struct {
 	Database  databaseSettings `json:"database"`
 	UploadDir string           `json:"upload_dir"`
 	Listen    listenSettings   `json:"listen"`
+	TLS       tlsSettings      `json:"tls"`
 }
 
 type config struct {
@@ -51,6 +59,9 @@ type config struct {
 	ListenHost    string
 	ListenPort    int
 	AllowedCIDRs  []string
+	TLSEnabled    bool
+	TLSCertFile   string
+	TLSKeyFile    string
 	DataDir       string
 	UploadDir     string
 	DBDriver      string
@@ -204,7 +215,7 @@ func normalizeStoredConfig(cfg *storedConfig) {
 		cfg.Listen.Host = defaultListenHost
 	}
 	if cfg.Listen.Port <= 0 {
-		cfg.Listen.Port = defaultListenPort
+		cfg.Listen.Port = defaultPortForTLS(cfg.TLS.Enabled)
 	}
 	if len(cfg.Listen.AllowedCIDRs) == 0 {
 		cfg.Listen.AllowedCIDRs = []string{"0.0.0.0/0"}
@@ -215,6 +226,8 @@ func normalizeStoredConfig(cfg *storedConfig) {
 	if strings.TrimSpace(cfg.Database.SQLitePath) == "" {
 		cfg.Database.SQLitePath = filepath.Join(dataDir(), "gopherink.db")
 	}
+	cfg.TLS.CertFile = strings.TrimSpace(cfg.TLS.CertFile)
+	cfg.TLS.KeyFile = strings.TrimSpace(cfg.TLS.KeyFile)
 }
 
 func normalizeDriver(driver string) string {
@@ -229,6 +242,22 @@ func normalizeDriver(driver string) string {
 		return "postgres"
 	default:
 		return strings.ToLower(strings.TrimSpace(driver))
+	}
+}
+
+func defaultPortForTLS(enabled bool) int {
+	if enabled {
+		return defaultTLSPort
+	}
+	return defaultListenPort
+}
+
+func adjustDefaultPortForTLS(cfg *storedConfig, previousEnabled, portExplicit bool) {
+	if portExplicit || cfg.TLS.Enabled == previousEnabled {
+		return
+	}
+	if cfg.Listen.Port == defaultPortForTLS(previousEnabled) {
+		cfg.Listen.Port = defaultPortForTLS(cfg.TLS.Enabled)
 	}
 }
 
@@ -259,6 +288,14 @@ func validateStoredConfig(cfg storedConfig) error {
 	}
 	if strings.TrimSpace(cfg.UploadDir) == "" {
 		return errors.New("上传目录不能为空")
+	}
+	if cfg.TLS.Enabled {
+		if cfg.TLS.CertFile == "" {
+			return errors.New("启用 TLS 时证书路径不能为空")
+		}
+		if cfg.TLS.KeyFile == "" {
+			return errors.New("启用 TLS 时私钥路径不能为空")
+		}
 	}
 	normalized, err := normalizeCIDRs(cfg.Listen.AllowedCIDRs)
 	if err != nil {
@@ -308,15 +345,19 @@ func bindPersistentFlags(fs *flag.FlagSet, cfg *storedConfig) *cidrListFlag {
 	fs.StringVar(&cfg.Database.Password, "db-password", cfg.Database.Password, "数据库密码")
 	fs.StringVar(&cfg.Database.SQLitePath, "sqlite-path", cfg.Database.SQLitePath, "SQLite 数据库文件位置")
 	fs.StringVar(&cfg.UploadDir, "upload-dir", cfg.UploadDir, "上传文件系统根目录")
-	fs.StringVar(&cfg.Listen.Host, "host", cfg.Listen.Host, "HTTP 服务绑定 IP")
-	fs.IntVar(&cfg.Listen.Port, "p", cfg.Listen.Port, "HTTP 服务端口")
-	fs.IntVar(&cfg.Listen.Port, "port", cfg.Listen.Port, "HTTP 服务端口")
+	fs.StringVar(&cfg.Listen.Host, "host", cfg.Listen.Host, "HTTP/HTTPS 服务绑定 IP")
+	fs.IntVar(&cfg.Listen.Port, "p", cfg.Listen.Port, "HTTP/HTTPS 服务端口")
+	fs.IntVar(&cfg.Listen.Port, "port", cfg.Listen.Port, "HTTP/HTTPS 服务端口")
 	cidrs := &cidrListFlag{values: append([]string(nil), cfg.Listen.AllowedCIDRs...)}
 	fs.Var(cidrs, "allow-cidr", "允许访问服务的客户端 IP/CIDR，可重复或逗号分隔")
+	fs.BoolVar(&cfg.TLS.Enabled, "tls", cfg.TLS.Enabled, "启用 HTTPS/TLS 监听")
+	fs.StringVar(&cfg.TLS.CertFile, "tls-cert", cfg.TLS.CertFile, "TLS 证书链文件路径")
+	fs.StringVar(&cfg.TLS.KeyFile, "tls-key", cfg.TLS.KeyFile, "TLS 私钥文件路径")
 	return cidrs
 }
 
 func parsePersistentFlags(name string, args []string, base storedConfig) (storedConfig, map[string]bool, error) {
+	previousTLSEnabled := base.TLS.Enabled
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
 	cidrs := bindPersistentFlags(fs, &base)
@@ -333,11 +374,13 @@ func parsePersistentFlags(name string, args []string, base storedConfig) (stored
 	if visited["db-type"] && !visited["db-port"] {
 		base.Database.Port = 0
 	}
+	adjustDefaultPortForTLS(&base, previousTLSEnabled, visited["p"] || visited["port"])
 	normalizeStoredConfig(&base)
 	return base, visited, nil
 }
 
 func parseRuntimeFlags(args []string, base storedConfig, envDSN, envReadDSN, envWriteDSN string) (runtimeFlags, error) {
+	previousTLSEnabled := base.TLS.Enabled
 	fs := flag.NewFlagSet("gopherink", flag.ContinueOnError)
 	fs.SetOutput(os.Stdout)
 	cidrs := bindPersistentFlags(fs, &base)
@@ -359,6 +402,7 @@ func parseRuntimeFlags(args []string, base storedConfig, envDSN, envReadDSN, env
 	if result.Visited["db-type"] && !result.Visited["db-port"] {
 		result.Settings.Database.Port = 0
 	}
+	adjustDefaultPortForTLS(&result.Settings, previousTLSEnabled, result.Visited["p"] || result.Visited["port"])
 	normalizeStoredConfig(&result.Settings)
 	return result, nil
 }
@@ -433,6 +477,9 @@ func loadConfig(args []string, interactive bool) (config, error) {
 		ListenHost:    parsed.Settings.Listen.Host,
 		ListenPort:    parsed.Settings.Listen.Port,
 		AllowedCIDRs:  append([]string(nil), parsed.Settings.Listen.AllowedCIDRs...),
+		TLSEnabled:    parsed.Settings.TLS.Enabled,
+		TLSCertFile:   parsed.Settings.TLS.CertFile,
+		TLSKeyFile:    parsed.Settings.TLS.KeyFile,
 		DataDir:       dataDir(),
 		UploadDir:     parsed.Settings.UploadDir,
 		DBDriver:      parsed.Settings.Database.Type,
@@ -457,6 +504,7 @@ func structuredDatabaseFlagVisited(visited map[string]bool) bool {
 }
 
 func applyEnvironment(cfg *storedConfig) error {
+	previousTLSEnabled := cfg.TLS.Enabled
 	if value := strings.TrimSpace(os.Getenv("GOPHERINK_DB_DRIVER")); value != "" {
 		cfg.Database.Type = value
 	}
@@ -491,6 +539,7 @@ func applyEnvironment(cfg *storedConfig) error {
 	if value := strings.TrimSpace(os.Getenv("GOPHERINK_LISTEN_CIDRS")); value != "" {
 		cfg.Listen.AllowedCIDRs = strings.Split(value, ",")
 	}
+	addressExplicit := false
 	if value := strings.TrimSpace(os.Getenv("GOPHERINK_ADDR")); value != "" {
 		host, port, err := splitListenAddress(value)
 		if err != nil {
@@ -498,7 +547,18 @@ func applyEnvironment(cfg *storedConfig) error {
 		}
 		cfg.Listen.Host = host
 		cfg.Listen.Port = port
+		addressExplicit = true
 	}
+	if _, ok := os.LookupEnv("GOPHERINK_TLS_ENABLED"); ok {
+		cfg.TLS.Enabled = envBool("GOPHERINK_TLS_ENABLED", cfg.TLS.Enabled)
+	}
+	if value, ok := os.LookupEnv("GOPHERINK_TLS_CERT"); ok {
+		cfg.TLS.CertFile = strings.TrimSpace(value)
+	}
+	if value, ok := os.LookupEnv("GOPHERINK_TLS_KEY"); ok {
+		cfg.TLS.KeyFile = strings.TrimSpace(value)
+	}
+	adjustDefaultPortForTLS(cfg, previousTLSEnabled, addressExplicit)
 	normalizeStoredConfig(cfg)
 	var err error
 	cfg.Listen.AllowedCIDRs, err = normalizeCIDRs(cfg.Listen.AllowedCIDRs)
@@ -569,6 +629,7 @@ func hasStartupEnvironment() bool {
 		"GOPHERINK_ADDR", "GOPHERINK_DB_DRIVER", "GOPHERINK_DB_DSN", "GOPHERINK_DB_HOST",
 		"GOPHERINK_DB_PORT", "GOPHERINK_DB_NAME", "GOPHERINK_DB_USER", "GOPHERINK_DB_PASSWORD",
 		"GOPHERINK_SQLITE_PATH", "GOPHERINK_UPLOAD_DIR", "GOPHERINK_LISTEN_HOST", "GOPHERINK_LISTEN_CIDRS",
+		"GOPHERINK_TLS_ENABLED", "GOPHERINK_TLS_CERT", "GOPHERINK_TLS_KEY",
 	} {
 		if _, ok := os.LookupEnv(key); ok {
 			return true
@@ -623,8 +684,19 @@ func promptStoredConfig(reader *bufio.Reader, out io.Writer, cfg storedConfig) (
 		}
 	}
 	cfg.UploadDir = prompt(reader, out, "上传目录", cfg.UploadDir)
-	cfg.Listen.Host = prompt(reader, out, "HTTP 服务绑定 IP", cfg.Listen.Host)
-	port, err := promptInt(reader, out, "HTTP 服务端口", cfg.Listen.Port)
+	cfg.Listen.Host = prompt(reader, out, "HTTP/HTTPS 服务绑定 IP", cfg.Listen.Host)
+	previousTLSEnabled := cfg.TLS.Enabled
+	tlsEnabled, err := promptBool(reader, out, "启用 HTTPS/TLS", cfg.TLS.Enabled)
+	if err != nil {
+		return storedConfig{}, err
+	}
+	cfg.TLS.Enabled = tlsEnabled
+	adjustDefaultPortForTLS(&cfg, previousTLSEnabled, false)
+	if cfg.TLS.Enabled {
+		cfg.TLS.CertFile = prompt(reader, out, "TLS 证书链文件路径", cfg.TLS.CertFile)
+		cfg.TLS.KeyFile = prompt(reader, out, "TLS 私钥文件路径", cfg.TLS.KeyFile)
+	}
+	port, err := promptInt(reader, out, "HTTP/HTTPS 服务端口", cfg.Listen.Port)
 	if err != nil {
 		return storedConfig{}, err
 	}
@@ -663,6 +735,27 @@ func promptInt(reader *bufio.Reader, out io.Writer, label string, fallback int) 
 		return 0, fmt.Errorf("%s必须是整数", label)
 	}
 	return number, nil
+}
+
+func promptBool(reader *bufio.Reader, out io.Writer, label string, fallback bool) (bool, error) {
+	fallbackText := "no"
+	if fallback {
+		fallbackText = "yes"
+	}
+	fmt.Fprintf(out, "%s [yes/no，默认 %s]: ", label, fallbackText)
+	line, _ := reader.ReadString('\n')
+	value := strings.ToLower(strings.TrimSpace(line))
+	if value == "" {
+		value = fallbackText
+	}
+	switch value {
+	case "1", "true", "yes", "y", "on":
+		return true, nil
+	case "0", "false", "no", "n", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%s必须填写 yes 或 no", label)
+	}
 }
 
 func promptSecret(out io.Writer, label string) (string, error) {

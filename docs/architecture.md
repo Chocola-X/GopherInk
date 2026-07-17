@@ -20,13 +20,13 @@ GopherInk 是一个服务端渲染的 Go CMS。程序将后台模板、后台静
 `cmd/gopherink/main.go`、`runtime_config.go` 的启动顺序为：
 
 1. 合并内置默认值、`data/config.json`、环境变量和 CLI 临时参数；首次交互式启动可先写入 JSON。
-2. 校验数据库参数、上传目录、绑定 IP/端口和客户端 CIDR。
+2. 校验数据库参数、上传目录、绑定 IP/端口、客户端 CIDR 和 TLS 路径；启用 TLS 时在数据库初始化前加载证书密钥对。
 3. 打开写数据库；配置读库时再打开独立读连接。
 4. 调用 `models.InitializeSchema` 创建当前版本表结构。
 5. 初始化默认选项和认证密钥。
 6. 在空数据库中创建显式配置的初始管理员，或启用 Web 安装向导。
 7. 确保默认分类存在。
-8. 以显式 `DataDir` / `UploadDir` 构造 HTTP 应用，在 WAF 外层安装直接来源 CIDR 访问控制并开始监听。
+8. 以显式 `DataDir` / `UploadDir` 构造 HTTP 应用，在 WAF 外层安装直接来源 CIDR 访问控制，并按启动配置开始 HTTP 或 HTTPS 监听。
 
 `config` 和 `user` 子命令会在进入完整启动流程前分流：前者只写 JSON，后者只连接数据库执行用户查询或密码重置。它们不会初始化主题、插件、路由和后台选项。
 

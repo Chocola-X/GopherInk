@@ -45,26 +45,28 @@ go build -o gopherink ./cmd/gopherink
 
 ### 运行
 
-首次在终端中运行会进入启动配置向导，数据库、上传目录和监听规则保存到 `data/config.json`；随后服务使用 SQLite 启动，并在空库上提供 Web 安装页：
+首次在终端中运行会进入启动配置向导，数据库、上传目录、监听规则和 HTTPS 选择保存到 `data/config.json`；随后服务使用 SQLite 启动，并在空库上提供 Web 安装页：
 
 ```bash
 ./gopherink
 ```
 
-默认数据库为 `data/gopherink.db`，默认监听 `0.0.0.0:8086`，访问 `http://localhost:8086/install` 完成站点和管理员初始化。非交互环境不执行终端向导，直接使用配置文件、环境变量或默认值。
+默认数据库为 `data/gopherink.db`，默认不启用 HTTPS，并监听 `0.0.0.0:8086`，访问 `http://localhost:8086/install` 完成站点和管理员初始化。交互向导可选择启用 HTTPS；启用后默认端口为 `443`，并要求填写证书链和私钥路径。非交互环境不执行终端向导，直接使用配置文件、环境变量或默认值。
 
 启动参数仅对本次进程生效：
 
 ```bash
 ./gopherink -p 8848
 ./gopherink --db-type mysql --db-host 127.0.0.1 --db-port 3306 --db-name gopherink --db-user blog
+./gopherink --tls --tls-cert /etc/gopherink/fullchain.pem --tls-key /etc/gopherink/privkey.pem
 ```
 
-在参数前使用 `config` 会写入 `data/config.json` 后直接退出，不会启动 HTTP 服务：
+在参数前使用 `config` 会写入 `data/config.json` 后直接退出，不会启动网站服务：
 
 ```bash
 ./gopherink config -p 8848
 ./gopherink config --upload-dir /srv/gopherink/uploads --allow-cidr 127.0.0.1 --allow-cidr 10.0.0.0/8
+./gopherink config --tls --tls-cert /etc/gopherink/fullchain.pem --tls-key /etc/gopherink/privkey.pem
 ```
 
 配置优先级为“内置默认值 < `data/config.json` < 环境变量 < 本次 CLI 参数”。完整参数、JSON 格式和数据库示例见 [安装与配置](docs/installation-and-configuration.md)。
@@ -85,8 +87,10 @@ printf 'new-password\n' | ./gopherink user reset-password --id 1 --password-stdi
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `GOPHERINK_ADDR` | 本次启动监听地址 | `0.0.0.0:8086` |
+| `GOPHERINK_ADDR` | 本次启动监听地址 | HTTP `0.0.0.0:8086`；TLS 默认端口 `443` |
 | `GOPHERINK_LISTEN_CIDRS` | 允许访问的客户端 CIDR，逗号分隔 | `0.0.0.0/0` |
+| `GOPHERINK_TLS_ENABLED` | 启用内置 HTTPS/TLS 监听 | `false` |
+| `GOPHERINK_TLS_CERT` / `GOPHERINK_TLS_KEY` | TLS 证书链和私钥文件路径 | 空 |
 | `GOPHERINK_DB_DRIVER` | 数据库驱动（`sqlite3`/`mysql`/`mariadb`/`postgres`） | `sqlite` |
 | `GOPHERINK_DB_DSN` | 数据库连接字符串 | `data/gopherink.db` |
 | `GOPHERINK_DB_READ_DSN` | 读库 DSN（读写分离） | — |

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"errors"
 	"flag"
@@ -50,6 +51,12 @@ func run(args []string) error {
 }
 
 func serve(cfg config) error {
+	if cfg.TLSEnabled {
+		if _, err := tls.LoadX509KeyPair(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil {
+			return fmt.Errorf("加载 TLS 证书和私钥失败: %w", err)
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -107,12 +114,27 @@ func serve(cfg config) error {
 		return err
 	}
 
-	log.Printf("GopherInk listening on %s; allowed client networks: %s", cfg.Addr, strings.Join(cfg.AllowedCIDRs, ", "))
+	protocol := "HTTP"
+	if cfg.TLSEnabled {
+		protocol = "HTTPS"
+	}
+	log.Printf("GopherInk %s listening on %s; allowed client networks: %s", protocol, cfg.Addr, strings.Join(cfg.AllowedCIDRs, ", "))
 	if defaultAdminReady {
 		log.Printf("admin: %s/admin", localServiceURL(cfg))
 	}
-	if err := http.ListenAndServe(cfg.Addr, handler); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
+	server := &http.Server{
+		Addr:      cfg.Addr,
+		Handler:   handler,
+		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+	}
+	var serveErr error
+	if cfg.TLSEnabled {
+		serveErr = server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+	} else {
+		serveErr = server.ListenAndServe()
+	}
+	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		return serveErr
 	}
 	return nil
 }
@@ -182,7 +204,11 @@ func localServiceURL(cfg config) string {
 	if host == "" || host == "0.0.0.0" || host == "::" {
 		host = "localhost"
 	}
-	return "http://" + net.JoinHostPort(host, strconv.Itoa(cfg.ListenPort))
+	scheme := "http"
+	if cfg.TLSEnabled {
+		scheme = "https"
+	}
+	return scheme + "://" + net.JoinHostPort(host, strconv.Itoa(cfg.ListenPort))
 }
 
 func printUsage() {
@@ -190,7 +216,7 @@ func printUsage() {
 
 用法
   gopherink [启动参数]
-      启动 HTTP 服务。参数只对本次进程生效，不写入配置文件。
+      启动 HTTP 或 HTTPS 服务。参数只对本次进程生效，不写入配置文件。
 
   gopherink config [配置参数]
       将设置保存到 data/config.json 后退出，不启动服务。
@@ -204,9 +230,12 @@ func printUsage() {
       重置指定用户密码并使其现有登录会话失效。
 
 启动与持久化配置参数
-  -p, --port PORT          HTTP 监听端口，默认 8086
-  --host IP                HTTP 服务绑定 IP，默认 0.0.0.0
+  -p, --port PORT          HTTP/HTTPS 监听端口；HTTP 默认 8086，TLS 默认 443
+  --host IP                HTTP/HTTPS 服务绑定 IP，默认 0.0.0.0
   --allow-cidr CIDR        允许访问的客户端 IP/CIDR；可重复或逗号分隔
+  --tls                     启用 HTTPS/TLS；关闭时可使用 --tls=false
+  --tls-cert PATH           TLS 证书链文件路径
+  --tls-key PATH            TLS 私钥文件路径
   --db-type TYPE           sqlite、mysql、mariadb 或 postgres
   --db-host IP             MySQL/PostgreSQL 数据库地址
   --db-port PORT           外部数据库端口
@@ -232,8 +261,11 @@ func printUsage() {
   GOPHERINK_DATA_DIR 可改变 data 目录及 config.json 所在位置。
 
 常用环境变量
-  GOPHERINK_ADDR                    HTTP 绑定地址，例如 127.0.0.1:8086
+  GOPHERINK_ADDR                    HTTP/HTTPS 绑定地址，例如 127.0.0.1:8086
   GOPHERINK_LISTEN_CIDRS            允许网段，多个使用逗号分隔
+  GOPHERINK_TLS_ENABLED             是否启用 HTTPS/TLS
+  GOPHERINK_TLS_CERT                TLS 证书链文件路径
+  GOPHERINK_TLS_KEY                 TLS 私钥文件路径
   GOPHERINK_DB_DRIVER               数据库类型
   GOPHERINK_DB_DSN                  主数据库 DSN
   GOPHERINK_DB_HOST / GOPHERINK_DB_PORT
@@ -248,6 +280,8 @@ func printUsage() {
 示例
   gopherink -p 8848
   gopherink config -p 8848
+  gopherink --tls --tls-cert /etc/gopherink/fullchain.pem --tls-key /etc/gopherink/privkey.pem
+  gopherink config --tls --tls-cert /etc/gopherink/fullchain.pem --tls-key /etc/gopherink/privkey.pem
   gopherink config --allow-cidr 127.0.0.1 --allow-cidr 10.0.0.0/8
   gopherink config --db-type postgres --db-host 10.0.0.8 --db-port 5432 \
     --db-name gopherink --db-user blog

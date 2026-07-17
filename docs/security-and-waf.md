@@ -139,6 +139,8 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains
 
 只有主域和所有子域都长期稳定支持 HTTPS 时才启用。浏览器会在有效期内拒绝降级 HTTP，证书过期或子域不支持 HTTPS 时可能造成不可访问。
 
+GopherInk 可以通过启动参数直接终止 TLS，也可以继续由反向代理终止 TLS。内置 TLS 的证书路径、私钥路径和监听端口属于 `data/config.json` 启动配置，不属于后台 WAF 设置；详细参数见 [安装与配置](installation-and-configuration.md#内置-httpstls)。
+
 ## WAF 日志
 
 事件独立写入：

@@ -11,11 +11,11 @@ go build -o gopherink ./cmd/gopherink
 ./gopherink
 ```
 
-默认监听 `0.0.0.0:8086`，SQLite 数据库位于 `data/gopherink.db`。首次在交互式终端启动且没有配置文件、默认数据库或外部启动参数时，程序依次询问数据库、上传目录、绑定地址、端口和允许网段，并把结果写入 `data/config.json`。数据库连接成功后才会创建 Schema，然后进入浏览器 Web 安装流程设置站点资料和管理员。
+默认使用 HTTP 监听 `0.0.0.0:8086`，SQLite 数据库位于 `data/gopherink.db`。首次在交互式终端启动且没有配置文件、默认数据库或外部启动参数时，程序依次询问数据库、上传目录、绑定地址、是否启用 HTTPS、端口和允许网段，并把结果写入 `data/config.json`。HTTPS 默认不启用；选择启用后端口默认变为 `443`，并继续询问证书链和私钥路径。数据库连接成功后才会创建 Schema，然后进入浏览器 Web 安装流程设置站点资料和管理员。
 
 终端启动配置与后台设置完全分离：
 
-- `data/config.json`：数据库连接、上传文件系统位置、HTTP 监听和客户端网段，只由启动层读取。
+- `data/config.json`：数据库连接、上传文件系统位置、HTTP/HTTPS 监听、TLS 文件路径和客户端网段，只由启动层读取。
 - `gb_options`：站点、阅读、评论、WAF、后台个性化、主题和插件设置，由后台管理。
 - CLI 临时参数：只覆盖当前进程，不反写 JSON 或数据库。
 
@@ -27,24 +27,30 @@ go build -o gopherink ./cmd/gopherink
 ./gopherink -p 8848
 ./gopherink --host 127.0.0.1 --allow-cidr 127.0.0.1/32
 ./gopherink --sqlite-path /srv/gopherink/site.db --upload-dir /srv/gopherink/uploads
+./gopherink --tls --tls-cert /etc/gopherink/fullchain.pem --tls-key /etc/gopherink/privkey.pem
 ```
 
-使用 `config` 子命令时，参数写入 `data/config.json` 后进程退出，不会打开数据库或启动 HTTP 服务：
+使用 `config` 子命令时，参数写入 `data/config.json` 后进程退出，不会打开数据库或启动网站服务：
 
 ```bash
 ./gopherink config -p 8848
 ./gopherink config --db-type postgres --db-host 10.0.0.8 --db-port 5432 \
   --db-name gopherink --db-user gopherink --db-password 'replace-me'
 ./gopherink config --allow-cidr 127.0.0.1 --allow-cidr 10.0.0.0/8
+./gopherink config --tls --tls-cert /etc/gopherink/fullchain.pem \
+  --tls-key /etc/gopherink/privkey.pem
 ```
 
 不带参数执行 `./gopherink config` 会打开交互式配置向导，密码输入不会在终端回显。配置文件以 `0600` 权限写入，因为其中可能包含数据库密码。直接使用 `--db-password` 会把密码留在 Shell 历史和进程参数中，生产环境优先使用交互向导或受控环境变量。部署系统仍应限制 `data/` 的文件系统访问和备份读取权限。
 
 | 参数 | 持久化字段 | 说明 |
 |---|---|---|
-| `-p` / `--port` | `listen.port` | HTTP 端口，默认 `8086` |
+| `-p` / `--port` | `listen.port` | HTTP/HTTPS 端口；HTTP 默认 `8086`，TLS 默认 `443` |
 | `--host` | `listen.host` | 实际绑定的 IPv4/IPv6 地址，默认 `0.0.0.0` |
 | `--allow-cidr` | `listen.allowed_cidrs` | 允许建立 HTTP 请求的客户端网段；可重复或逗号分隔 |
+| `--tls` | `tls.enabled` | 启用内置 HTTPS/TLS；使用 `--tls=false` 关闭 |
+| `--tls-cert` | `tls.cert_file` | PEM 证书链文件路径，例如 Let's Encrypt 的 `fullchain.pem` |
+| `--tls-key` | `tls.key_file` | 与证书匹配的 PEM 私钥文件路径 |
 | `--db-type` | `database.type` | `sqlite`、`mysql`、`mariadb`、`postgres` |
 | `--db-host` / `--db-port` | `database.host` / `database.port` | MySQL、MariaDB、PostgreSQL 的 IP 和端口 |
 | `--db-name` | `database.name` | 外部数据库名称，默认 `gopherink` |
@@ -74,6 +80,11 @@ go build -o gopherink ./cmd/gopherink
     "host": "0.0.0.0",
     "port": 8086,
     "allowed_cidrs": ["0.0.0.0/0"]
+  },
+  "tls": {
+    "enabled": false,
+    "cert_file": "",
+    "key_file": ""
   }
 }
 ```
@@ -92,9 +103,12 @@ go build -o gopherink ./cmd/gopherink
 
 | 变量 | 作用 | 默认/回退行为 |
 |---|---|---|
-| `GOPHERINK_ADDR` | HTTP 绑定地址和端口 | `0.0.0.0:8086` |
-| `GOPHERINK_LISTEN_HOST` | HTTP 绑定 IP；`GOPHERINK_ADDR` 存在时以后者为准 | `0.0.0.0` |
+| `GOPHERINK_ADDR` | HTTP/HTTPS 绑定地址和端口 | HTTP `0.0.0.0:8086`；启用 TLS 后默认端口 `443` |
+| `GOPHERINK_LISTEN_HOST` | HTTP/HTTPS 绑定 IP；`GOPHERINK_ADDR` 存在时以后者为准 | `0.0.0.0` |
 | `GOPHERINK_LISTEN_CIDRS` | 允许客户端 CIDR，逗号分隔 | `0.0.0.0/0` |
+| `GOPHERINK_TLS_ENABLED` | 是否启用内置 HTTPS/TLS | `false` |
+| `GOPHERINK_TLS_CERT` | TLS 证书链文件路径 | 空 |
+| `GOPHERINK_TLS_KEY` | TLS 私钥文件路径 | 空 |
 | `GOPHERINK_DB_DRIVER` | `sqlite3`、`mysql`、`mariadb` 或 `postgres` | `sqlite` |
 | `GOPHERINK_DB_DSN` | 主数据库 DSN | `data/gopherink.db` |
 | `GOPHERINK_DB_WRITE_DSN` | 独立写库 DSN | 回退到 `GOPHERINK_DB_DSN` |
@@ -113,6 +127,30 @@ go build -o gopherink ./cmd/gopherink
 | `GOPHERINK_UPLOAD_DIR` | 附件文件系统根目录 | `<GOPHERINK_DATA_DIR>/uploads` |
 
 生产环境必须显式设置初始管理员密码，或通过安装向导立即改为强密码。不要继续使用示例默认凭据。
+
+## 内置 HTTPS/TLS
+
+默认情况下 GopherInk 只监听 HTTP。临时启用内置 HTTPS：
+
+```bash
+./gopherink --tls \
+  --tls-cert /etc/letsencrypt/live/example.com/fullchain.pem \
+  --tls-key /etc/letsencrypt/live/example.com/privkey.pem
+```
+
+未显式设置 `-p` / `--port` 时，从默认 HTTP 配置切换到 TLS 会把端口从 `8086` 调整为 `443`。可以使用 `--port 8443` 覆盖：
+
+```bash
+./gopherink --tls --port 8443 \
+  --tls-cert /etc/gopherink/fullchain.pem \
+  --tls-key /etc/gopherink/privkey.pem
+```
+
+需要持久化时在前面增加 `config`。启用 TLS 后，证书和私钥路径必须同时存在；程序会在连接数据库前加载并校验密钥对，文件不存在、格式错误或证书与私钥不匹配时拒绝启动。相对路径以启动进程的当前工作目录为基准，生产环境建议使用绝对路径并限制私钥读取权限。证书更新后需要重启进程。
+
+Linux 通常把 `443` 视为特权端口。不要仅为绑定 443 而让整个 CMS 长期以 root 身份运行；可以改用 `8443` 等高位端口、为二进制授予受控的 `CAP_NET_BIND_SERVICE` 能力，或由反向代理监听 443。
+
+内置 TLS 只把当前监听端口切换为 HTTPS，不会额外监听 HTTP，也不会自动重定向 HTTP 到 HTTPS。需要同时提供 80 端口跳转、自动申请证书或无停机证书续期时，建议继续使用 Caddy、Nginx 等反向代理终止 TLS，并保持 GopherInk 的内置 TLS 关闭。后台 WAF 的 HSTS 开关独立于本设置；确认域名及子域长期支持 HTTPS 后再启用 HSTS。
 
 ## DSN 示例
 
@@ -140,7 +178,7 @@ postgres://user:password@127.0.0.1:5432/gopherink?sslmode=disable
 
 ## 用户应急命令
 
-应急命令读取同一套启动配置连接数据库，但不会初始化 Schema、加载插件或启动 HTTP 服务。
+应急命令读取同一套启动配置连接数据库，但不会初始化 Schema、加载插件或启动网站服务。
 
 ```bash
 # 查看 ID、用户名、显示名、角色和邮箱

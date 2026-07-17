@@ -121,7 +121,7 @@ https://weavatar.com/avatar/{hash}?s={size}
 
 会话 Cookie 是签名数据，不是服务端 Session ID。`auth_secret` 必须保密且在实例间一致；更改它会让所有现有会话和相关签名失效。
 
-后台无法登录时，可使用 `gopherink user list` 查询用户 ID，再通过 `gopherink user reset-password --id ID` 重置密码。命令直接读取启动配置指向的数据库，使用与后台相同的 bcrypt 和 `authCode` 轮换逻辑，但不会启动 HTTP 服务。完整用法见 [安装与配置](installation-and-configuration.md#用户应急命令)。
+后台无法登录时，可使用 `gopherink user list` 查询用户 ID，再通过 `gopherink user reset-password --id ID` 重置密码。命令直接读取启动配置指向的数据库，使用与后台相同的 bcrypt 和 `authCode` 轮换逻辑，但不会启动网站服务。完整用法见 [安装与配置](installation-and-configuration.md#用户应急命令)。
 
 ## CSRF
 
