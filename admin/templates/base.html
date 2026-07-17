@@ -58,6 +58,13 @@
         {{range .AdminMenu}}<mdui-list-item href="{{.URL}}"><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}</mdui-list-item>{{end}}
         {{end}}
       </mdui-list>
+      <footer class="admin-product-info">
+        <div><strong>GopherInk</strong><span>v0.5.0</span></div>
+        <nav aria-label="GopherInk 项目链接">
+          <a href="https://github.com/Chocola-X/GopherInk" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://gopherink.nekopara.uk" target="_blank" rel="noopener noreferrer">官方网站</a>
+        </nav>
+      </footer>
     </aside>
     <button class="drawer-scrim" type="button" aria-label="收起菜单"></button>
     <div class="admin-layout-main">

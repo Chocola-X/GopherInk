@@ -398,6 +398,17 @@ html.mdui-theme-dark .drawer-empty {
   text-align: center;
 }
 
+.drawer-bottom a {
+  color: inherit;
+}
+
+.drawer-bottom a:hover,
+.drawer-bottom a:focus-visible,
+footer a:hover,
+footer a:focus-visible {
+  color: rgb(var(--mdui-color-primary));
+}
+
 body.mdui-theme-layout-dark .drawer-bottom,
 html.mdui-theme-dark .drawer-bottom {
   color: rgba(255, 255, 255, 0.72);
