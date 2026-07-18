@@ -816,7 +816,7 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 		selectedCategories, _ := a.Metas.CategoriesForContent(r.Context(), loadID)
 		selectedTags, _ := a.Metas.TagsForContent(r.Context(), loadID)
 		fields, _ := a.Contents.FieldsForContent(r.Context(), loadID)
-		fields, err = a.contentFormFields(r.Context(), typ, loadID, fields)
+		fieldForm, err := a.contentFormFields(r.Context(), typ, loadID, fields)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -846,7 +846,8 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 			"Pages":                 pages,
 			"SelectedCategories":    selectedCategories,
 			"SelectedTags":          selectedTags,
-			"Fields":                fields,
+			"ContentFieldGroups":    fieldForm.Groups,
+			"Fields":                fieldForm.CustomFields,
 			"Revisions":             revisions,
 			"PreviewURL":            preview,
 			"EditorMediaSources":    a.editorMediaSources(r),
@@ -1147,7 +1148,7 @@ func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ stri
 		fields, _ = a.Contents.FieldsForContent(r.Context(), loadID)
 	}
 	var err error
-	fields, err = a.contentFormFields(r.Context(), typ, loadID, fields)
+	fieldForm, err := a.contentFormFields(r.Context(), typ, loadID, fields)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1169,7 +1170,8 @@ func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ stri
 		"SelectedCategories":    selectedCategories,
 		"SelectedTags":          selectedTags,
 		"Errors":                errs,
-		"Fields":                fields,
+		"ContentFieldGroups":    fieldForm.Groups,
+		"Fields":                fieldForm.CustomFields,
 		"Revisions":             revisions,
 		"PreviewURL":            a.previewURL(r, item),
 		"EditorMediaSources":    a.editorMediaSources(r),
@@ -2994,6 +2996,22 @@ type schemaFieldGroup struct {
 	Title  string
 	Class  string
 	Fields []schemaFieldView
+}
+
+type contentFieldView struct {
+	Field   plugin.FieldSchema
+	Value   string
+	Checked bool
+}
+
+type contentFieldGroup struct {
+	Title  string
+	Fields []contentFieldView
+}
+
+type contentFieldFormData struct {
+	Groups       []contentFieldGroup
+	CustomFields []models.Field
 }
 
 func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormConfig) {
@@ -8593,24 +8611,63 @@ func (a *App) contentFieldSchemas(ctx context.Context, typ string, contentID int
 	return filtered, nil
 }
 
-func (a *App) contentFormFields(ctx context.Context, typ string, contentID int64, fields []models.Field) ([]models.Field, error) {
+func (a *App) contentFormFields(ctx context.Context, typ string, contentID int64, fields []models.Field) (contentFieldFormData, error) {
 	schema, err := a.contentFieldSchemas(ctx, typ, contentID)
 	if err != nil {
-		return nil, err
+		return contentFieldFormData{}, err
 	}
-	fields = mergeThemeFields(schema, fields)
-	readOnlySchema := map[string]bool{}
-	for _, field := range schema {
-		readOnlySchema[field.Name] = field.ReadOnly
+	storedByName := make(map[string]models.Field, len(fields))
+	for _, field := range fields {
+		storedByName[field.Name] = field
 	}
-	for i := range fields {
-		readOnly, err := a.isContentFieldReadOnly(ctx, contentID, typ, fields[i].Name, readOnlySchema[fields[i].Name])
-		if err != nil {
-			return nil, err
+
+	result := contentFieldFormData{Groups: make([]contentFieldGroup, 0, 2), CustomFields: make([]models.Field, 0, len(fields))}
+	groupIndexes := map[string]int{}
+	schemaNames := make(map[string]bool, len(schema))
+	for _, item := range schema {
+		schemaNames[item.Name] = true
+		stored, ok := storedByName[item.Name]
+		if !ok {
+			stored = models.Field{Name: item.Name, Type: "str", StrValue: item.Default}
 		}
-		fields[i].ReadOnly = readOnly
+		readOnly, err := a.isContentFieldReadOnly(ctx, contentID, typ, item.Name, item.ReadOnly)
+		if err != nil {
+			return contentFieldFormData{}, err
+		}
+		item.ReadOnly = readOnly
+		if strings.TrimSpace(item.Label) == "" {
+			item.Label = item.Name
+		}
+		value := fieldValue(stored)
+		title := strings.TrimSpace(item.Group)
+		if title == "" {
+			title = "主题与插件字段"
+		}
+		index, exists := groupIndexes[title]
+		if !exists {
+			index = len(result.Groups)
+			groupIndexes[title] = index
+			result.Groups = append(result.Groups, contentFieldGroup{Title: title})
+		}
+		result.Groups[index].Fields = append(result.Groups[index].Fields, contentFieldView{
+			Field:   item,
+			Value:   value,
+			Checked: checked(value),
+		})
 	}
-	return fields, nil
+
+	for _, field := range fields {
+		if schemaNames[field.Name] {
+			continue
+		}
+		readOnly, err := a.isContentFieldReadOnly(ctx, contentID, typ, field.Name, false)
+		if err != nil {
+			return contentFieldFormData{}, err
+		}
+		field.ReadOnly = readOnly
+		result.CustomFields = append(result.CustomFields, field)
+	}
+	return result, nil
 }
 
 func (a *App) preserveReadOnlyFields(ctx context.Context, contentID int64, typ string, incoming []services.SaveFieldInput) ([]services.SaveFieldInput, error) {
@@ -8678,29 +8735,6 @@ func (a *App) isContentFieldReadOnly(ctx context.Context, contentID int64, typ, 
 		return next.ReadOnly, nil
 	}
 	return readOnly, nil
-}
-
-func mergeThemeFields(schema []plugin.FieldSchema, fields []models.Field) []models.Field {
-	if len(schema) == 0 {
-		return fields
-	}
-	seen := map[string]bool{}
-	readOnly := map[string]bool{}
-	for _, item := range schema {
-		readOnly[item.Name] = item.ReadOnly
-	}
-	for i, field := range fields {
-		seen[field.Name] = true
-		fields[i].ReadOnly = readOnly[field.Name]
-	}
-	out := append([]models.Field(nil), fields...)
-	for _, item := range schema {
-		if item.Name == "" || seen[item.Name] {
-			continue
-		}
-		out = append(out, models.Field{Name: item.Name, Type: "str", StrValue: item.Default, ReadOnly: item.ReadOnly})
-	}
-	return out
 }
 
 func saveFieldFromModel(field models.Field) services.SaveFieldInput {

@@ -177,6 +177,7 @@
   function initAdminPage(root) {
     adminDirty = false;
     ensureCSRF(root);
+    initContentSchemaFields(root);
     initAutosave(root);
     initCustomFields(root);
     initTagInputs(root);
@@ -191,6 +192,30 @@
     initCommentProcessingOptions(root);
     initRevisionCards(root);
     initAdminNotices(root);
+  }
+
+  function initContentSchemaFields(root) {
+    query(root, "[data-content-schema-field]").forEach(function (field) {
+      if (bound(field, "adminContentSchemaFieldBound")) {
+        return;
+      }
+      var control = field.querySelector("[data-content-field-control]");
+      var value = field.querySelector("[data-content-field-value]");
+      if (!control || !value) {
+        return;
+      }
+
+      function syncValue() {
+        if ((control.tagName || "").toLowerCase() === "mdui-checkbox") {
+          value.value = control.checked ? "1" : "0";
+          return;
+        }
+        value.value = control.value == null ? "" : String(control.value);
+      }
+
+      control.addEventListener("input", syncValue);
+      control.addEventListener("change", syncValue);
+    });
   }
 
   function ensureCSRF(root) {

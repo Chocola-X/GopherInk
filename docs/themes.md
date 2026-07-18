@@ -172,21 +172,37 @@ ConfigSchema: []plugin.FieldSchema{
 
 ## 内容字段
 
-`ContentFields` 会合并到文章/页面编辑器：
+`Theme.ContentFields` 是主题注册文章/独立页面字段的入口。后台会按照 Schema 直接生成 MDUI 2 控件；这些预设字段与用户手动新增的通用自定义字段分区显示，但统一保存到 `gb_fields`：
 
 ```go
 ContentFields: []plugin.FieldSchema{
     {
+        Name:    "articleType",
+        Label:   "文章类型",
+        Group:   "主题显示",
+        Type:    plugin.FieldSelect,
+        Default: "article",
+        Options: []plugin.FieldOption{
+            {Label: "文章", Value: "article"},
+            {Label: "无封面", Value: "normal"},
+            {Label: "日常", Value: "daily"},
+        },
+        ForTypes: []string{"post", "page"},
+    },
+    {
         Name:        "cover",
-        Label:       "封面图",
+        Label:       "文章/独立页面封面图",
         Type:        plugin.FieldImage,
         Description: "文章或页面封面 URL",
         ForTypes:    []string{"post", "page"},
+        Wide:        true,
     },
 }
 ```
 
-主题字段与插件字段经过统一校验和保存。模板数据中的字段映射可由主题函数读取。字段要保持向后兼容：删除 Schema 不会自动删除数据库中的历史字段，但编辑提交可能不再展示或更新它。
+`Type` 支持 `text`、`password`、`textarea`、`radio`、`checkbox`、`select`、`number`、`color` 和 `image`。`select`、`radio` 通过 `Options` 自定义候选项；`Default` 设置新内容的默认值；`Group` 控制编辑页分组；`ForTypes` 可限定为 `post` 或 `page`；`ReadOnly` 会同时作用于界面和服务端保护。
+
+主题字段与插件字段经过统一校验和保存，模板数据中的 `.Fields` 映射可由主题函数读取。Schema 不再注册后，已有数据会作为普通自定义字段显示，用户可以继续编辑或删除。
 
 ## AdjustData
 

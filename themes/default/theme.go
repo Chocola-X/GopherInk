@@ -87,8 +87,31 @@ func init() {
 			{Name: "footer_html", Label: "底部 HTML", Group: "页脚", Type: plugin.FieldTextarea, Description: "留空时显示 Powered by GopherInk", Wide: true},
 		},
 		ContentFields: []plugin.FieldSchema{
-			{Name: "cover", Label: "封面图", Type: plugin.FieldImage, Description: "文章或页面封面图 URL", ForTypes: []string{"post", "page"}},
-			{Name: "catalog", Label: "显示文章目录", Type: plugin.FieldCheckbox, Default: "1", Description: "配合主题目录开关使用", ForTypes: []string{"post", "page"}},
+			{
+				Name:    "articleType",
+				Label:   "文章类型",
+				Group:   "主题显示",
+				Type:    plugin.FieldSelect,
+				Default: "article",
+				Options: []plugin.FieldOption{
+					{Label: "文章", Value: "article"},
+					{Label: "无封面", Value: "normal"},
+					{Label: "日常", Value: "daily"},
+				},
+				Description: "选择当前内容在默认主题中的展示类型",
+				ForTypes:    []string{"post", "page"},
+			},
+			{
+				Name:        "catalog",
+				Label:       "文章目录",
+				Group:       "主题显示",
+				Type:        plugin.FieldSelect,
+				Default:     "1",
+				Options:     []plugin.FieldOption{{Label: "显示", Value: "1"}, {Label: "隐藏", Value: "0"}},
+				Description: "配合主题设置中的目录总开关使用",
+				ForTypes:    []string{"post", "page"},
+			},
+			{Name: "cover", Label: "文章/独立页面封面图", Group: "主题显示", Type: plugin.FieldImage, Description: "填写图片 URL；留空时使用主题设置中的默认封面", ForTypes: []string{"post", "page"}, Wide: true},
 		},
 	})
 }

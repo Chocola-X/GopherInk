@@ -1,6 +1,8 @@
 {{define "content"}}
+{{$articleType := fieldString .Fields "articleType"}}
 {{$cover := fieldString .Fields "cover"}}
 {{if not $cover}}{{$cover = themeValue .ThemeConfig "default_cover"}}{{end}}
+{{if eq $articleType "normal"}}{{$cover = ""}}{{end}}
 {{$cover = assetURL $cover}}
 {{$decor := themeValue .ThemeConfig "enable_decor" "1"}}
 {{$postEndImg := assetURL (themeValue .ThemeConfig "post_end_image")}}

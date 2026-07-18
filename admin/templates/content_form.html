@@ -1,3 +1,38 @@
+{{define "content_schema_field"}}
+<div class="{{schemaFieldClass .Field}} content-schema-field" data-content-schema-field>
+  <input type="hidden" name="field_name" value="{{.Field.Name}}">
+  <input type="hidden" name="field_type" value="str">
+  <input type="hidden" name="field_value" value="{{.Value}}" data-content-field-value>
+  {{if eq .Field.Type "textarea"}}
+    <mdui-text-field label="{{.Field.Label}}" rows="5" autosize data-content-field-control {{if .Field.ReadOnly}}readonly{{end}}>{{.Value}}</mdui-text-field>
+  {{else if eq .Field.Type "password"}}
+    <mdui-text-field type="password" label="{{.Field.Label}}" value="{{.Value}}" data-content-field-control {{if .Field.ReadOnly}}readonly{{end}}></mdui-text-field>
+  {{else if eq .Field.Type "number"}}
+    <mdui-text-field type="number" label="{{.Field.Label}}" value="{{.Value}}" {{if .Field.Min}}min="{{.Field.Min}}"{{end}} {{if .Field.Max}}max="{{.Field.Max}}"{{end}} {{if .Field.Step}}step="{{.Field.Step}}"{{end}} data-content-field-control {{if .Field.ReadOnly}}readonly{{end}}></mdui-text-field>
+  {{else if eq .Field.Type "color"}}
+    <mdui-text-field label="{{.Field.Label}}" value="{{.Value}}" placeholder="#RRGGBB" data-content-field-control {{if .Field.ReadOnly}}readonly{{end}}></mdui-text-field>
+  {{else if eq .Field.Type "checkbox"}}
+    <div class="schema-option-field">
+      <mdui-checkbox value="1" data-content-field-control {{if .Checked}}checked{{end}} {{if .Field.ReadOnly}}disabled{{end}}>{{.Field.Label}}</mdui-checkbox>
+    </div>
+  {{else if eq .Field.Type "radio"}}
+    <div class="schema-option-field">
+      <span class="muted content-schema-label">{{.Field.Label}}</span>
+      <mdui-radio-group value="{{.Value}}" data-content-field-control {{if .Field.ReadOnly}}disabled{{end}}>
+        {{range .Field.Options}}<mdui-radio value="{{.Value}}">{{.Label}}</mdui-radio>{{end}}
+      </mdui-radio-group>
+    </div>
+  {{else if eq .Field.Type "select"}}
+    <mdui-select label="{{.Field.Label}}" value="{{.Value}}" data-content-field-control {{if .Field.ReadOnly}}disabled{{end}}>
+      {{range .Field.Options}}<mdui-menu-item value="{{.Value}}">{{.Label}}</mdui-menu-item>{{end}}
+    </mdui-select>
+  {{else}}
+    <mdui-text-field label="{{.Field.Label}}" value="{{.Value}}" data-content-field-control {{if .Field.ReadOnly}}readonly{{end}}></mdui-text-field>
+  {{end}}
+  {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+</div>
+{{end}}
+
 {{define "content"}}
 <div class="page-head">
   <div>
@@ -100,13 +135,22 @@
       </div>
     </div>
   </section>
+  {{range .ContentFieldGroups}}
+  <fieldset class="fieldset content-schema-fields">
+    <legend>{{.Title}}</legend>
+    <div class="content-schema-grid">
+      {{range .Fields}}{{template "content_schema_field" .}}{{end}}
+    </div>
+  </fieldset>
+  {{end}}
   <fieldset class="fieldset custom-fields">
     <legend>自定义字段</legend>
     <div class="custom-field-list">
       {{range .Fields}}
       <div class="custom-field-row">
         <mdui-text-field name="field_name" label="字段名" value="{{.Name}}" {{if .ReadOnly}}readonly{{end}}></mdui-text-field>
-        <mdui-select name="field_type" label="类型" value="{{.Type}}" {{if .ReadOnly}}disabled{{end}}>
+        {{if .ReadOnly}}<input type="hidden" name="field_type" value="{{.Type}}">{{end}}
+        <mdui-select {{if not .ReadOnly}}name="field_type"{{end}} label="类型" value="{{.Type}}" {{if .ReadOnly}}disabled{{end}}>
           <mdui-menu-item value="str">字符串</mdui-menu-item>
           <mdui-menu-item value="int">整数</mdui-menu-item>
           <mdui-menu-item value="float">浮点数</mdui-menu-item>

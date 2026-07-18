@@ -726,6 +726,27 @@ mdui-select::part(text-field__container) {
   grid-column: 1 / -1;
 }
 
+.content-schema-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.content-schema-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 16px;
+  min-width: 0;
+}
+
+.content-schema-field {
+  align-content: start;
+}
+
+.content-schema-label {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .editor-media-panel {
   display: grid;
   gap: 16px;
@@ -1726,6 +1747,10 @@ mdui-icon {
     grid-template-columns: 1fr;
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .content-schema-grid {
+    grid-template-columns: 1fr;
   }
 
   .revision-card {
