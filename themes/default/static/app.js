@@ -124,6 +124,77 @@
     }
   }
 
+  function showCommentSubmitError(form, message) {
+    const comments = form.closest("#comments");
+    if (!comments) return;
+    let notice = comments.querySelector(".comment-submit-error");
+    if (!notice) {
+      notice = document.createElement("div");
+      notice.className = "notice-card notice-error comment-submit-error";
+      comments.insertBefore(notice, form);
+    }
+    notice.textContent = message;
+  }
+
+  function initCommentSubmit() {
+    const form = document.querySelector("#comment-form");
+    if (!form || form.dataset.commentSubmitBound) return;
+    form.dataset.commentSubmitBound = "1";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (form.dataset.commentSubmitting === "1") return;
+      if (typeof form.reportValidity === "function" && !form.reportValidity()) return;
+
+      const submit = form.querySelector('[type="submit"]');
+      form.dataset.commentSubmitting = "1";
+      if (submit) submit.disabled = true;
+      form.closest("#comments")?.querySelector(".comment-submit-error")?.remove();
+      try {
+        const guard = form.querySelector('[name="_comment_guard"]');
+        if (guard) {
+          const endpoint = form.dataset.commentGuardEndpoint;
+          const cid = form.querySelector('[name="cid"]')?.value || "";
+          if (!endpoint || !cid) throw new Error("评论校验信息不完整，请刷新页面后重试。");
+          const guardURL = new URL(endpoint, window.location.href);
+          guardURL.searchParams.set("cid", cid);
+          guardURL.searchParams.set("_", `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+          const guardResponse = await fetch(guardURL, {
+            cache: "no-store",
+            credentials: "same-origin",
+            headers: {
+              Accept: "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+              "X-GopherInk-Comment": "guard",
+            },
+          });
+          if (!guardResponse.ok) throw new Error("评论校验失败，请刷新页面后重试。");
+          const payload = await guardResponse.json();
+          if (!payload?.token) throw new Error("评论校验信息无效，请刷新页面后重试。");
+          guard.value = payload.token;
+        }
+
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: new FormData(form),
+          cache: "no-store",
+          credentials: "same-origin",
+          redirect: "follow",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "X-GopherInk-Comment": "submit",
+          },
+        });
+        if (!response.ok) throw new Error(response.status === 403 ? "评论校验已失效，请重新提交。" : "评论提交失败，请稍后重试。");
+        window.location.assign(response.url || window.location.href);
+      } catch (error) {
+        showCommentSubmitError(form, error instanceof Error ? error.message : "评论提交失败，请稍后重试。");
+      } finally {
+        form.dataset.commentSubmitting = "0";
+        if (submit) submit.disabled = false;
+      }
+    });
+  }
+
   function commentReplyElements() {
     const form = document.querySelector("#comment-form");
     if (!form) return {};
@@ -576,6 +647,7 @@
     wrapTables();
     codeCopy();
     initCommentDraft();
+    initCommentSubmit();
     initCommentReply();
     initCommentAvatarPreview();
     initInfiniteScroll();

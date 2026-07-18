@@ -46,21 +46,23 @@ import (
 )
 
 type App struct {
-	Contents        *services.ContentService
-	Metas           *services.MetaService
-	Comments        *services.CommentService
-	Users           *services.UserService
-	Options         *services.OptionService
-	Plugins         *plugin.Manager
-	DataDir         string
-	UploadDir       string
-	HTTPClient      *compathttp.Client
-	HTTPFetch       func(context.Context, string) (string, error)
-	WAF             *wafManager
-	loginMu         sync.Mutex
-	loginNext       map[string]time.Time
-	draftRepairOnce sync.Once
-	draftRepairErr  error
+	Contents         *services.ContentService
+	Metas            *services.MetaService
+	Comments         *services.CommentService
+	Users            *services.UserService
+	Options          *services.OptionService
+	Plugins          *plugin.Manager
+	DataDir          string
+	UploadDir        string
+	HTTPClient       *compathttp.Client
+	HTTPFetch        func(context.Context, string) (string, error)
+	WAF              *wafManager
+	loginMu          sync.Mutex
+	loginNext        map[string]time.Time
+	commentGuardMu   sync.Mutex
+	commentGuardUsed map[string]time.Time
+	draftRepairOnce  sync.Once
+	draftRepairErr   error
 }
 
 type contextKey string
@@ -87,7 +89,7 @@ func NewWithPaths(contents *services.ContentService, metas *services.MetaService
 		uploadDir = filepath.Join(dataDir, "uploads")
 	}
 	httpClient, _ := compathttp.New(compathttp.Config{Timeout: 5 * time.Second, UserAgent: "GopherInk/0.5.0", Retries: 1})
-	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}}
+	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}, commentGuardUsed: map[string]time.Time{}}
 	app.WAF = newWAFManager(app)
 	return app
 }
@@ -195,6 +197,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/rsd.xml", a.rsdXML)
 	mux.HandleFunc("/wlwmanifest.xml", a.wlwManifest)
 	mux.HandleFunc("/comment", a.frontComment)
+	mux.HandleFunc("/comment/guard", a.frontCommentGuard)
 	mux.HandleFunc("/preview/", a.frontPreview)
 	mux.HandleFunc("/post/", a.frontPost)
 	mux.HandleFunc("/page/", a.frontPage)
@@ -4536,12 +4539,16 @@ func (a *App) frontComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cid, _ := strconv.ParseInt(r.FormValue("cid"), 10, 64)
+	user, loggedIn := a.currentUser(r)
+	if !loggedIn && a.activeThemeUsesCommentGuard(r.Context()) && !a.consumeCommentGuard(r, cid) {
+		http.Error(w, "invalid comment guard", http.StatusForbidden)
+		return
+	}
 	post, err := a.Contents.ByID(r.Context(), cid)
 	if err != nil || (post.Type != models.ContentTypePost && post.Type != models.ContentTypePage) || post.Status != models.ContentStatusPost {
 		http.NotFound(w, r)
 		return
 	}
-	user, loggedIn := a.currentUser(r)
 	trustedCommenter := loggedIn && (roleRank(user.Role) >= roleRank("editor") || post.AuthorID == user.UID)
 	redirectTo := a.contentURL(r.Context(), post)
 	if optionBool(a.option(r.Context(), "comments_check_referer", "1")) && !a.validCommentReferer(r, redirectTo) {
@@ -7211,6 +7218,8 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	}
 	data["CSRF"] = a.csrfToken(r)
 	data["CommentCSRF"] = a.csrfTokenFor(r, "comment")
+	data["CommentGuardEnabled"] = theme.Capabilities.CommentGuard
+	data["CommentGuardEndpoint"] = "/comment/guard"
 	if site, ok := data["Site"].(map[string]string); ok {
 		canonicalPath := r.URL.Path
 		if pathValue, ok := data["CanonicalPath"].(string); ok && pathValue != "" {

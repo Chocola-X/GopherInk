@@ -859,7 +859,7 @@ func isPublicHTMLPath(value string) bool {
 		return false
 	case strings.HasPrefix(value, "/admin/assets/"):
 		return false
-	case value == "/comment" || value == "/register" || value == "/install":
+	case value == "/comment" || value == "/comment/guard" || value == "/register" || value == "/install":
 		return false
 	default:
 		return true

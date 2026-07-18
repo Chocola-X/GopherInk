@@ -480,6 +480,7 @@ type Plugin interface {
 - 静态资源（`embed.FS` 或外部目录）
 - 配置 Schema（`FieldSchema`，后台自动生成设置表单）
 - 自定义字段定义（可限定 `post`/`page` 类型）
+- 核心评论守卫协议（主题声明后由核心强制校验）
 - 模板函数（`FuncMap`）
 - 数据调整回调（`AdjustData`）
 - 可编辑目录（`EditableDir`，允许后台编辑主题文件）
@@ -515,6 +516,7 @@ type Plugin interface {
 - 侧栏组件（资料卡、最新回复、标签云）
 - 阅读时间估算
 - Gravatar / 自定义头像
+- 核心强制校验的 JS 评论守卫
 - 回到顶部按钮
 
 ### 主题配置项

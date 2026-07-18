@@ -78,11 +78,87 @@ _ "github.com/Chocola-X/GopherInk/themes/example"
 | `Funcs` | 解析模板时加入的函数 |
 | `ConfigSchema` | 主题设置表单 Schema |
 | `ContentFields` | 文章/页面自定义字段 Schema |
+| `Capabilities` | 声明主题实现的核心协议能力 |
 | `AdjustData` | 渲染模板前补充或修改数据 |
 | `EditableDir` | 非嵌入主题允许编辑的目录 |
 | `Embedded` | 标记资源是否嵌入二进制 |
 
 内置默认主题使用 `embed.FS`，因此后台不显示无意义的“文件”编辑按钮。
+
+## 评论守卫
+
+主题可以使用核心提供的评论守卫，阻止只解析 HTML 表单并直接请求 `/comment` 的通用垃圾评论程序。主题只负责交互，token 签发、访客 Cookie、内容 ID 绑定、有效期和重放校验均由核心执行。
+
+注册主题时声明能力：
+
+```go
+Capabilities: plugin.ThemeCapabilities{
+    CommentGuard: true,
+},
+```
+
+声明后，核心会向模板注入：
+
+- `CommentGuardEnabled`：当前主题是否启用评论守卫。
+- `CommentGuardEndpoint`：守卫签发地址，当前为 `/comment/guard`。
+
+匿名评论表单必须包含守卫字段：
+
+```gotemplate
+<form id="comment-form" method="post" action="/comment"
+      data-comment-guard-endpoint="{{.CommentGuardEndpoint}}">
+  <input type="hidden" name="_csrf" value="{{.CommentCSRF}}">
+  <input type="hidden" name="cid" value="{{.Post.CID}}">
+  {{if not .CommentIdentity.LoggedIn}}
+  <input type="hidden" name="_comment_guard" value="">
+  {{end}}
+</form>
+```
+
+提交前使用同源 `fetch` 请求 `GET {{.CommentGuardEndpoint}}?cid=<内容ID>`，同时发送请求头 `X-Requested-With: XMLHttpRequest` 和 `X-GopherInk-Comment: guard`，把 JSON 响应中的 `token` 写入 `_comment_guard`。随后通过 `fetch` 提交表单，并发送 `X-Requested-With: XMLHttpRequest` 和 `X-GopherInk-Comment: submit`。
+
+最小前端接入示例：
+
+```js
+const form = document.querySelector("#comment-form");
+
+form?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!form.reportValidity()) return;
+
+  const guardInput = form.querySelector('[name="_comment_guard"]');
+  if (guardInput) {
+    const guardURL = new URL(form.dataset.commentGuardEndpoint, location.href);
+    guardURL.searchParams.set("cid", form.elements.cid.value);
+    const response = await fetch(guardURL, {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        "X-GopherInk-Comment": "guard",
+      },
+    });
+    if (!response.ok) throw new Error("comment guard failed");
+    guardInput.value = (await response.json()).token;
+  }
+
+  const response = await fetch(form.action, {
+    method: "POST",
+    body: new FormData(form),
+    cache: "no-store",
+    credentials: "same-origin",
+    redirect: "follow",
+    headers: {
+      "X-Requested-With": "XMLHttpRequest",
+      "X-GopherInk-Comment": "submit",
+    },
+  });
+  if (!response.ok) throw new Error("comment submit failed");
+  location.assign(response.url);
+});
+```
+
+启用该能力后，核心会拒绝缺少完整守卫流程的匿名评论。不要只在 JavaScript 中检查请求，也不要自行生成可预测 token。未声明 `CommentGuard` 的主题继续兼容普通表单提交。可直接复用 `themes/default/static/app.js` 中的 `initCommentSubmit` 实现。
 
 ## 模板解析
 

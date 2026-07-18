@@ -77,10 +77,11 @@
   <h2 class="comment-title">评论</h2>
   {{if .CommentOK}}<div class="notice-card">{{if .CommentPending}}评论已提交，正在等待审核。{{else}}评论已提交。{{end}}</div>{{end}}
   {{if .CommentError}}<div class="notice-card notice-error">{{.CommentErrorMessage}}</div>{{end}}
-  <form id="comment-form" class="mdui-card comment-respond{{if .CommentFormAvatar.Enabled}} has-avatar{{end}}" method="post" action="/comment">
+  <form id="comment-form" class="mdui-card comment-respond{{if .CommentFormAvatar.Enabled}} has-avatar{{end}}" method="post" action="/comment"{{if .CommentGuardEnabled}} data-comment-guard-endpoint="{{.CommentGuardEndpoint}}"{{end}}>
     <input type="hidden" name="_csrf" value="{{.CommentCSRF}}">
     <input type="hidden" name="cid" value="{{.Post.CID}}">
     <input type="hidden" name="parent" value="{{.ReplyTo}}">
+    {{if and .CommentGuardEnabled (not .CommentIdentity.LoggedIn)}}<input type="hidden" name="_comment_guard" value="">{{end}}
     <input class="hp-field" type="text" name="website" tabindex="-1" autocomplete="off">
     {{if .CommentFormAvatar.Enabled}}
     <div class="comment-form-avatar-wrap">

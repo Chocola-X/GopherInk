@@ -394,9 +394,16 @@ type Theme struct {
 	Funcs         template.FuncMap
 	ConfigSchema  []FieldSchema
 	ContentFields []FieldSchema
+	Capabilities  ThemeCapabilities
 	AdjustData    func(context.Context, map[string]any) error
 	EditableDir   string
 	Embedded      bool
+}
+
+// ThemeCapabilities declares optional core protocols implemented by a theme.
+// The core remains responsible for enforcing security-sensitive capabilities.
+type ThemeCapabilities struct {
+	CommentGuard bool
 }
 
 type Manager struct {

@@ -46,6 +46,7 @@ func init() {
 		Templates:    themeFS,
 		Static:       static,
 		Embedded:     true,
+		Capabilities: plugin.ThemeCapabilities{CommentGuard: true},
 		Funcs: template.FuncMap{
 			"themeValue":   themeValue,
 			"themeInt":     themeInt,
