@@ -907,6 +907,14 @@ html.mdui-theme-dark .sidebar-tag span {
   border-radius: 5px;
 }
 
+.post-content img:not(.fancybox__image) {
+  cursor: zoom-in;
+}
+
+.fancybox__container {
+  --fancybox-accent-color: rgb(var(--mdui-color-primary));
+}
+
 .post-content h1,
 .post-content h2 {
   margin-top: 0;
@@ -1015,8 +1023,8 @@ html.mdui-theme-dark .post-content code {
   position: relative;
   max-width: 100%;
   margin-bottom: 24px;
-  overflow: auto;
-  padding: 34px 16px 16px;
+  overflow: hidden;
+  padding: 34px 0 0;
   color: #abb2bf;
   border-radius: 5px;
   background: #282c34;
@@ -1025,14 +1033,38 @@ html.mdui-theme-dark .post-content code {
 
 .post-content pre:not(.mermaid) code {
   display: block;
-  padding: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0 16px;
   color: inherit;
   background: transparent;
   border-radius: 0;
   font-size: 0.875em;
   line-height: 1.6;
+  scrollbar-color: rgba(171, 178, 191, 0.58) #282c34;
+  scrollbar-width: thin;
   white-space: pre;
   word-wrap: normal;
+}
+
+.post-content pre:not(.mermaid) code::after {
+  content: "";
+  display: block;
+  height: 12px;
+}
+
+.post-content pre:not(.mermaid) code::-webkit-scrollbar {
+  height: 10px;
+}
+
+.post-content pre:not(.mermaid) code::-webkit-scrollbar-track {
+  background: #282c34;
+}
+
+.post-content pre:not(.mermaid) code::-webkit-scrollbar-thumb {
+  border: 2px solid #282c34;
+  border-radius: 5px;
+  background: rgba(171, 178, 191, 0.58);
 }
 
 .post-content .table-wrapper {

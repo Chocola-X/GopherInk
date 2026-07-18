@@ -391,6 +391,27 @@
     }
   }
 
+  function initLightbox() {
+    if (!window.Fancybox || body.dataset.lightboxBound) return;
+    body.dataset.lightboxBound = "1";
+    window.Fancybox.bind(".post-content img", {
+      groupAll: true,
+      Image: {
+        click: false,
+        doubleClick: false,
+        wheel: "zoom",
+      },
+    });
+    document.addEventListener("dblclick", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest(".fancybox__image")) return;
+      const panzoom = window.Fancybox.getInstance()?.getSlide()?.Panzoom;
+      if (!panzoom) return;
+      event.preventDefault();
+      panzoom.toggleZoom();
+    });
+  }
+
   function wrapTables() {
     document.querySelectorAll(".post-content table").forEach((table) => {
       if (table.parentElement.classList.contains("table-wrapper")) return;
@@ -644,6 +665,7 @@
     destroyTOC();
     initTOC();
     highlightCode();
+    initLightbox();
     wrapTables();
     codeCopy();
     initCommentDraft();
