@@ -543,10 +543,10 @@ type Plugin interface {
 | | `show_recent_comments` | 显示最新回复 |
 | | `show_tag_cloud` | 显示标签云 |
 | | `enable_pjax` | 启用 PJAX 导航 |
-| | `enable_infinite_scroll` | 滚动接近文章列表底部时自动加载下一页（默认关闭） |
 | | `enable_toc` | 文章页显示目录 |
 | | `enable_back_to_top` | 显示回到顶部按钮 |
-| 文章显示 | `show_stale_notice` | 显示文章过期提醒横幅 |
+| 文章显示 | `enable_infinite_scroll` | 滚动接近文章列表底部时自动加载下一页（默认关闭） |
+| | `show_stale_notice` | 显示文章过期提醒横幅 |
 | | `stale_notice_days` | 最后修改超过多少天时触发提醒（默认 30） |
 | 页脚 | `footer_html` | 底部自定义 HTML |
 
