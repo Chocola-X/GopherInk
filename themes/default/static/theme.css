@@ -1218,23 +1218,41 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   border-radius: 50%;
 }
 
-.comment-header strong,
-.comment-header span {
-  display: block;
+.comment-header-meta {
+  min-width: 0;
+}
+
+.comment-author-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.comment-author {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .comment-pending {
   display: inline-flex;
-  margin-left: 8px;
-  padding: 1px 6px;
-  border: 1px solid rgba(var(--mdui-color-primary), 0.35);
+  flex: 0 0 auto;
+  min-height: 22px;
+  align-items: center;
+  padding: 1px 7px;
   border-radius: 4px;
-  color: rgb(var(--mdui-color-primary));
+  color: rgb(var(--mdui-color-on-primary-container));
+  background: rgb(var(--mdui-color-primary-container));
   font-size: 12px;
   font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
 }
 
-.comment-header span {
+.comment-date {
+  display: block;
+  margin-top: 2px;
   color: rgb(var(--mdui-color-on-surface-variant));
   font-size: 14px;
 }

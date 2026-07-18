@@ -2,9 +2,12 @@
 <article id="{{.Anchor}}" class="{{if eq .Level 0}}mdui-card comment-card comment-parent{{else}}comment-child comment-level-{{.Level}}{{end}}" data-comment-item data-comment-id="{{.COID}}" data-comment-author="{{.Author}}">
   <header class="comment-header">
     {{if .AvatarURL}}<img class="comment-avatar" src="{{.AvatarURL}}" alt="">{{end}}
-    <div>
-      <strong>{{.AuthorHTML}}{{if .Pending}} <span class="comment-pending">等待审核</span>{{end}}</strong>
-      <span>{{commentDate .Created}}</span>
+    <div class="comment-header-meta">
+      <div class="comment-author-line">
+        <strong class="comment-author">{{.AuthorHTML}}</strong>
+        {{if .Pending}}<span class="comment-pending">等待审核</span>{{end}}
+      </div>
+      <span class="comment-date">{{commentDate .Created}}</span>
     </div>
   </header>
   <a class="comment-reply" href="{{.ReplyURL}}" data-comment-reply data-parent-id="{{.COID}}" data-parent-author="{{.Author}}">回复</a>
