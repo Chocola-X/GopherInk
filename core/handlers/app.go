@@ -2737,6 +2737,14 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 		}
 		schema = provider.ConfigSchema()
 	}
+	var noticeProvider func(context.Context, map[string]string) []plugin.AdminNotice
+	if !personal {
+		if provider, ok := p.(plugin.AdminNoticeProvider); ok {
+			noticeProvider = func(ctx context.Context, values map[string]string) []plugin.AdminNotice {
+				return provider.AdminNotices(ctx, a.pluginRuntime(), copyStringMap(values))
+			}
+		}
+	}
 	key := pluginOptionKey(name)
 	if personal {
 		key = pluginPersonalOptionKey(name)
@@ -2750,6 +2758,7 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 		Schema:    schema,
 		SavedURL:  r.URL.Path,
 		Saved:     r.URL.Query().Get("saved") == "1",
+		Notices:   noticeProvider,
 	})
 }
 
@@ -2786,6 +2795,12 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 		Saved:        r.URL.Query().Get("saved") == "1",
 		UploadURL:    uploadURL,
 		AssetManager: assets,
+		Notices: func(ctx context.Context, values map[string]string) []plugin.AdminNotice {
+			if theme.AdminNotices == nil {
+				return nil
+			}
+			return theme.AdminNotices(ctx, a.pluginRuntime(), copyStringMap(values))
+		},
 	})
 }
 
@@ -2992,6 +3007,7 @@ type schemaFormConfig struct {
 	Saved        bool
 	UploadURL    string
 	AssetManager *settingsAssetManager
+	Notices      func(context.Context, map[string]string) []plugin.AdminNotice
 }
 
 type schemaFieldView struct {
@@ -3062,10 +3078,15 @@ func (a *App) renderSchemaForm(w http.ResponseWriter, r *http.Request, cfg schem
 	if description == "" {
 		description = "在此调整当前功能的配置选项。"
 	}
+	var notices []plugin.AdminNotice
+	if cfg.Notices != nil {
+		notices = normalizeAdminNotices(cfg.Notices(r.Context(), copyStringMap(values)))
+	}
 	a.renderAdmin(w, r, cfg.Template, map[string]any{
 		"Title": cfg.Title, "Description": description, "BackURL": cfg.BackURL,
 		"Schema": cfg.Schema, "SchemaGroups": schemaGroups(cfg.Schema, values), "Values": values,
 		"Saved": cfg.Saved, "Error": errorMessage, "UploadURL": uploadURL, "AssetManager": cfg.AssetManager,
+		"AdminNotices": notices,
 	})
 }
 
@@ -8275,6 +8296,7 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		Option:            a.Options.Get,
 		Config:            a.pluginConfig,
 		PersonalConfig:    a.pluginPersonalConfig,
+		NotifyAdmin:       a.setFlash,
 	}
 	runtime.DispatchHook = func(ctx context.Context, name string, payload any) (plugin.HookDispatch, error) {
 		return a.Plugins.DispatchActive(plugin.ContextWithRuntime(ctx, runtime), name, payload)
@@ -8353,10 +8375,7 @@ func (a *App) applySchemaDefaults(schema []plugin.FieldSchema, values map[string
 	}
 }
 
-type flashNotice struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
-}
+type flashNotice = plugin.AdminNotice
 
 func (a *App) flashRedirect(w http.ResponseWriter, r *http.Request, target string, code int, notices ...flashNotice) {
 	a.setFlash(w, r, notices...)
@@ -8364,6 +8383,7 @@ func (a *App) flashRedirect(w http.ResponseWriter, r *http.Request, target strin
 }
 
 func (a *App) setFlash(w http.ResponseWriter, r *http.Request, notices ...flashNotice) {
+	notices = normalizeAdminNotices(notices)
 	if len(notices) == 0 {
 		return
 	}
@@ -8384,6 +8404,36 @@ func (a *App) setFlash(w http.ResponseWriter, r *http.Request, notices ...flashN
 		SameSite: options.SameSite,
 		Secure:   options.Secure,
 	})
+}
+
+func normalizeAdminNotices(notices []plugin.AdminNotice) []plugin.AdminNotice {
+	out := make([]plugin.AdminNotice, 0, len(notices))
+	for _, notice := range notices {
+		notice.Message = strings.TrimSpace(notice.Message)
+		if notice.Message == "" {
+			continue
+		}
+		switch notice.Type {
+		case plugin.NoticeSuccess, plugin.NoticeWarning, plugin.NoticeError:
+		default:
+			notice.Type = plugin.NoticeInfo
+		}
+		switch notice.Mode {
+		case plugin.NoticeSnackbar, plugin.NoticeCard:
+		default:
+			notice.Mode = plugin.NoticeAuto
+		}
+		out = append(out, notice)
+	}
+	return out
+}
+
+func copyStringMap(values map[string]string) map[string]string {
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }
 
 func (a *App) consumeFlash(w http.ResponseWriter, r *http.Request) []flashNotice {
@@ -8407,7 +8457,7 @@ func (a *App) consumeFlash(w http.ResponseWriter, r *http.Request) []flashNotice
 	}
 	var notices []flashNotice
 	_ = json.Unmarshal(raw, &notices)
-	return notices
+	return normalizeAdminNotices(notices)
 }
 
 func flashSign(secret, payload string) string {

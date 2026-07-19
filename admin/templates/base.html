@@ -20,7 +20,7 @@
   <main class="login-main">
     <div class="login-stack">
       {{template "content" .}}
-      {{range .Notices}}<div class="notice auth-notice {{if eq .Type "error"}}danger{{end}}">{{.Message}}</div>{{end}}
+      {{range .Notices}}<div class="notice auth-notice notice-{{.Type}} {{if eq .Type "error"}}danger{{end}}" data-notice-mode="{{.Mode}}" data-notice-type="{{.Type}}">{{.Message}}</div>{{end}}
     </div>
   </main>
 {{else}}
@@ -69,7 +69,8 @@
     <button class="drawer-scrim" type="button" aria-label="收起菜单"></button>
     <div class="admin-layout-main">
       <main class="admin-main">
-        {{range .Notices}}<div class="notice {{if eq .Type "error"}}danger{{end}}">{{.Message}}</div>{{end}}
+        {{range .AdminNotices}}<div class="notice notice-{{.Type}} {{if eq .Type "error"}}danger{{end}}" data-notice-mode="{{.Mode}}" data-notice-type="{{.Type}}">{{.Message}}</div>{{end}}
+        {{range .Notices}}<div class="notice notice-{{.Type}} {{if eq .Type "error"}}danger{{end}}" data-notice-mode="{{.Mode}}" data-notice-type="{{.Type}}">{{.Message}}</div>{{end}}
         {{template "content" .}}
       </main>
     </div>

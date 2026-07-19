@@ -64,6 +64,7 @@ type Runtime struct {
 	Config            func(context.Context, string) (map[string]string, error)
 	PersonalConfig    func(context.Context, string, int64) (map[string]string, error)
 	DispatchHook      func(context.Context, string, any) (HookDispatch, error)
+	NotifyAdmin       func(http.ResponseWriter, *http.Request, ...AdminNotice)
 }
 
 type runtimeContextKey struct{}
@@ -351,8 +352,31 @@ type AdminMenuItem struct {
 	Icon  string
 }
 
+const (
+	NoticeInfo    = "info"
+	NoticeSuccess = "success"
+	NoticeWarning = "warning"
+	NoticeError   = "error"
+
+	NoticeAuto     = "auto"
+	NoticeSnackbar = "snackbar"
+	NoticeCard     = "card"
+)
+
+// AdminNotice is a plain-text message displayed by the native admin UI.
+type AdminNotice struct {
+	Type    string `json:"type"`
+	Mode    string `json:"mode,omitempty"`
+	Message string `json:"message"`
+}
+
 type AdminMenuProvider interface {
 	AdminMenuItems(context.Context) []AdminMenuItem
+}
+
+// AdminNoticeProvider supplies messages for a plugin's native configuration page.
+type AdminNoticeProvider interface {
+	AdminNotices(context.Context, *Runtime, map[string]string) []AdminNotice
 }
 
 type FieldType string
@@ -447,6 +471,7 @@ type Theme struct {
 	Funcs         template.FuncMap
 	ConfigSchema  []FieldSchema
 	ContentFields []FieldSchema
+	AdminNotices  func(context.Context, *Runtime, map[string]string) []AdminNotice
 	Capabilities  ThemeCapabilities
 	AdjustData    func(context.Context, map[string]any) error
 	EditableDir   string

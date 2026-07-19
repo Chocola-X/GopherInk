@@ -62,6 +62,29 @@ func init() {
 _ "github.com/Chocola-X/GopherInk/themes/example"
 ```
 
+## 主题设置提示
+
+主题可以通过 `Theme.AdminNotices` 在自己的原生设置页展示提示。回调会收到插件运行时和当前主题配置副本，适合说明缺失的必填资源或兼容性要求：
+
+```go
+plugin.RegisterTheme(plugin.Theme{
+    Name: "example",
+    // 其他主题字段省略。
+    AdminNotices: func(ctx context.Context, rt *plugin.Runtime, values map[string]string) []plugin.AdminNotice {
+        if values["background_image"] != "" {
+            return nil
+        }
+        return []plugin.AdminNotice{{
+            Type:    plugin.NoticeInfo,
+            Mode:    plugin.NoticeCard,
+            Message: "尚未设置背景图，前台将使用 MDUI 主题色背景。",
+        }}
+    },
+})
+```
+
+`NoticeCard` 是设置页顶部的持续卡片，`NoticeSnackbar` 是底部短提示，类型和安全边界与 [插件后台提示](plugins-and-hooks.md#后台提示信息) 相同。主题设置提示只影响后台，不会自动注入前台页面；前台提示仍由主题模板自行设计。
+
 `Name` 是配置键和内部标识，应保持稳定且只使用简单名称；`DisplayName` 用于后台展示，可以调整。
 
 ## Theme 字段
@@ -78,6 +101,7 @@ _ "github.com/Chocola-X/GopherInk/themes/example"
 | `Funcs` | 解析模板时加入的函数 |
 | `ConfigSchema` | 主题设置表单 Schema |
 | `ContentFields` | 文章/页面自定义字段 Schema |
+| `AdminNotices` | 为主题原生设置页提供持续提示信息 |
 | `Capabilities` | 声明主题实现的核心协议能力 |
 | `AdjustData` | 渲染模板前补充或修改数据 |
 | `EditableDir` | 非嵌入主题允许编辑的目录 |

@@ -1529,6 +1529,8 @@ tbody tr:hover {
   border-radius: 8px;
   color: rgb(var(--mdui-color-on-primary-container));
   background: rgba(var(--mdui-color-primary-container), var(--admin-topbar-opacity));
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .danger {
@@ -1539,6 +1541,12 @@ tbody tr:hover {
   border-color: rgba(var(--mdui-color-error), 0.3);
   color: rgb(var(--mdui-color-on-error-container));
   background: rgba(var(--mdui-color-error-container), var(--admin-topbar-opacity));
+}
+
+.notice.notice-warning {
+  border-color: rgba(var(--mdui-color-tertiary), 0.3);
+  color: rgb(var(--mdui-color-on-tertiary-container));
+  background: rgba(var(--mdui-color-tertiary-container), var(--admin-topbar-opacity));
 }
 
 mdui-snackbar.admin-snackbar {
@@ -1560,6 +1568,12 @@ mdui-snackbar.admin-snackbar-error {
   border-color: rgba(var(--mdui-color-error), 0.3);
   color: rgb(var(--mdui-color-on-error-container));
   background: rgba(var(--mdui-color-error-container), var(--admin-topbar-opacity));
+}
+
+mdui-snackbar.admin-snackbar-warning {
+  border-color: rgba(var(--mdui-color-tertiary), 0.3);
+  color: rgb(var(--mdui-color-on-tertiary-container));
+  background: rgba(var(--mdui-color-tertiary-container), var(--admin-topbar-opacity));
 }
 
 mdui-icon {

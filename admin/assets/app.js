@@ -1099,7 +1099,7 @@
         return;
       }
       notice.dataset.adminNoticeHandled = "1";
-      showMessage(notice.textContent.trim(), { type: notice.classList.contains("danger") ? "error" : "info" });
+      showMessage(notice.textContent.trim(), { type: notice.dataset.noticeType || (notice.classList.contains("danger") ? "error" : "info") });
       notice.remove();
     });
   }
@@ -1107,6 +1107,12 @@
   function isToastNotice(notice) {
     if (!notice || notice.querySelector("form, table, mdui-button, button, a")) {
       return false;
+    }
+    if (notice.dataset.noticeMode === "card") {
+      return false;
+    }
+    if (notice.dataset.noticeMode === "snackbar") {
+      return true;
     }
     var text = notice.textContent.trim();
     if (!text || text.length > 140 || text.indexOf("导入预览") !== -1) {
@@ -1400,7 +1406,8 @@
 
   function updateActiveNav(urlValue) {
     var current = new URL(urlValue || window.location.href, window.location.href);
-    query(document, ".admin-nav [href]").forEach(function (item) {
+    var matches = [];
+    query(document, ".admin-nav [href]").forEach(function (item, index) {
       var url = new URL(item.getAttribute("href"), window.location.href);
       var active = false;
       if (url.pathname === "/admin") {
@@ -1408,6 +1415,22 @@
       } else {
         active = current.pathname === url.pathname || current.pathname.indexOf(url.pathname + "/") === 0;
       }
+      if (active) {
+        matches.push({ item: item, exact: current.pathname === url.pathname, length: url.pathname.length, index: index });
+      }
+    });
+    matches.sort(function (left, right) {
+      if (left.exact !== right.exact) {
+        return left.exact ? -1 : 1;
+      }
+      if (left.length !== right.length) {
+        return right.length - left.length;
+      }
+      return left.index - right.index;
+    });
+    var selected = matches.length ? matches[0].item : null;
+    query(document, ".admin-nav [href]").forEach(function (item) {
+      var active = item === selected;
       item.toggleAttribute("active", active);
       item.active = active;
     });
@@ -1629,11 +1652,12 @@
     if (!snackbar || !snackbar.style) {
       return;
     }
-    var error = type === "error";
-    snackbar.classList.add("admin-snackbar", error ? "admin-snackbar-error" : "admin-snackbar-info");
-    snackbar.style.setProperty("color", "rgb(var(--mdui-color-on-" + (error ? "error" : "primary") + "-container))");
-    snackbar.style.setProperty("background", "rgba(var(--mdui-color-" + (error ? "error" : "primary") + "-container), var(--admin-topbar-opacity))");
-    snackbar.style.setProperty("border", "1px solid rgba(var(--mdui-color-" + (error ? "error" : "primary") + "), " + (error ? "0.3" : "0.22") + ")");
+    var normalized = ["info", "success", "warning", "error"].indexOf(type) >= 0 ? type : "info";
+    var palette = normalized === "error" ? "error" : normalized === "warning" ? "tertiary" : "primary";
+    snackbar.classList.add("admin-snackbar", "admin-snackbar-" + normalized);
+    snackbar.style.setProperty("color", "rgb(var(--mdui-color-on-" + palette + "-container))");
+    snackbar.style.setProperty("background", "rgba(var(--mdui-color-" + palette + "-container), var(--admin-topbar-opacity))");
+    snackbar.style.setProperty("border", "1px solid rgba(var(--mdui-color-" + palette + "), " + (normalized === "error" ? "0.3" : "0.22") + ")");
     snackbar.style.setProperty("border-radius", "8px");
     snackbar.style.setProperty("box-shadow", "0 6px 20px rgba(var(--mdui-color-shadow), 0.16)");
   }
