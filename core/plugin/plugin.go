@@ -394,6 +394,36 @@ type AdminActionProvider interface {
 	HandleAdminAction(context.Context, *Runtime, string) (AdminNotice, error)
 }
 
+// AdminPage describes a native tab on a plugin's configuration page.
+type AdminPage struct {
+	Name        string
+	Label       string
+	Icon        string
+	Title       string
+	Description string
+}
+
+type AdminPageRenderContext struct {
+	CSRF   string
+	Config map[string]string
+}
+
+type AdminPageActionResult struct {
+	ConfigPatch map[string]string
+	Notice      AdminNotice
+}
+
+// AdminPageProvider renders trusted plugin UI inside the authenticated admin shell.
+type AdminPageProvider interface {
+	AdminPages() []AdminPage
+	RenderAdminPage(context.Context, *Runtime, string, AdminPageRenderContext) (template.HTML, error)
+}
+
+// AdminPageActionProvider handles POST actions from a native plugin page.
+type AdminPageActionProvider interface {
+	HandleAdminPageAction(context.Context, *Runtime, string, map[string][]string) (AdminPageActionResult, error)
+}
+
 type FieldType string
 
 const (

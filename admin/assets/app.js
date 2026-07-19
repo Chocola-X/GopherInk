@@ -192,6 +192,7 @@
     initImageProcessingOptions(root);
     initCommentProcessingOptions(root);
     initRevisionCards(root);
+    initPluginTemplateEditors(root);
     initAdminNotices(root);
   }
 
@@ -1087,6 +1088,102 @@
         full.hidden = !expanded;
         button.textContent = expanded ? closeLabel : openLabel;
       });
+    });
+  }
+
+  function initPluginTemplateEditors(root) {
+    query(root, "[data-plugin-template-editor]").forEach(function (form) {
+      if (bound(form, "adminPluginTemplateEditorBound")) {
+        return;
+      }
+      var source = form.querySelector("[data-template-source]");
+      var modeControl = form.querySelector("[data-template-mode]");
+      var editorPane = form.querySelector("[data-template-editor-pane]");
+      var previewPane = form.querySelector("[data-template-preview-pane]");
+      var preview = form.querySelector("[data-template-preview]");
+      var valuesElement = form.querySelector("[data-template-preview-values]");
+      var action = form.querySelector("[data-template-action]");
+      var reset = form.querySelector("[data-template-reset]");
+      if (!source || !modeControl || !editorPane || !previewPane || !preview || !valuesElement || !action) {
+        return;
+      }
+
+      var values = {};
+      try {
+        values = JSON.parse(valuesElement.value || valuesElement.textContent || "{}");
+      } catch (err) {
+        showMessage("邮件预览数据无效：" + err.message, { type: "error" });
+      }
+
+      function renderPreview() {
+        preview.srcdoc = String(source.value || "").replace(/\{[a-z][a-z0-9_]*\}/g, function (token) {
+          return Object.prototype.hasOwnProperty.call(values, token) ? values[token] : token;
+        });
+      }
+
+      function setMode(mode) {
+        var previewMode = mode === "preview";
+        editorPane.hidden = previewMode;
+        previewPane.hidden = !previewMode;
+        if (previewMode) {
+          renderPreview();
+        }
+      }
+
+      function selectedMode() {
+        var value = modeControl.value;
+        if (Array.isArray(value)) {
+          value = value[0];
+        }
+        if (value === "edit" || value === "preview") {
+          return value;
+        }
+        var selected = modeControl.querySelector("mdui-segmented-button[selected]");
+        return selected ? selected.value : "edit";
+      }
+
+      modeControl.addEventListener("change", function () {
+        setMode(selectedMode());
+      });
+      query(modeControl, "mdui-segmented-button").forEach(function (button) {
+        button.addEventListener("click", function () {
+          window.setTimeout(function () {
+            setMode(button.value || "edit");
+          }, 0);
+        });
+      });
+      source.addEventListener("input", function () {
+        adminDirty = true;
+        if (!previewPane.hidden) {
+          renderPreview();
+        }
+      });
+      form.addEventListener("submit", function () {
+        adminDirty = false;
+      });
+
+      if (reset) {
+        reset.addEventListener("click", function () {
+          function submitReset() {
+            action.value = "reset-template";
+            adminDirty = false;
+            form.requestSubmit();
+          }
+          if (window.mdui && typeof window.mdui.confirm === "function") {
+            window.mdui.confirm({
+              headline: "恢复默认邮件模板？",
+              description: "当前保存的自定义 HTML 模板将被清除。",
+              confirmText: "恢复默认",
+              cancelText: "取消"
+            }).then(submitReset).catch(function () {});
+            return;
+          }
+          if (window.confirm("恢复默认邮件模板？")) {
+            submitReset();
+          }
+        });
+      }
+      setMode("edit");
     });
   }
 

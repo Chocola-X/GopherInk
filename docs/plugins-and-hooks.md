@@ -204,6 +204,50 @@ func (Plugin) HandleAdminAction(ctx context.Context, rt *plugin.Runtime, action 
 
 操作固定以 POST 请求到 `/admin/plugins/<插件名>/action/<操作名>`。核心会校验插件声明、管理员权限和 CSRF，并通过 PJAX 返回插件设置页。处理器只接收 `context.Context` 和 `Runtime`，有意不接收表单内容；动作应读取已经保存的配置，不能顺带持久化当前表单。返回的 `AdminNotice` 会按指定模式展示；返回错误时核心会自动生成错误 Snackbar。不要再为这类动作注册公开测试路由。
 
+### 原生扩展页签
+
+需要比 Schema 表单更复杂的设置界面时，实现 `AdminPageProvider`。扩展页仍位于插件原生配置地址，通过 `tab` 参数切换，核心负责管理员鉴权、CSRF、PJAX、页签导航和后台外壳：
+
+```go
+func (Plugin) AdminPages() []plugin.AdminPage {
+    return []plugin.AdminPage{{
+        Name:        "templates",
+        Label:       "模板",
+        Icon:        "code",
+        Title:       "消息模板",
+        Description: "维护插件发送的消息模板。",
+    }}
+}
+
+func (Plugin) RenderAdminPage(ctx context.Context, rt *plugin.Runtime, page string, rc plugin.AdminPageRenderContext) (template.HTML, error) {
+    if page != "templates" {
+        return "", fmt.Errorf("unknown page %q", page)
+    }
+    // rc.Config 是当前插件配置的副本，rc.CSRF 用于页面内 POST 表单。
+    return renderTemplates(rc.Config, rc.CSRF)
+}
+```
+
+页面 `Name` 遵循与设置动作相同的命名限制。插件设置页会自动出现“设置”和扩展页签，示例页面地址为 `/admin/plugins/example/config?tab=templates`。
+
+需要保存页面内容时，再实现 `AdminPageActionProvider`：
+
+```go
+func (Plugin) HandleAdminPageAction(ctx context.Context, rt *plugin.Runtime, page string, form map[string][]string) (plugin.AdminPageActionResult, error) {
+    if page != "templates" || first(form["action"]) != "save" {
+        return plugin.AdminPageActionResult{}, fmt.Errorf("unsupported action")
+    }
+    return plugin.AdminPageActionResult{
+        ConfigPatch: map[string]string{"message_template": first(form["body"])},
+        Notice: plugin.AdminNotice{
+            Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "模板已保存。",
+        },
+    }, nil
+}
+```
+
+`ConfigPatch` 只会合并到当前插件自己的配置，不会覆盖未列出的字段。页面返回的 HTML 来自已编译插件，属于可信代码；核心不会清洗它。插件必须转义数据库内容、请求参数和用户可编辑模板，不能直接把这些内容转换为 `template.HTML`。需要预览用户提供的 HTML 或 JavaScript 时，应使用不带 `allow-same-origin` 的沙箱 iframe，不能直接插入后台 DOM。
+
 ## 后台提示信息
 
 后台扩展提示使用 `plugin.AdminNotice`。`Type` 支持 `NoticeInfo`、`NoticeSuccess`、`NoticeWarning` 和 `NoticeError`；`Mode` 支持：
@@ -333,7 +377,7 @@ func (Plugin) AdminMenuItems(ctx context.Context) []plugin.AdminMenuItem {
 }
 ```
 
-`Icon` 使用后台 Material Icon 名称，留空时界面使用默认 `extension`。菜单本身只负责导航外观；上例目标是核心原生配置页，因此具备后台权限和 CSRF 防护。指向插件自定义路由时仍受上一节安全边界约束。
+`Icon` 使用后台 Material Icon 名称，留空时界面使用默认 `extension`。菜单本身只负责导航外观；上例目标是核心原生配置页，因此具备后台权限和 CSRF 防护。需要自定义界面时优先实现 `AdminPageProvider`；只有公开接口或确实不能放入后台外壳的功能才使用自定义路由，并自行处理对应安全边界。
 
 ## 钩子调度
 

@@ -2761,6 +2761,16 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 		http.NotFound(w, r)
 		return
 	}
+	adminPages := []plugin.AdminPage(nil)
+	if !personal {
+		if provider, ok := p.(plugin.AdminPageProvider); ok {
+			adminPages = normalizeAdminPages(provider.AdminPages())
+			if pageName := strings.TrimSpace(r.URL.Query().Get("tab")); pageName != "" {
+				a.adminPluginPage(w, r, name, p, provider, adminPages, pageName)
+				return
+			}
+		}
+	}
 	var schema []plugin.FieldSchema
 	title := "插件设置：" + name
 	userID := int64(0)
@@ -2809,6 +2819,90 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 		Notices:      noticeProvider,
 		AdminActions: adminActions,
 		PluginName:   name,
+		PluginPages:  adminPages,
+	})
+}
+
+func (a *App) adminPluginPage(w http.ResponseWriter, r *http.Request, name string, p plugin.Plugin, provider plugin.AdminPageProvider, pages []plugin.AdminPage, pageName string) {
+	var page plugin.AdminPage
+	found := false
+	for _, candidate := range pages {
+		if candidate.Name == pageName {
+			page = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	pageURL := "/admin/plugins/" + neturl.PathEscape(name) + "/config?tab=" + neturl.QueryEscape(page.Name)
+	runtime := a.pluginRuntime()
+
+	if r.Method == http.MethodPost {
+		actionProvider, ok := p.(plugin.AdminPageActionProvider)
+		if !ok {
+			methodNotAllowed(w, http.MethodGet)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		result, err := actionProvider.HandleAdminPageAction(r.Context(), runtime, page.Name, copyFormValues(r.Form))
+		if err != nil {
+			a.flashRedirect(w, r, pageURL, http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
+			return
+		}
+		if result.ConfigPatch != nil {
+			values, err := a.optionJSONForUser(r.Context(), pluginOptionKey(name), 0)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			for key, value := range result.ConfigPatch {
+				if key = strings.TrimSpace(key); key != "" {
+					values[key] = value
+				}
+			}
+			if err := a.setOptionJSONForUser(r.Context(), pluginOptionKey(name), values, 0); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		notice := result.Notice
+		if strings.TrimSpace(notice.Message) == "" {
+			notice = plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "设置已保存。"}
+		}
+		a.flashRedirect(w, r, pageURL, http.StatusSeeOther, notice)
+		return
+	}
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
+		return
+	}
+
+	values, err := a.pluginConfig(r.Context(), name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	content, err := provider.RenderAdminPage(r.Context(), runtime, page.Name, plugin.AdminPageRenderContext{
+		CSRF:   a.csrfToken(r),
+		Config: copyStringMap(values),
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	title := page.Title
+	if title == "" {
+		title = page.Label
+	}
+	a.renderAdmin(w, r, "plugin_page.html", map[string]any{
+		"Title": title, "Description": page.Description, "BackURL": "/admin/plugins",
+		"PluginName": name, "PluginPages": pages, "PluginPage": page, "PluginPageHTML": content,
 	})
 }
 
@@ -3060,6 +3154,7 @@ type schemaFormConfig struct {
 	Notices      func(context.Context, map[string]string) []plugin.AdminNotice
 	AdminActions []plugin.AdminAction
 	PluginName   string
+	PluginPages  []plugin.AdminPage
 }
 
 type schemaFieldView struct {
@@ -3139,7 +3234,7 @@ func (a *App) renderSchemaForm(w http.ResponseWriter, r *http.Request, cfg schem
 		"Schema": cfg.Schema, "SchemaGroups": schemaGroups(cfg.Schema, values), "Values": values,
 		"Saved": cfg.Saved, "Error": errorMessage, "UploadURL": uploadURL, "AssetManager": cfg.AssetManager,
 		"AdminNotices": notices,
-		"AdminActions": cfg.AdminActions, "PluginName": cfg.PluginName,
+		"AdminActions": cfg.AdminActions, "PluginName": cfg.PluginName, "PluginPages": cfg.PluginPages,
 	})
 }
 
@@ -8515,6 +8610,35 @@ func normalizeAdminActions(actions []plugin.AdminAction) []plugin.AdminAction {
 			action.Variant = "outlined"
 		}
 		out = append(out, action)
+	}
+	return out
+}
+
+func normalizeAdminPages(pages []plugin.AdminPage) []plugin.AdminPage {
+	out := make([]plugin.AdminPage, 0, len(pages))
+	seen := map[string]bool{}
+	for _, page := range pages {
+		page.Name = strings.TrimSpace(page.Name)
+		page.Label = strings.TrimSpace(page.Label)
+		page.Icon = strings.TrimSpace(page.Icon)
+		page.Title = strings.TrimSpace(page.Title)
+		page.Description = strings.TrimSpace(page.Description)
+		if !adminActionNamePattern.MatchString(page.Name) || page.Label == "" || seen[page.Name] {
+			continue
+		}
+		seen[page.Name] = true
+		if page.Icon == "" {
+			page.Icon = "extension"
+		}
+		out = append(out, page)
+	}
+	return out
+}
+
+func copyFormValues(values neturl.Values) map[string][]string {
+	out := make(map[string][]string, len(values))
+	for key, value := range values {
+		out[key] = append([]string(nil), value...)
 	}
 	return out
 }

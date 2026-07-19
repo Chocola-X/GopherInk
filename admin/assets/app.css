@@ -1095,6 +1095,129 @@ mdui-select::part(text-field__container) {
   margin-top: 18px;
 }
 
+.plugin-template-panel {
+  display: grid;
+  gap: 20px;
+}
+
+.plugin-template-help {
+  display: grid;
+  gap: 14px;
+}
+
+.plugin-template-help > .plugin-template-placeholders,
+.plugin-template-help > .plugin-template-note {
+  grid-column: 1 / -1;
+}
+
+.plugin-template-placeholders {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+}
+
+.plugin-template-placeholders > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.plugin-template-placeholders code {
+  color: rgb(var(--mdui-color-primary));
+  overflow-wrap: anywhere;
+}
+
+.plugin-template-placeholders span,
+.plugin-template-note {
+  line-height: 1.55;
+}
+
+.plugin-template-note {
+  margin: 0;
+}
+
+.plugin-template-toolbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.plugin-template-editor-pane,
+.plugin-template-preview-pane {
+  min-width: 0;
+}
+
+.plugin-template-editor-pane {
+  display: grid;
+  gap: 8px;
+}
+
+.plugin-template-editor-pane label {
+  color: rgb(var(--mdui-color-on-surface-variant));
+  font-size: 13px;
+}
+
+.plugin-template-code {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: min(620px, 62vh);
+  resize: vertical;
+  padding: 16px;
+  border: 1px solid rgba(var(--mdui-color-outline), 0.72);
+  border-radius: 6px;
+  outline: none;
+  color: rgb(var(--mdui-color-on-surface));
+  background: rgba(var(--mdui-color-surface-container-high), var(--admin-input-opacity));
+  font: 13px/1.65 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  tab-size: 2;
+}
+
+.plugin-template-code:focus {
+  border-color: rgb(var(--mdui-color-primary));
+  box-shadow: 0 0 0 1px rgb(var(--mdui-color-primary));
+}
+
+.plugin-template-preview-pane {
+  height: min(680px, 66vh);
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--mdui-color-outline), 0.72);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.plugin-template-preview-pane[hidden],
+.plugin-template-editor-pane[hidden] {
+  display: none;
+}
+
+.plugin-template-preview-pane iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.plugin-template-actions {
+  margin-top: 0;
+}
+
+@media (max-width: 720px) {
+  .plugin-template-placeholders {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plugin-template-code {
+    min-height: 480px;
+  }
+
+  .plugin-template-preview-pane {
+    height: 560px;
+  }
+}
+
 .pagination {
   display: flex;
   min-height: 48px;
