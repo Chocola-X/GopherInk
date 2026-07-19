@@ -1,19 +1,26 @@
 {{define "comment_item"}}
-<article id="{{.Anchor}}" class="{{if eq .Level 0}}mdui-card comment-card comment-parent{{else}}comment-child comment-level-{{.Level}}{{end}}" data-comment-item data-comment-id="{{.COID}}" data-comment-author="{{.Author}}">
+{{$comment := .Comment}}
+<article id="{{$comment.Anchor}}" class="{{if eq $comment.Level 0}}mdui-card comment-card comment-parent{{else}}comment-child comment-level-{{$comment.Level}}{{end}}" data-comment-item data-comment-id="{{$comment.COID}}" data-comment-author="{{$comment.Author}}">
   <header class="comment-header">
-    {{if .AvatarURL}}<img class="comment-avatar" src="{{.AvatarURL}}" alt="">{{end}}
+    {{if $comment.AvatarURL}}
+    <div class="comment-avatar-wrap">
+      <img class="comment-avatar" src="{{$comment.AvatarURL}}" alt="">
+      {{if .Owner}}<span class="comment-avatar-badge comment-avatar-badge-owner" title="博主" aria-label="博主"><mdui-icon name="bolt"></mdui-icon></span>
+      {{else if .Friend}}<span class="comment-avatar-badge comment-avatar-badge-friend" title="好朋友" aria-label="好朋友"><mdui-icon name="bolt"></mdui-icon></span>{{end}}
+    </div>
+    {{end}}
     <div class="comment-header-meta">
       <div class="comment-author-line">
-        <strong class="comment-author">{{.AuthorHTML}}</strong>
-        {{if .Pending}}<span class="comment-pending">等待审核</span>{{end}}
+        <strong class="comment-author">{{$comment.AuthorHTML}}</strong>
+        {{if $comment.Pending}}<span class="comment-pending">等待审核</span>{{end}}
       </div>
-      <span class="comment-date">{{commentDate .Created}}</span>
+      <span class="comment-date">{{commentDate $comment.Created}}</span>
     </div>
   </header>
-  <a class="comment-reply" href="{{.ReplyURL}}" data-comment-reply data-parent-id="{{.COID}}" data-parent-author="{{.Author}}">回复</a>
-  <div class="comment-content">{{if .ParentAuthor}}<a class="comment-reply-name" href="#{{.ParentAnchor}}">@{{.ParentAuthor}}</a> {{end}}{{.BodyHTML}}</div>
+  <a class="comment-reply" href="{{$comment.ReplyURL}}" data-comment-reply data-parent-id="{{$comment.COID}}" data-parent-author="{{$comment.Author}}">回复</a>
+  <div class="comment-content">{{if $comment.ParentAuthor}}<a class="comment-reply-name" href="#{{$comment.ParentAnchor}}">@{{$comment.ParentAuthor}}</a> {{end}}{{$comment.BodyHTML}}</div>
   <div class="comment-reply-slot" data-comment-reply-slot></div>
-  {{if .Children}}<div class="comment-children">{{range .Children}}{{template "comment_item" .}}{{end}}</div>{{end}}
+  {{if $comment.Children}}<div class="comment-children">{{range $comment.Children}}{{template "comment_item" (commentItem . .Mail .AuthorID .OwnerID $.FriendEmails)}}{{end}}</div>{{end}}
 </article>
 {{end}}
 
@@ -26,6 +33,32 @@
 {{$cover = assetURL $cover}}
 {{$postEndImg := assetURL (themeValue .ThemeConfig "post_end_image")}}
 {{$commentBgImg := assetURL (themeValue .ThemeConfig "comment_bg_image")}}
+{{if .IsFriendPage}}
+<section class="friend-page" aria-label="{{.Post.Title}}">
+  <h1 class="friend-page-title">{{.Post.Title}}</h1>
+  <div class="friend-links-grid">
+    {{range .FriendLinks}}
+    <a class="friend-link" href="{{.URL}}" target="_blank" rel="noopener noreferrer">
+      <article class="friend-link-card">
+        {{if .AvatarURL}}<img class="friend-link-avatar" src="{{.AvatarURL}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}
+        <div class="friend-link-copy">
+          <strong>{{.Name}}</strong>
+          <span>{{.Description}}</span>
+        </div>
+        <mdui-icon name="arrow_outward"></mdui-icon>
+      </article>
+    </a>
+    {{else}}
+    <div class="mdui-card friend-links-empty">暂时还没有添加友链。</div>
+    {{end}}
+  </div>
+  {{if .Post.Text}}
+  <article class="mdui-card post-card friend-page-content">
+    <div class="post-content mdui-prose">{{.ContentHTML}}</div>
+  </article>
+  {{end}}
+</section>
+{{else}}
 <article class="mdui-card post-card">
   <header class="post-card-media{{if not $cover}} post-card-media-normal{{end}}">
     {{if $cover}}<div class="index-img" style="background-image: url('{{$cover}}')"></div>{{end}}
@@ -60,6 +93,7 @@
   {{end}}
   {{end}}
 </article>
+{{end}}
 {{if not .PasswordRequired}}
 {{if or .PrevPost.CID .NextPost.CID}}
 <nav class="mdui-card post-neighbors-card">
@@ -113,7 +147,7 @@
     {{end}}
   </form>
   <div class="comment-list">
-    {{range .Comments}}{{template "comment_item" .}}
+    {{range .Comments}}{{template "comment_item" (commentItem . .Mail .AuthorID .OwnerID $.FriendEmails)}}
     {{else}}
     <p class="muted">还没有评论。</p>
     {{end}}

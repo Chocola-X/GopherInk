@@ -193,7 +193,109 @@
     initCommentProcessingOptions(root);
     initRevisionCards(root);
     initPluginTemplateEditors(root);
+    initThemeFriendManagers(root);
     initAdminNotices(root);
+  }
+
+  function initThemeFriendManagers(root) {
+    query(root, "[data-theme-friend-manager]").forEach(function (manager) {
+      if (bound(manager, "adminThemeFriendsBound")) {
+        return;
+      }
+      var list = manager.querySelector("[data-friend-list]");
+      var template = manager.querySelector("[data-friend-template]");
+      var addButton = manager.querySelector("[data-friend-add]");
+      var empty = manager.querySelector("[data-friend-empty]");
+      if (!list || !template || !addButton) {
+        return;
+      }
+
+      function cards() {
+        return Array.prototype.slice.call(list.querySelectorAll(":scope > [data-friend-card]"));
+      }
+
+      function setDisabled(button, disabled) {
+        if (!button) {
+          return;
+        }
+        button.disabled = disabled;
+        button.toggleAttribute("disabled", disabled);
+      }
+
+      function refresh() {
+        var items = cards();
+        items.forEach(function (card, index) {
+          var order = card.querySelector("[data-friend-order]");
+          if (order) {
+            order.textContent = String(index + 1).padStart(2, "0");
+          }
+          setDisabled(card.querySelector("[data-friend-up]"), index === 0);
+          setDisabled(card.querySelector("[data-friend-down]"), index === items.length - 1);
+        });
+        if (empty) {
+          empty.hidden = items.length !== 0;
+        }
+        setDisabled(addButton, items.length >= 200);
+      }
+
+      function changed() {
+        adminDirty = true;
+        refresh();
+      }
+
+      function bindCard(card) {
+        if (bound(card, "adminFriendCardBound")) {
+          return;
+        }
+        var up = card.querySelector("[data-friend-up]");
+        var down = card.querySelector("[data-friend-down]");
+        var remove = card.querySelector("[data-friend-delete]");
+        if (up) {
+          up.addEventListener("click", function () {
+            var previous = card.previousElementSibling;
+            if (previous) {
+              list.insertBefore(card, previous);
+              changed();
+            }
+          });
+        }
+        if (down) {
+          down.addEventListener("click", function () {
+            var next = card.nextElementSibling;
+            if (next) {
+              list.insertBefore(next, card);
+              changed();
+            }
+          });
+        }
+        if (remove) {
+          remove.addEventListener("click", function () {
+            card.remove();
+            changed();
+          });
+        }
+      }
+
+      cards().forEach(bindCard);
+      addButton.addEventListener("click", function () {
+        if (cards().length >= 200) {
+          return;
+        }
+        var fragment = template.content.cloneNode(true);
+        var card = fragment.querySelector("[data-friend-card]");
+        if (!card) {
+          return;
+        }
+        list.appendChild(fragment);
+        bindCard(card);
+        changed();
+        var firstField = card.querySelector("mdui-text-field");
+        if (firstField && typeof firstField.focus === "function") {
+          firstField.focus();
+        }
+      });
+      refresh();
+    });
   }
 
   function contentSchemaControlValue(control) {

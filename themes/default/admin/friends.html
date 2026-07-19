@@ -1,0 +1,66 @@
+<form method="post" class="form-panel theme-friend-manager" data-theme-friend-manager>
+  <input type="hidden" name="_csrf" value="{{.CSRF}}">
+  <input type="hidden" name="action" value="save-friends">
+  <div class="theme-friend-manager-head">
+    <div>
+      <h2>友链列表</h2>
+      <p class="muted">按照这里的顺序展示友链；邮箱仅用于生成头像和识别评论者身份，不会在前台公开。</p>
+    </div>
+    <mdui-button type="button" variant="tonal" data-friend-add><mdui-icon slot="icon" name="add"></mdui-icon>增加友链</mdui-button>
+  </div>
+
+  <fieldset class="fieldset theme-friend-options">
+    <legend>页面与排序</legend>
+    <div class="theme-friend-page-field">
+      <mdui-text-field name="friend_page_target" label="目标独立页面 CID 或固定链接" value="{{.PageTarget}}" required></mdui-text-field>
+      <span class="muted">支持 CID、自定义 slug、/page/slug.html 或完整页面 URL；纯数字优先按 CID 解析。</span>
+      {{if .TargetTitle}}<a class="theme-friend-target" href="{{.TargetURL}}" target="_blank" rel="noopener noreferrer"><mdui-icon name="open_in_new"></mdui-icon>当前页面：{{.TargetTitle}}</a>{{end}}
+      {{if .TargetNotice}}<span class="theme-friend-target-warning">{{.TargetNotice}}</span>{{end}}
+    </div>
+    <div class="schema-option-field theme-friend-shuffle-field">
+      <mdui-checkbox name="friend_links_shuffle" value="1" {{if .Shuffle}}checked{{end}}>乱序排列友链</mdui-checkbox>
+      <span class="muted">每次渲染页面时随机调整展示顺序，不改变下方保存的顺序。</span>
+    </div>
+  </fieldset>
+
+  <div class="theme-friend-list" data-friend-list>
+    {{range .Links}}
+    <article class="theme-friend-card" data-friend-card>
+      <div class="theme-friend-order" data-friend-order></div>
+      <div class="theme-friend-fields">
+        <mdui-text-field name="friend_name" label="链接名称" value="{{.Name}}" maxlength="100" required></mdui-text-field>
+        <mdui-text-field type="email" name="friend_email" label="邮箱" value="{{.Email}}" maxlength="254" required></mdui-text-field>
+        <mdui-text-field class="theme-friend-field-wide" type="url" name="friend_url" label="URL" value="{{.URL}}" maxlength="2048" required></mdui-text-field>
+        <mdui-text-field class="theme-friend-field-wide" name="friend_description" label="链接描述" value="{{.Description}}" maxlength="250" required></mdui-text-field>
+      </div>
+      <div class="theme-friend-card-actions">
+        <mdui-button-icon type="button" data-friend-up title="上移" aria-label="上移"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-down title="下移" aria-label="下移"><mdui-icon name="arrow_downward"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-delete title="删除" aria-label="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
+      </div>
+    </article>
+    {{end}}
+  </div>
+  <div class="theme-friend-empty muted" data-friend-empty>暂无友链，点击右上角按钮开始添加。</div>
+
+  <template data-friend-template>
+    <article class="theme-friend-card" data-friend-card>
+      <div class="theme-friend-order" data-friend-order></div>
+      <div class="theme-friend-fields">
+        <mdui-text-field name="friend_name" label="链接名称" maxlength="100" required></mdui-text-field>
+        <mdui-text-field type="email" name="friend_email" label="邮箱" maxlength="254" required></mdui-text-field>
+        <mdui-text-field class="theme-friend-field-wide" type="url" name="friend_url" label="URL" maxlength="2048" required></mdui-text-field>
+        <mdui-text-field class="theme-friend-field-wide" name="friend_description" label="链接描述" maxlength="250" required></mdui-text-field>
+      </div>
+      <div class="theme-friend-card-actions">
+        <mdui-button-icon type="button" data-friend-up title="上移" aria-label="上移"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-down title="下移" aria-label="下移"><mdui-icon name="arrow_downward"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-delete title="删除" aria-label="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
+      </div>
+    </article>
+  </template>
+
+  <div class="form-actions theme-friend-save">
+    <mdui-button type="submit"><mdui-icon slot="icon" name="save"></mdui-icon>保存设置</mdui-button>
+  </div>
+</form>

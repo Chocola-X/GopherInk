@@ -2912,6 +2912,11 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 		http.NotFound(w, r)
 		return
 	}
+	adminPages := normalizeAdminPages(theme.AdminPages)
+	if pageName := strings.TrimSpace(r.URL.Query().Get("tab")); pageName != "" {
+		a.adminThemePage(w, r, name, theme, adminPages, pageName)
+		return
+	}
 	if len(theme.ConfigSchema) == 0 {
 		http.NotFound(w, r)
 		return
@@ -2945,6 +2950,90 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 			}
 			return theme.AdminNotices(ctx, a.pluginRuntime(), copyStringMap(values))
 		},
+		ThemeName:  name,
+		ThemePages: adminPages,
+	})
+}
+
+func (a *App) adminThemePage(w http.ResponseWriter, r *http.Request, name string, theme plugin.Theme, pages []plugin.AdminPage, pageName string) {
+	var page plugin.AdminPage
+	found := false
+	for _, candidate := range pages {
+		if candidate.Name == pageName {
+			page = candidate
+			found = true
+			break
+		}
+	}
+	if !found || theme.RenderAdminPage == nil {
+		http.NotFound(w, r)
+		return
+	}
+	pageURL := "/admin/themes/" + neturl.PathEscape(name) + "/config?tab=" + neturl.QueryEscape(page.Name)
+	runtime := a.pluginRuntime()
+
+	if r.Method == http.MethodPost {
+		if theme.HandleAdminPageAction == nil {
+			methodNotAllowed(w, http.MethodGet)
+			return
+		}
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		result, err := theme.HandleAdminPageAction(r.Context(), runtime, page.Name, copyFormValues(r.Form))
+		if err != nil {
+			a.flashRedirect(w, r, pageURL, http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
+			return
+		}
+		if result.ConfigPatch != nil {
+			values, err := a.optionJSONForUser(r.Context(), themeOptionKey(name), 0)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			for key, value := range result.ConfigPatch {
+				if key = strings.TrimSpace(key); key != "" {
+					values[key] = value
+				}
+			}
+			if err := a.setOptionJSONForUser(r.Context(), themeOptionKey(name), values, 0); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		notice := result.Notice
+		if strings.TrimSpace(notice.Message) == "" {
+			notice = plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "设置已保存。"}
+		}
+		a.flashRedirect(w, r, pageURL, http.StatusSeeOther, notice)
+		return
+	}
+	if r.Method != http.MethodGet {
+		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
+		return
+	}
+
+	values, err := a.themeConfig(r.Context(), name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	content, err := theme.RenderAdminPage(r.Context(), runtime, page.Name, plugin.AdminPageRenderContext{
+		CSRF:   a.csrfToken(r),
+		Config: copyStringMap(values),
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	title := page.Title
+	if title == "" {
+		title = page.Label
+	}
+	a.renderAdmin(w, r, "theme_page.html", map[string]any{
+		"Title": title, "Description": page.Description, "BackURL": "/admin/themes",
+		"ThemeName": name, "ThemePages": pages, "ThemePage": page, "ThemePageHTML": content,
 	})
 }
 
@@ -3155,6 +3244,8 @@ type schemaFormConfig struct {
 	AdminActions []plugin.AdminAction
 	PluginName   string
 	PluginPages  []plugin.AdminPage
+	ThemeName    string
+	ThemePages   []plugin.AdminPage
 }
 
 type schemaFieldView struct {
@@ -3206,7 +3297,15 @@ func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormC
 			a.renderSchemaForm(w, r, cfg, values, err.Error())
 			return
 		}
-		if err := a.setOptionJSONForUser(r.Context(), cfg.OptionKey, values, cfg.UserID); err != nil {
+		existing, err := a.optionJSONForUser(r.Context(), cfg.OptionKey, cfg.UserID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for key, value := range values {
+			existing[key] = value
+		}
+		if err := a.setOptionJSONForUser(r.Context(), cfg.OptionKey, existing, cfg.UserID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -3235,6 +3334,7 @@ func (a *App) renderSchemaForm(w http.ResponseWriter, r *http.Request, cfg schem
 		"Saved": cfg.Saved, "Error": errorMessage, "UploadURL": uploadURL, "AssetManager": cfg.AssetManager,
 		"AdminNotices": notices,
 		"AdminActions": cfg.AdminActions, "PluginName": cfg.PluginName, "PluginPages": cfg.PluginPages,
+		"ThemeName": cfg.ThemeName, "ThemePages": cfg.ThemePages,
 	})
 }
 
@@ -8459,6 +8559,7 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 	runtime := &plugin.Runtime{
 		ListPublished:     a.Contents.ListPublishedPlugin,
 		ContentByID:       a.Contents.ContentByIDPlugin,
+		PageBySlug:        a.Contents.PageBySlugPlugin,
 		UserByID:          a.Users.UserByIDPlugin,
 		CommentByID:       a.Comments.CommentByIDPlugin,
 		ContentURL:        a.pluginContentURL,

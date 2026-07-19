@@ -1,0 +1,14 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <h1>{{.Title}}</h1>
+    {{if .Description}}<p class="muted">{{.Description}}</p>{{end}}
+  </div>
+  <mdui-button variant="outlined" href="{{.BackURL}}">返回</mdui-button>
+</div>
+<div class="subnav">
+  <mdui-button variant="tonal" href="/admin/themes/{{.ThemeName}}/config"><mdui-icon slot="icon" name="tune"></mdui-icon>设置</mdui-button>
+  {{range .ThemePages}}<mdui-button variant="{{if eq .Name $.ThemePage.Name}}filled{{else}}tonal{{end}}" href="/admin/themes/{{$.ThemeName}}/config?tab={{.Name}}"><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}</mdui-button>{{end}}
+</div>
+{{.ThemePageHTML}}
+{{end}}

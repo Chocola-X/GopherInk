@@ -102,12 +102,48 @@ plugin.RegisterTheme(plugin.Theme{
 | `ConfigSchema` | 主题设置表单 Schema |
 | `ContentFields` | 文章/页面自定义字段 Schema |
 | `AdminNotices` | 为主题原生设置页提供持续提示信息 |
+| `AdminPages` | 主题设置页中的原生附加选项卡 |
+| `RenderAdminPage` | 渲染附加选项卡的可信后台 HTML |
+| `HandleAdminPageAction` | 处理附加选项卡经过鉴权和 CSRF 校验的 POST 操作 |
 | `Capabilities` | 声明主题实现的核心协议能力 |
 | `AdjustData` | 渲染模板前补充或修改数据 |
 | `EditableDir` | 非嵌入主题允许编辑的目录 |
 | `Embedded` | 标记资源是否嵌入二进制 |
 
 内置默认主题使用 `embed.FS`，因此后台不显示无意义的“文件”编辑按钮。
+
+## 主题设置附加页面
+
+复杂主题配置不适合压缩进固定 Schema 时，可以注册原生附加选项卡。核心负责管理员鉴权、CSRF 校验、后台外壳、选项卡导航、配置合并和统一通知；主题只负责渲染页面内容与校验业务字段：
+
+```go
+plugin.RegisterTheme(plugin.Theme{
+    Name: "example",
+    AdminPages: []plugin.AdminPage{{
+        Name:        "friends",
+        Label:       "友链",
+        Icon:        "link",
+        Title:       "友链设置",
+        Description: "管理主题使用的友链数据。",
+    }},
+    RenderAdminPage: func(ctx context.Context, rt *plugin.Runtime, page string, rc plugin.AdminPageRenderContext) (template.HTML, error) {
+        // rc.Config 包含 theme:example 的完整配置，rc.CSRF 用于 POST 表单。
+        return renderFriends(rc.Config, rc.CSRF)
+    },
+    HandleAdminPageAction: func(ctx context.Context, rt *plugin.Runtime, page string, form map[string][]string) (plugin.AdminPageActionResult, error) {
+        return plugin.AdminPageActionResult{
+            ConfigPatch: map[string]string{"friends": encodedFriends},
+            Notice: plugin.AdminNotice{
+                Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "友链已保存。",
+            },
+        }, nil
+    },
+})
+```
+
+选项卡地址由核心生成，为 `/admin/themes/<主题名>/config?tab=<页面名>`。`ConfigPatch` 只覆盖返回的键，普通 Schema 设置保存时也会保留附加页面管理的键。回调输出属于编译进程序的可信主题代码，但仍应使用 `html/template` 渲染外部数据；不要把用户输入直接拼进 `template.HTML`。
+
+默认主题的友链功能使用这一接口，将目标独立页面、是否乱序和友链 JSON 保存在 `theme:default` 配置中，不修改内容自定义字段或核心数据库结构。目标页面支持 CID、自定义 slug、`/page/slug.html` 和完整页面 URL，且保存时必须解析为已发布独立页面。邮箱仅用于服务端生成头像和匹配评论身份，不应写入公开页面。
 
 ## 评论守卫
 

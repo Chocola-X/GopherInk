@@ -67,6 +67,11 @@
   <mdui-button variant="filled" href="/admin/plugins/{{.PluginName}}/config"><mdui-icon slot="icon" name="tune"></mdui-icon>设置</mdui-button>
   {{range .PluginPages}}<mdui-button variant="tonal" href="/admin/plugins/{{$.PluginName}}/config?tab={{.Name}}"><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}</mdui-button>{{end}}
 </div>
+{{else if .ThemePages}}
+<div class="subnav">
+  <mdui-button variant="filled" href="/admin/themes/{{.ThemeName}}/config"><mdui-icon slot="icon" name="tune"></mdui-icon>设置</mdui-button>
+  {{range .ThemePages}}<mdui-button variant="tonal" href="/admin/themes/{{$.ThemeName}}/config?tab={{.Name}}"><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}</mdui-button>{{end}}
+</div>
 {{end}}
 {{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
 {{if .Error}}<div class="notice danger">{{.Error}}</div>{{end}}

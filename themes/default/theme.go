@@ -16,7 +16,7 @@ import (
 	"github.com/Chocola-X/GopherInk/core/plugin"
 )
 
-//go:embed templates/* static/*
+//go:embed templates/* static/* admin/*
 var themeFS embed.FS
 
 var assetRandomSequence atomic.Uint64
@@ -47,6 +47,16 @@ func init() {
 		Static:       static,
 		Embedded:     true,
 		Capabilities: plugin.ThemeCapabilities{CommentGuard: true},
+		AdminPages: []plugin.AdminPage{{
+			Name:        friendAdminPageName,
+			Label:       "友链",
+			Icon:        "link",
+			Title:       "友链设置",
+			Description: "管理友链信息并指定套用友链展示模板的独立页面。",
+		}},
+		RenderAdminPage:       renderFriendAdminPage,
+		HandleAdminPageAction: handleFriendAdminPageAction,
+		AdjustData:            adjustDefaultThemeData,
 		Funcs: template.FuncMap{
 			"themeValue":   themeValue,
 			"themeInt":     themeInt,
@@ -58,6 +68,7 @@ func init() {
 			"readingTime":  readingTime,
 			"daysSince":    daysSince,
 			"staleDays":    staleDays,
+			"commentItem":  newCommentTemplateData,
 			"fieldString": func(fields map[string]any, name string) string {
 				if fields == nil {
 					return ""

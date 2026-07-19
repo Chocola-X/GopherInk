@@ -55,6 +55,7 @@ type PublicComment struct {
 type Runtime struct {
 	ListPublished     func(context.Context, int, int) ([]PublicContent, error)
 	ContentByID       func(context.Context, int64) (PublicContent, error)
+	PageBySlug        func(context.Context, string) (PublicContent, error)
 	UserByID          func(context.Context, int64) (PublicUser, error)
 	CommentByID       func(context.Context, int64) (PublicComment, error)
 	ContentURL        func(context.Context, int64) (string, error)
@@ -404,7 +405,7 @@ type AdminActionProvider interface {
 	HandleAdminAction(context.Context, *Runtime, string) (AdminNotice, error)
 }
 
-// AdminPage describes a native tab on a plugin's configuration page.
+// AdminPage describes a native tab on a plugin or theme configuration page.
 type AdminPage struct {
 	Name        string
 	Label       string
@@ -513,24 +514,27 @@ type ContentFieldsProvider interface {
 }
 
 type Theme struct {
-	Name          string
-	DisplayName   string
-	Version       string
-	Author        string
-	Description   string
-	Homepage      string
-	Screenshot    string
-	TemplateList  []string
-	Templates     fs.FS
-	Static        fs.FS
-	Funcs         template.FuncMap
-	ConfigSchema  []FieldSchema
-	ContentFields []FieldSchema
-	AdminNotices  func(context.Context, *Runtime, map[string]string) []AdminNotice
-	Capabilities  ThemeCapabilities
-	AdjustData    func(context.Context, map[string]any) error
-	EditableDir   string
-	Embedded      bool
+	Name                  string
+	DisplayName           string
+	Version               string
+	Author                string
+	Description           string
+	Homepage              string
+	Screenshot            string
+	TemplateList          []string
+	Templates             fs.FS
+	Static                fs.FS
+	Funcs                 template.FuncMap
+	ConfigSchema          []FieldSchema
+	ContentFields         []FieldSchema
+	AdminNotices          func(context.Context, *Runtime, map[string]string) []AdminNotice
+	AdminPages            []AdminPage
+	RenderAdminPage       func(context.Context, *Runtime, string, AdminPageRenderContext) (template.HTML, error)
+	HandleAdminPageAction func(context.Context, *Runtime, string, map[string][]string) (AdminPageActionResult, error)
+	Capabilities          ThemeCapabilities
+	AdjustData            func(context.Context, map[string]any) error
+	EditableDir           string
+	Embedded              bool
 }
 
 // ThemeCapabilities declares optional core protocols implemented by a theme.

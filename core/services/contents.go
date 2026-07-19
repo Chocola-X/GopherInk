@@ -166,7 +166,19 @@ func (s *ContentService) ContentByIDPlugin(ctx context.Context, id int64) (plugi
 	if err != nil {
 		return plugin.PublicContent{}, err
 	}
-	return plugin.PublicContent{CID: content.CID, Title: content.Title, Slug: content.Slug, SlugID: content.SlugID, Created: content.Created, Modified: content.Modified, Text: content.Text, Type: content.Type, Status: content.Status, AuthorID: content.AuthorID}, nil
+	return publicContentForPlugin(content), nil
+}
+
+func (s *ContentService) PageBySlugPlugin(ctx context.Context, slug string) (plugin.PublicContent, error) {
+	content, err := s.PageBySlug(ctx, slug)
+	if err != nil {
+		return plugin.PublicContent{}, err
+	}
+	return publicContentForPlugin(content), nil
+}
+
+func publicContentForPlugin(content models.Content) plugin.PublicContent {
+	return plugin.PublicContent{CID: content.CID, Title: content.Title, Slug: content.Slug, SlugID: content.SlugID, Created: content.Created, Modified: content.Modified, Text: content.Text, Type: content.Type, Status: content.Status, AuthorID: content.AuthorID}
 }
 
 func (s *ContentService) ListAll(ctx context.Context, limit, offset int) ([]models.Content, error) {

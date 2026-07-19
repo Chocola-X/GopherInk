@@ -18,7 +18,7 @@
         <input type="hidden" name="theme" value="{{.Name}}">
         <mdui-button type="submit" {{if eq $.ActiveTheme .Name}}disabled{{end}}>{{if eq $.ActiveTheme .Name}}已启用{{else}}启用{{end}}</mdui-button>
       </form>
-      {{if .ConfigSchema}}<mdui-button variant="outlined" href="/admin/themes/{{.Name}}/config">设置</mdui-button>{{end}}
+      {{if or .ConfigSchema .AdminPages}}<mdui-button variant="outlined" href="/admin/themes/{{.Name}}/config">设置</mdui-button>{{end}}
       {{if and .EditableDir (not .Embedded)}}<mdui-button variant="outlined" href="/admin/themes/{{.Name}}/files">文件</mdui-button>{{end}}
     </div>
   </article>

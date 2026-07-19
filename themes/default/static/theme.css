@@ -1184,6 +1184,119 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   letter-spacing: 0;
 }
 
+.friend-page {
+  min-width: 0;
+  margin-top: 20px;
+}
+
+.friend-page-title {
+  margin: 0 0 18px;
+  color: rgb(var(--mdui-color-on-surface));
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.friend-links-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.friend-link {
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.friend-link-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 116px;
+  grid-template-columns: 86px minmax(0, 1fr) 22px;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 18px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--mdui-color-outline-variant), 0.62);
+  border-radius: 7px;
+  box-sizing: border-box;
+  background: rgba(var(--mdui-color-surface-container), var(--cuckoo-card-opacity));
+  box-shadow: 0 4px 14px rgba(var(--mdui-color-shadow), 0.12);
+  transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.friend-link:hover .friend-link-card,
+.friend-link:focus-visible .friend-link-card {
+  border-color: rgba(var(--mdui-color-primary), 0.5);
+  background: rgba(var(--mdui-color-surface-container-high), calc(var(--cuckoo-card-opacity) + 0.12));
+  box-shadow: 0 8px 22px rgba(var(--mdui-color-shadow), 0.18);
+  transform: translateY(-2px);
+}
+
+.friend-link-avatar {
+  display: block;
+  width: 86px;
+  height: 86px;
+  object-fit: cover;
+  border-radius: 50%;
+  background: rgb(var(--mdui-color-surface-container-highest));
+}
+
+.friend-link-copy {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.friend-link-copy strong,
+.friend-link-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.friend-link-copy strong {
+  color: rgb(var(--mdui-color-on-surface));
+  font-size: 19px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.friend-link-copy span {
+  display: -webkit-box;
+  color: rgb(var(--mdui-color-on-surface-variant));
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.friend-link-card > mdui-icon {
+  color: rgb(var(--mdui-color-primary));
+  font-size: 20px;
+  opacity: 0.72;
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.friend-link:hover .friend-link-card > mdui-icon,
+.friend-link:focus-visible .friend-link-card > mdui-icon {
+  opacity: 1;
+  transform: translate(2px, -2px);
+}
+
+.friend-links-empty {
+  grid-column: 1 / -1;
+  padding: 24px;
+  color: rgb(var(--mdui-color-on-surface-variant));
+  text-align: center;
+}
+
+.friend-page-content {
+  margin-top: 20px;
+}
+
 .comment-title {
   position: relative;
   margin: 20px 0;
@@ -1257,6 +1370,40 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   height: 50px;
   object-fit: cover;
   border-radius: 50%;
+}
+
+.comment-avatar-wrap {
+  position: relative;
+  width: 50px;
+  height: 50px;
+}
+
+.comment-avatar-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border: 2px solid rgba(var(--mdui-color-surface), 0.96);
+  border-radius: 50%;
+  box-sizing: border-box;
+  box-shadow: 0 1px 4px rgba(var(--mdui-color-shadow), 0.24);
+}
+
+.comment-avatar-badge mdui-icon {
+  font-size: 13px;
+}
+
+.comment-avatar-badge-owner {
+  color: rgb(var(--mdui-color-on-primary));
+  background: rgb(var(--mdui-color-primary));
+}
+
+.comment-avatar-badge-friend {
+  color: rgb(var(--mdui-color-on-tertiary));
+  background: rgb(var(--mdui-color-tertiary));
 }
 
 .comment-header-meta {
@@ -1678,6 +1825,27 @@ mdui-icon {
 
   .post-card-media {
     height: 270px;
+  }
+
+  .friend-page-title {
+    font-size: 24px;
+  }
+
+  .friend-links-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .friend-link-card {
+    min-height: 104px;
+    grid-template-columns: 72px minmax(0, 1fr) 20px;
+    gap: 14px;
+    padding: 15px;
+  }
+
+  .friend-link-avatar {
+    width: 72px;
+    height: 72px;
   }
 
   .mdui-card-primary-title {
