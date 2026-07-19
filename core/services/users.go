@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Chocola-X/GopherInk/core/models"
+	"github.com/Chocola-X/GopherInk/core/plugin"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -115,6 +116,17 @@ func (s *UserService) ByID(ctx context.Context, id int64) (models.User, error) {
 		FROM gb_users WHERE uid = ?
 	`, id).Scan(&u.UID, &u.Name, &u.Password, &u.Mail, &u.URL, &u.ScreenName, &u.Created, &u.Activated, &u.Logged, &u.Role, &u.AuthCode)
 	return u, err
+}
+
+func (s *UserService) UserByIDPlugin(ctx context.Context, id int64) (plugin.PublicUser, error) {
+	user, err := s.ByID(ctx, id)
+	if err != nil {
+		return plugin.PublicUser{}, err
+	}
+	return plugin.PublicUser{
+		UID: user.UID, Name: user.Name, Mail: user.Mail, URL: user.URL,
+		ScreenName: user.ScreenName, Role: user.Role,
+	}, nil
 }
 
 func (s *UserService) List(ctx context.Context, keywords string) ([]models.User, error) {

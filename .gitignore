@@ -6,3 +6,6 @@ data/*
 /function_test/
 /website/
 GopherInk-Tools/
+plugins/*
+!plugins/sitemap/
+!plugins/sitemap/**

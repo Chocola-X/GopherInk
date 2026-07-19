@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Chocola-X/GopherInk/core/models"
+	"github.com/Chocola-X/GopherInk/core/plugin"
 )
 
 type CommentService struct {
@@ -225,6 +226,19 @@ func (s *CommentService) ByID(ctx context.Context, id int64) (models.Comment, er
 		FROM gb_comments WHERE coid = ?
 	`, id).Scan(&c.COID, &c.CID, &c.Created, &c.Author, &c.AuthorID, &c.OwnerID, &c.Mail, &c.URL, &c.IP, &c.Agent, &c.Text, &c.Type, &c.Status, &c.Parent)
 	return c, err
+}
+
+func (s *CommentService) CommentByIDPlugin(ctx context.Context, id int64) (plugin.PublicComment, error) {
+	comment, err := s.ByID(ctx, id)
+	if err != nil {
+		return plugin.PublicComment{}, err
+	}
+	return plugin.PublicComment{
+		COID: comment.COID, CID: comment.CID, Created: comment.Created, Author: comment.Author,
+		AuthorID: comment.AuthorID, OwnerID: comment.OwnerID, Mail: comment.Mail, URL: comment.URL,
+		IP: comment.IP, Agent: comment.Agent, Text: comment.Text, Type: comment.Type,
+		Status: comment.Status, Parent: comment.Parent,
+	}, nil
 }
 
 func (s *CommentService) HasApprovedAuthor(ctx context.Context, author, mail string) (bool, error) {

@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"html/template"
 	"io"
 	"io/fs"
@@ -22,16 +23,66 @@ type PublicContent struct {
 	Text     string
 	Type     string
 	Status   string
+	AuthorID int64
+}
+
+type PublicUser struct {
+	UID        int64
+	Name       string
+	Mail       string
+	URL        string
+	ScreenName string
+	Role       string
+}
+
+type PublicComment struct {
+	COID     int64
+	CID      int64
+	Created  int64
+	Author   string
+	AuthorID int64
+	OwnerID  int64
+	Mail     string
+	URL      string
+	IP       string
+	Agent    string
+	Text     string
+	Type     string
+	Status   string
+	Parent   int64
 }
 
 type Runtime struct {
 	ListPublished     func(context.Context, int, int) ([]PublicContent, error)
 	ContentByID       func(context.Context, int64) (PublicContent, error)
+	UserByID          func(context.Context, int64) (PublicUser, error)
+	CommentByID       func(context.Context, int64) (PublicComment, error)
+	ContentURL        func(context.Context, int64) (string, error)
+	CommentURL        func(context.Context, int64) (string, error)
 	IncrementIntField func(context.Context, int64, string, int64) (int64, error)
 	Option            func(context.Context, string) (string, error)
 	Config            func(context.Context, string) (map[string]string, error)
 	PersonalConfig    func(context.Context, string, int64) (map[string]string, error)
 	DispatchHook      func(context.Context, string, any) (HookDispatch, error)
+}
+
+type runtimeContextKey struct{}
+
+var ErrRuntimeUnavailable = errors.New("plugin runtime unavailable")
+
+func ContextWithRuntime(ctx context.Context, runtime *Runtime) context.Context {
+	if runtime == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, runtimeContextKey{}, runtime)
+}
+
+func RuntimeFromContext(ctx context.Context) (*Runtime, bool) {
+	if ctx == nil {
+		return nil, false
+	}
+	runtime, ok := ctx.Value(runtimeContextKey{}).(*Runtime)
+	return runtime, ok && runtime != nil
 }
 
 type RouteHandler func(*Runtime, http.ResponseWriter, *http.Request)
@@ -44,6 +95,8 @@ type Route struct {
 }
 
 type HookFunc func(context.Context, any) (any, error)
+
+type RuntimeHookFunc func(context.Context, *Runtime, any) (any, error)
 
 const (
 	HookPriorityEarly  = -100
@@ -458,10 +511,22 @@ func (m *Manager) RegisterHook(name string, fn HookFunc) {
 }
 
 func (m *Manager) RegisterHookWithPriority(name string, priority int, fn HookFunc) {
+	m.registerHook(name, priority, fn, nil)
+}
+
+func (m *Manager) RegisterRuntimeHook(name string, fn RuntimeHookFunc) {
+	m.RegisterRuntimeHookWithPriority(name, HookPriorityNormal, fn)
+}
+
+func (m *Manager) RegisterRuntimeHookWithPriority(name string, priority int, fn RuntimeHookFunc) {
+	m.registerHook(name, priority, nil, fn)
+}
+
+func (m *Manager) registerHook(name string, priority int, fn HookFunc, runtimeFn RuntimeHookFunc) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.hookSequence++
-	m.hooks[name] = append(m.hooks[name], ownedHook{Plugin: m.registering, Priority: priority, Sequence: m.hookSequence, Fn: fn})
+	m.hooks[name] = append(m.hooks[name], ownedHook{Plugin: m.registering, Priority: priority, Sequence: m.hookSequence, Fn: fn, RuntimeFn: runtimeFn})
 	sort.SliceStable(m.hooks[name], func(i, j int) bool {
 		if m.hooks[name][i].Priority == m.hooks[name][j].Priority {
 			return m.hooks[name][i].Sequence < m.hooks[name][j].Sequence
@@ -645,10 +710,11 @@ func Compatible(required, current string) bool {
 }
 
 type ownedHook struct {
-	Plugin   string
-	Priority int
-	Sequence uint64
-	Fn       HookFunc
+	Plugin    string
+	Priority  int
+	Sequence  uint64
+	Fn        HookFunc
+	RuntimeFn RuntimeHookFunc
 }
 
 type ownedRoute struct {
@@ -677,12 +743,26 @@ func copyBoolMap(in map[string]bool) map[string]bool {
 
 func dispatchHooks(ctx context.Context, hooks []ownedHook, active map[string]bool, payload any) (HookDispatch, error) {
 	result := HookDispatch{Payload: payload}
+	runtime, _ := RuntimeFromContext(ctx)
 	for _, hook := range hooks {
 		if active != nil && hook.Plugin != "" && !active[hook.Plugin] {
 			continue
 		}
 		result.Triggered = true
-		next, err := hook.Fn(ctx, result.Payload)
+		var (
+			next any
+			err  error
+		)
+		if hook.RuntimeFn != nil {
+			if runtime == nil {
+				return HookDispatch{}, ErrRuntimeUnavailable
+			}
+			next, err = hook.RuntimeFn(ctx, runtime, result.Payload)
+		} else if hook.Fn != nil {
+			next, err = hook.Fn(ctx, result.Payload)
+		} else {
+			continue
+		}
 		if err != nil {
 			return HookDispatch{}, err
 		}

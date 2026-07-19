@@ -211,7 +211,11 @@ func (a *App) Handler() http.Handler {
 	if a.WAF == nil {
 		a.WAF = newWAFManager(a)
 	}
-	return a.WAF.wrap(mux)
+	withRuntime := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := plugin.ContextWithRuntime(r.Context(), runtime)
+		mux.ServeHTTP(w, r.WithContext(ctx))
+	})
+	return a.WAF.wrap(withRuntime)
 }
 
 func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
@@ -8260,15 +8264,43 @@ func (a *App) pluginConfig(ctx context.Context, name string) (map[string]string,
 }
 
 func (a *App) pluginRuntime() *plugin.Runtime {
-	return &plugin.Runtime{
+	runtime := &plugin.Runtime{
 		ListPublished:     a.Contents.ListPublishedPlugin,
 		ContentByID:       a.Contents.ContentByIDPlugin,
+		UserByID:          a.Users.UserByIDPlugin,
+		CommentByID:       a.Comments.CommentByIDPlugin,
+		ContentURL:        a.pluginContentURL,
+		CommentURL:        a.pluginCommentURL,
 		IncrementIntField: a.Contents.IncrementIntField,
 		Option:            a.Options.Get,
 		Config:            a.pluginConfig,
 		PersonalConfig:    a.pluginPersonalConfig,
-		DispatchHook:      a.Plugins.DispatchActive,
 	}
+	runtime.DispatchHook = func(ctx context.Context, name string, payload any) (plugin.HookDispatch, error) {
+		return a.Plugins.DispatchActive(plugin.ContextWithRuntime(ctx, runtime), name, payload)
+	}
+	return runtime
+}
+
+func (a *App) pluginContentURL(ctx context.Context, id int64) (string, error) {
+	content, err := a.Contents.ByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	baseURL := strings.TrimRight(a.option(ctx, "base_url", ""), "/")
+	return absolutePublicURL(baseURL, a.contentURL(ctx, content)), nil
+}
+
+func (a *App) pluginCommentURL(ctx context.Context, id int64) (string, error) {
+	comment, err := a.Comments.ByID(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	contentURL, err := a.pluginContentURL(ctx, comment.CID)
+	if err != nil {
+		return "", err
+	}
+	return contentURL + "#comment-" + strconv.FormatInt(comment.COID, 10), nil
 }
 
 func (a *App) pluginPersonalConfig(ctx context.Context, name string, userID int64) (map[string]string, error) {
