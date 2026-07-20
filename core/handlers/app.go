@@ -2247,6 +2247,12 @@ func (a *App) adminOptionsDiscussion(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		currentOptions, err := a.Options.All(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		a.prepareDiscussionForm(r, currentOptions, keys)
 		mode := strings.TrimSpace(r.FormValue("comments_moderation_mode"))
 		switch mode {
 		case "open":
@@ -2260,7 +2266,7 @@ func (a *App) adminOptionsDiscussion(w http.ResponseWriter, r *http.Request) {
 			r.Form.Set("comments_whitelist", "1")
 		}
 		if err := validateDiscussionOptions(r); err != nil {
-			options, _ := a.Options.All(r.Context())
+			options := cloneOptions(currentOptions)
 			for _, key := range keys {
 				options[key] = r.FormValue(key)
 			}
@@ -2277,6 +2283,56 @@ func (a *App) adminOptionsDiscussion(w http.ResponseWriter, r *http.Request) {
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
+}
+
+func (a *App) prepareDiscussionForm(r *http.Request, current map[string]string, keys []string) {
+	boolKeys := map[string]bool{
+		"comments_require_moderation":   true,
+		"comments_require_mail":         true,
+		"comments_require_url":          true,
+		"comments_show_url":             true,
+		"comments_whitelist":            true,
+		"comments_check_referer":        true,
+		"comments_antispam":             true,
+		"comments_post_interval_enable": true,
+		"comments_markdown":             true,
+		"comments_url_nofollow":         true,
+		"comments_avatar":               true,
+	}
+	for _, key := range keys {
+		if _, ok := r.Form[key]; !ok {
+			r.Form.Set(key, current[key])
+			continue
+		}
+		if boolKeys[key] {
+			r.Form.Set(key, formBoolValue(r.Form[key]))
+		}
+	}
+	mode := strings.TrimSpace(r.FormValue("comments_moderation_mode"))
+	if mode != "open" && mode != "all" && mode != "approved_author" {
+		mode = current["comments_moderation_mode"]
+	}
+	if mode != "open" && mode != "all" && mode != "approved_author" {
+		mode = a.commentModerationMode(r.Context())
+	}
+	r.Form.Set("comments_moderation_mode", mode)
+}
+
+func cloneOptions(options map[string]string) map[string]string {
+	cloned := make(map[string]string, len(options))
+	for key, value := range options {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func formBoolValue(values []string) string {
+	for _, value := range values {
+		if optionBool(value) {
+			return "1"
+		}
+	}
+	return "0"
 }
 
 func (a *App) commentModerationMode(ctx context.Context) string {

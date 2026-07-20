@@ -1366,7 +1366,19 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   padding-right: 52px;
 }
 
+.comment-header-no-avatar {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.comment-avatar-box {
+  position: relative;
+  display: block;
+  width: 50px;
+  height: 50px;
+}
+
 .comment-avatar {
+  display: block;
   width: 50px;
   height: 50px;
   object-fit: cover;

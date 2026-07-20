@@ -56,7 +56,7 @@
       <mdui-checkbox name="comments_avatar" value="1" {{if eq (index .Options "comments_avatar") "1"}}checked{{end}}>显示评论者头像</mdui-checkbox>
       <input type="hidden" name="comments_avatar" value="0">
     </div>
-    <mdui-text-field name="avatar_url_template" label="自定义邮箱头像地址" value="{{index .Options "avatar_url_template"}}" placeholder="https://weavatar.com/avatar/{hash}?s={size}" helper="留空使用 Gravatar；支持 {hash} 和 {size} 占位符"></mdui-text-field>
+    <mdui-text-field name="avatar_url_template" label="头像服务 URL 模板" value="{{index .Options "avatar_url_template"}}" placeholder="https://weavatar.com/avatar/{hash}?s={size}" helper="这里填写头像服务地址，不是邮箱地址；留空使用 Gravatar；必须包含 {hash}，可选 {size}"></mdui-text-field>
     <mdui-select name="comments_avatar_rating" label="Gravatar 评级" value="{{index .Options "comments_avatar_rating"}}">
       <mdui-menu-item value="g">G</mdui-menu-item>
       <mdui-menu-item value="pg">PG</mdui-menu-item>

@@ -1,9 +1,11 @@
 {{define "comment_item"}}
 <article id="{{.Anchor}}" class="{{if eq .Level 0}}mdui-card comment-card comment-parent{{else}}comment-child comment-level-{{.Level}}{{end}}" data-comment-item data-comment-id="{{.COID}}" data-comment-author="{{.Author}}">
-  <header class="comment-header">
+  <header class="comment-header{{if not .AvatarURL}} comment-header-no-avatar{{end}}">
     {{if .AvatarURL}}
-    <img class="comment-avatar" src="{{.AvatarURL}}" alt="">
-    {{if .Badge.Label}}<span class="comment-avatar-badge {{if eq .Badge.Tone "owner"}}comment-avatar-badge-owner{{else}}comment-avatar-badge-friend{{end}}" title="{{.Badge.Label}}" aria-label="{{.Badge.Label}}"><mdui-icon name="{{.Badge.Icon}}"></mdui-icon></span>{{end}}
+    <span class="comment-avatar-box">
+      <img class="comment-avatar" src="{{.AvatarURL}}" alt="">
+      {{if .Badge.Label}}<span class="comment-avatar-badge {{if eq .Badge.Tone "owner"}}comment-avatar-badge-owner{{else}}comment-avatar-badge-friend{{end}}" title="{{.Badge.Label}}" aria-label="{{.Badge.Label}}"><mdui-icon name="{{.Badge.Icon}}"></mdui-icon></span>{{end}}
+    </span>
     {{end}}
     <div class="comment-header-meta">
       <div class="comment-author-line">
