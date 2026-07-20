@@ -26,7 +26,12 @@
   <div class="theme-friend-list" data-friend-list>
     {{range .Links}}
     <article class="theme-friend-card" data-friend-card>
-      <div class="theme-friend-order" data-friend-order></div>
+      <div class="theme-friend-visual">
+        <span class="theme-friend-icon" data-friend-preview data-friend-fallback-src="{{if not .IconURL}}{{.AvatarURL}}{{end}}">
+          {{if .AvatarURL}}<img src="{{.AvatarURL}}" alt="" referrerpolicy="no-referrer">{{else}}<mdui-icon name="link"></mdui-icon>{{end}}
+        </span>
+        <span class="theme-friend-order" data-friend-order></span>
+      </div>
       <div class="theme-friend-fields">
         <mdui-text-field name="friend_name" label="链接名称" value="{{.Name}}" maxlength="100" required></mdui-text-field>
         <mdui-text-field type="email" name="friend_email" label="邮箱（与图标 URL 至少填写一项）" value="{{.Email}}" maxlength="254"></mdui-text-field>
@@ -46,7 +51,10 @@
 
   <template data-friend-template>
     <article class="theme-friend-card" data-friend-card>
-      <div class="theme-friend-order" data-friend-order></div>
+      <div class="theme-friend-visual">
+        <span class="theme-friend-icon" data-friend-preview><mdui-icon name="link"></mdui-icon></span>
+        <span class="theme-friend-order" data-friend-order></span>
+      </div>
       <div class="theme-friend-fields">
         <mdui-text-field name="friend_name" label="链接名称" maxlength="100" required></mdui-text-field>
         <mdui-text-field type="email" name="friend_email" label="邮箱（与图标 URL 至少填写一项）" maxlength="254"></mdui-text-field>

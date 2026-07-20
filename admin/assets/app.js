@@ -2,6 +2,7 @@
   var adminDirty = false;
   var pjaxAbort = null;
   var pjaxReady = false;
+  var navigationConfirmOpen = false;
   var lastSubmitter = null;
   var lastEditorSelection = null;
   var markdownEditorLoading = null;
@@ -250,6 +251,16 @@
         var up = card.querySelector("[data-friend-up]");
         var down = card.querySelector("[data-friend-down]");
         var remove = card.querySelector("[data-friend-delete]");
+        var iconURL = card.querySelector('[name="friend_icon_url"]');
+        var preview = card.querySelector("[data-friend-preview]");
+        function updatePreview() {
+          updateFriendIconPreview(preview, iconURL && iconURL.value);
+        }
+        if (iconURL && preview) {
+          iconURL.addEventListener("input", updatePreview);
+          iconURL.addEventListener("change", updatePreview);
+          updatePreview();
+        }
         if (up) {
           up.addEventListener("click", function () {
             var previous = card.previousElementSibling;
@@ -296,6 +307,48 @@
       });
       refresh();
     });
+  }
+
+  function updateFriendIconPreview(preview, value) {
+    if (!preview) {
+      return;
+    }
+    var url = normalizeFriendIconPreviewURL(value || "");
+    while (preview.firstChild) {
+      preview.removeChild(preview.firstChild);
+    }
+    if (url) {
+      var img = document.createElement("img");
+      img.alt = "";
+      img.referrerPolicy = "no-referrer";
+      img.src = url;
+      preview.appendChild(img);
+      return;
+    }
+    var fallback = normalizeFriendIconPreviewURL(preview.dataset.friendFallbackSrc || "");
+    if (fallback) {
+      var fallbackImg = document.createElement("img");
+      fallbackImg.alt = "";
+      fallbackImg.referrerPolicy = "no-referrer";
+      fallbackImg.src = fallback;
+      preview.appendChild(fallbackImg);
+      return;
+    }
+    var icon = document.createElement("mdui-icon");
+    icon.setAttribute("name", "link");
+    preview.appendChild(icon);
+  }
+
+  function normalizeFriendIconPreviewURL(value) {
+    value = String(value || "").trim();
+    if (!value) {
+      return "";
+    }
+    value = value.replaceAll("{random}", String(Date.now()));
+    if (value.charAt(0) === "/" || value.indexOf("http://") === 0 || value.indexOf("https://") === 0 || value.indexOf("//") === 0) {
+      return value;
+    }
+    return "";
   }
 
   function contentSchemaControlValue(control) {
@@ -1460,7 +1513,18 @@
 
   function pjaxVisit(url, options) {
     options = options || {};
-    if (!options.skipConfirm && !confirmNavigation()) {
+    if (!options.skipConfirm && adminDirty) {
+      confirmNavigation(function (confirmed) {
+        if (!confirmed) {
+          return;
+        }
+        var nextOptions = {};
+        Object.keys(options).forEach(function (key) {
+          nextOptions[key] = options[key];
+        });
+        nextOptions.skipConfirm = true;
+        pjaxVisit(url, nextOptions);
+      });
       return;
     }
 
@@ -1663,11 +1727,34 @@
     window.scrollTo(0, scrollTop);
   }
 
-  function confirmNavigation() {
+  function confirmNavigation(callback) {
     if (!adminDirty) {
-      return true;
+      callback(true);
+      return;
     }
-    return window.confirm("有未保存修改，确定离开？");
+    if (navigationConfirmOpen) {
+      callback(false);
+      return;
+    }
+    navigationConfirmOpen = true;
+    function done(confirmed) {
+      navigationConfirmOpen = false;
+      callback(!!confirmed);
+    }
+    if (window.mdui && typeof window.mdui.confirm === "function") {
+      window.mdui.confirm({
+        headline: "有未保存修改",
+        description: "离开当前页面会丢失还没有保存的内容。",
+        confirmText: "离开",
+        cancelText: "继续编辑"
+      }).then(function () {
+        done(true);
+      }).catch(function () {
+        done(false);
+      });
+      return;
+    }
+    done(window.confirm("有未保存修改，确定离开？"));
   }
 
   function sameAdminURL(url) {

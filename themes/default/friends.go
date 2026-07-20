@@ -31,6 +31,7 @@ type friendLink struct {
 	URL         string `json:"url"`
 	Email       string `json:"email"`
 	IconURL     string `json:"icon_url,omitempty"`
+	AvatarURL   string `json:"-"`
 }
 
 type friendLinkView struct {
@@ -69,7 +70,7 @@ func renderFriendAdminPage(ctx context.Context, rt *plugin.Runtime, page string,
 		CSRF:       renderContext.CSRF,
 		PageTarget: strings.TrimSpace(renderContext.Config[friendPageTargetKey]),
 		Shuffle:    renderContext.Config[friendShuffleKey] == "1",
-		Links:      links,
+		Links:      friendAdminLinks(ctx, rt, links),
 	}
 	if data.PageTarget != "" {
 		content, contentErr := resolveFriendPageTarget(ctx, rt, data.PageTarget)
@@ -87,6 +88,20 @@ func renderFriendAdminPage(ctx context.Context, rt *plugin.Runtime, page string,
 		return "", fmt.Errorf("渲染友链设置：%w", err)
 	}
 	return template.HTML(output.String()), nil
+}
+
+func friendAdminLinks(ctx context.Context, rt *plugin.Runtime, links []friendLink) []friendLink {
+	out := make([]friendLink, len(links))
+	copy(out, links)
+	for i := range out {
+		switch {
+		case out[i].IconURL != "":
+			out[i].AvatarURL = assetURL(out[i].IconURL)
+		case out[i].Email != "" && rt != nil && rt.AvatarURL != nil:
+			out[i].AvatarURL = rt.AvatarURL(ctx, out[i].Email, 80)
+		}
+	}
+	return out
 }
 
 func handleFriendAdminPageAction(ctx context.Context, rt *plugin.Runtime, page string, form map[string][]string) (plugin.AdminPageActionResult, error) {
