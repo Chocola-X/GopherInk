@@ -11,8 +11,23 @@
     <thead><tr><th>插件</th><th>版本</th><th>作者</th><th>状态</th><th>操作</th></tr></thead>
     <tbody>
       {{range .Plugins}}
+      {{$plugin := .}}
       <tr>
-        <td><strong>{{.Name}}</strong><div class="muted">{{.Description}}</div>{{if .RequireGopherInk}}<div class="muted">要求 GopherInk {{.RequireGopherInk}}+</div>{{end}}</td>
+        <td>
+          <strong>{{.Name}}</strong>
+          <div class="muted">{{.Description}}</div>
+          {{if .RequireGopherInk}}<div class="muted">要求 GopherInk {{.RequireGopherInk}}+</div>{{end}}
+          {{if .Databases}}
+          <div class="plugin-db-list">
+            {{range .Databases}}
+            <div class="plugin-db-item">
+              <span><strong>{{.Label}}</strong> <span class="muted">{{.Filename}}</span>{{if .Description}}<span class="muted"> · {{.Description}}</span>{{end}}</span>
+              <span class="muted">{{if .Error}}{{.Error}}{{else}}{{.Size}}{{end}}</span>
+            </div>
+            {{end}}
+          </div>
+          {{end}}
+        </td>
         <td>{{.Version}}</td>
         <td>{{.Author}}</td>
         <td>{{if .Active}}已启用{{else}}未启用{{end}}{{if not .Compatible}}<div class="muted">依赖不满足</div>{{end}}</td>
@@ -20,6 +35,11 @@
           <div class="row-actions">
             {{if .HasConfig}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/config">设置</mdui-button>{{end}}
             {{if .HasPersonal}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/personal">个人设置</mdui-button>{{end}}
+            {{range .Databases}}
+            <form method="post" action="/admin/plugins/{{$plugin.Name}}/database/{{.Name}}/clear" data-confirm-message="确定清除 {{.Label}} 数据库？该操作会删除对应 .db、WAL 和 SHM 文件。">
+              <mdui-button type="submit" variant="outlined" class="danger-action">清除数据库</mdui-button>
+            </form>
+            {{end}}
             {{if .Active}}
             <form method="post" action="/admin/plugins/{{.Name}}/deactivate"><mdui-button type="submit" variant="outlined">停用</mdui-button></form>
             {{else}}

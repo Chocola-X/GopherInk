@@ -43,6 +43,8 @@ import (
 	"github.com/Chocola-X/GopherInk/pkg/i18n"
 	"github.com/Chocola-X/GopherInk/pkg/imageproc"
 	"github.com/Chocola-X/GopherInk/pkg/render"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type App struct {
@@ -61,6 +63,8 @@ type App struct {
 	loginNext        map[string]time.Time
 	commentGuardMu   sync.Mutex
 	commentGuardUsed map[string]time.Time
+	extensionDBMu    sync.Mutex
+	extensionDBs     map[string]*sql.DB
 	draftRepairOnce  sync.Once
 	draftRepairErr   error
 }
@@ -89,7 +93,7 @@ func NewWithPaths(contents *services.ContentService, metas *services.MetaService
 		uploadDir = filepath.Join(dataDir, "uploads")
 	}
 	httpClient, _ := compathttp.New(compathttp.Config{Timeout: 5 * time.Second, UserAgent: "GopherInk/0.5.0", Retries: 1})
-	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}, commentGuardUsed: map[string]time.Time{}}
+	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}, commentGuardUsed: map[string]time.Time{}, extensionDBs: map[string]*sql.DB{}}
 	app.WAF = newWAFManager(app)
 	return app
 }
@@ -183,7 +187,8 @@ func (a *App) Handler() http.Handler {
 				methodNotAllowed(w, route.Method)
 				return
 			}
-			route.Handler(runtime, w, r)
+			routeRuntime := runtime.WithOwner(route.Plugin)
+			route.Handler(routeRuntime, w, r.WithContext(plugin.ContextWithRuntime(r.Context(), routeRuntime)))
 		})
 	}
 
@@ -213,9 +218,79 @@ func (a *App) Handler() http.Handler {
 	}
 	withRuntime := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := plugin.ContextWithRuntime(r.Context(), runtime)
-		mux.ServeHTTP(w, r.WithContext(ctx))
+		recorder := &statusResponseWriter{ResponseWriter: w}
+		start := time.Now()
+		mux.ServeHTTP(recorder, r.WithContext(ctx))
+		a.dispatchRequestAfter(r, recorder, time.Since(start))
 	})
 	return a.WAF.wrap(withRuntime)
+}
+
+type statusResponseWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int64
+}
+
+func (w *statusResponseWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+		w.ResponseWriter.WriteHeader(status)
+	}
+}
+
+func (w *statusResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	n, err := w.ResponseWriter.Write(data)
+	w.bytes += int64(n)
+	return n, err
+}
+
+func (w *statusResponseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (a *App) dispatchRequestAfter(r *http.Request, recorder *statusResponseWriter, duration time.Duration) {
+	if a.Plugins == nil || !a.Plugins.HasActiveHook(plugin.HookRequestAfter) {
+		return
+	}
+	status := recorder.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	payload := plugin.RequestPayload{
+		Method:      r.Method,
+		Path:        r.URL.Path,
+		RawQuery:    r.URL.RawQuery,
+		RemoteAddr:  r.RemoteAddr,
+		IP:          a.clientIP(r),
+		UserAgent:   r.UserAgent(),
+		Referer:     r.Referer(),
+		Status:      status,
+		Bytes:       recorder.bytes,
+		Duration:    duration.Milliseconds(),
+		Admin:       strings.HasPrefix(r.URL.Path, "/admin"),
+		Static:      requestPathIsStatic(r.URL.Path),
+		ContentType: recorder.Header().Get("Content-Type"),
+	}
+	runtime := a.pluginRuntime()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = a.Plugins.ApplyActive(plugin.ContextWithRuntime(ctx, runtime), plugin.HookRequestAfter, payload)
+	}()
+}
+
+func requestPathIsStatic(pathValue string) bool {
+	return strings.HasPrefix(pathValue, "/admin/assets/") ||
+		strings.HasPrefix(pathValue, "/theme/") ||
+		strings.HasPrefix(pathValue, "/uploads/") ||
+		strings.HasPrefix(pathValue, "/favicon") ||
+		strings.HasPrefix(pathValue, "/robots.txt")
 }
 
 func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
@@ -2779,6 +2854,16 @@ func (a *App) adminPluginRoutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.adminPluginAction(w, r, name, parts[2])
+	case "database":
+		if r.Method != http.MethodPost {
+			methodNotAllowed(w, http.MethodPost)
+			return
+		}
+		if len(parts) != 4 || parts[3] != "clear" {
+			http.NotFound(w, r)
+			return
+		}
+		a.adminPluginDatabaseClear(w, r, name, parts[2])
 	default:
 		http.NotFound(w, r)
 	}
@@ -2808,7 +2893,7 @@ func (a *App) adminPluginAction(w http.ResponseWriter, r *http.Request, name, ac
 		return
 	}
 
-	notice, err := provider.HandleAdminAction(r.Context(), a.pluginRuntime(), actionName)
+	notice, err := provider.HandleAdminAction(r.Context(), a.pluginRuntime().WithOwner(name), actionName)
 	if err != nil {
 		notice = plugin.AdminNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()}
 	}
@@ -2829,6 +2914,17 @@ type pluginView struct {
 	Compatible       bool
 	HasConfig        bool
 	HasPersonal      bool
+	Databases        []pluginDatabaseView
+}
+
+type pluginDatabaseView struct {
+	Name        string
+	Label       string
+	Description string
+	Filename    string
+	Size        string
+	SizeBytes   int64
+	Error       string
 }
 
 func (a *App) pluginViews(ctx context.Context) []pluginView {
@@ -2853,9 +2949,67 @@ func (a *App) pluginViews(ctx context.Context) []pluginView {
 		if provider, ok := p.(plugin.PersonalConfigProvider); ok && len(provider.PersonalConfigSchema()) > 0 {
 			view.HasPersonal = true
 		}
+		view.Databases = a.pluginDatabaseViews(info.Name, p)
 		out = append(out, view)
 	}
 	return out
+}
+
+func (a *App) pluginDatabaseViews(owner string, p plugin.Plugin) []pluginDatabaseView {
+	provider, ok := p.(plugin.SQLiteDatabaseProvider)
+	if !ok {
+		return nil
+	}
+	dbs := normalizeSQLiteDatabases(provider.SQLiteDatabases())
+	out := make([]pluginDatabaseView, 0, len(dbs))
+	for _, item := range dbs {
+		view := pluginDatabaseView{
+			Name:        item.Name,
+			Label:       item.Label,
+			Description: item.Description,
+			Filename:    item.Filename,
+		}
+		size, err := a.extensionSQLiteSize(pluginDatabaseOwner(owner), item.Filename)
+		if err != nil {
+			view.Error = err.Error()
+		} else {
+			view.SizeBytes = size
+			view.Size = formatBytes(size)
+		}
+		out = append(out, view)
+	}
+	return out
+}
+
+func (a *App) adminPluginDatabaseClear(w http.ResponseWriter, r *http.Request, name, dbName string) {
+	p, ok := a.Plugins.Plugin(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	provider, ok := p.(plugin.SQLiteDatabaseProvider)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	var target plugin.SQLiteDatabase
+	found := false
+	for _, item := range normalizeSQLiteDatabases(provider.SQLiteDatabases()) {
+		if item.Name == dbName {
+			target = item
+			found = true
+			break
+		}
+	}
+	if !found {
+		http.NotFound(w, r)
+		return
+	}
+	if err := a.clearExtensionSQLite(r.Context(), pluginDatabaseOwner(name), target.Filename); err != nil {
+		a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
+		return
+	}
+	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "插件数据库已清除。"})
 }
 
 func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name string, enable bool) {
@@ -2870,7 +3024,7 @@ func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name str
 		return
 	}
 	active := a.activePluginSet(r.Context())
-	runtime := a.pluginRuntime()
+	runtime := a.pluginRuntime().WithOwner(name)
 	if enable {
 		if activator, ok := p.(plugin.Activator); ok {
 			if err := activator.Activate(r.Context(), runtime); err != nil {
@@ -2937,7 +3091,7 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 	if !personal {
 		if provider, ok := p.(plugin.AdminNoticeProvider); ok {
 			noticeProvider = func(ctx context.Context, values map[string]string) []plugin.AdminNotice {
-				return provider.AdminNotices(ctx, a.pluginRuntime(), copyStringMap(values))
+				return provider.AdminNotices(ctx, a.pluginRuntime().WithOwner(name), copyStringMap(values))
 			}
 		}
 		if provider, ok := p.(plugin.AdminActionProvider); ok {
@@ -2979,7 +3133,7 @@ func (a *App) adminPluginPage(w http.ResponseWriter, r *http.Request, name strin
 		return
 	}
 	pageURL := "/admin/plugins/" + neturl.PathEscape(name) + "/config?tab=" + neturl.QueryEscape(page.Name)
-	runtime := a.pluginRuntime()
+	runtime := a.pluginRuntime().WithOwner(name)
 
 	if r.Method == http.MethodPost {
 		actionProvider, ok := p.(plugin.AdminPageActionProvider)
@@ -3089,7 +3243,7 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 			if theme.AdminNotices == nil {
 				return nil
 			}
-			return theme.AdminNotices(ctx, a.pluginRuntime(), copyStringMap(values))
+			return theme.AdminNotices(ctx, a.pluginRuntime().WithComponent("theme", name), copyStringMap(values))
 		},
 		ThemeName:  name,
 		ThemePages: adminPages,
@@ -3111,7 +3265,7 @@ func (a *App) adminThemePage(w http.ResponseWriter, r *http.Request, name string
 		return
 	}
 	pageURL := "/admin/themes/" + neturl.PathEscape(name) + "/config?tab=" + neturl.QueryEscape(page.Name)
-	runtime := a.pluginRuntime()
+	runtime := a.pluginRuntime().WithComponent("theme", name)
 
 	if r.Method == http.MethodPost {
 		if theme.HandleAdminPageAction == nil {
@@ -5553,7 +5707,7 @@ func (a *App) themeCommentBadges(ctx context.Context, comments []models.Comment)
 			Status: comment.Status, Parent: comment.Parent,
 		})
 	}
-	runtime := a.pluginRuntime()
+	runtime := a.pluginRuntime().WithComponent("theme", theme.Name)
 	return theme.CommentBadges(plugin.ContextWithRuntime(ctx, runtime), runtime, config, publicComments)
 }
 
@@ -7602,7 +7756,7 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 		return
 	}
 	lang := a.option(r.Context(), "site_language", "zh-CN")
-	pluginRuntime := a.pluginRuntime()
+	pluginRuntime := a.pluginRuntime().WithComponent("theme", theme.Name)
 	funcs := template.FuncMap{
 		"date": func(ts int64) string { return a.formatDate(r.Context(), ts, "post_date_format") },
 		"T":    func(key string) string { return i18n.T(lang, key) },
@@ -8735,6 +8889,10 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		Config:            a.pluginConfig,
 		PersonalConfig:    a.pluginPersonalConfig,
 		NotifyAdmin:       a.setFlash,
+		OpenSQLiteFor:     a.openExtensionSQLite,
+		SQLitePath:        a.extensionSQLitePath,
+		SQLiteSize:        a.extensionSQLiteSize,
+		ClearSQLite:       a.clearExtensionSQLite,
 	}
 	runtime.DispatchHook = func(ctx context.Context, name string, payload any) (plugin.HookDispatch, error) {
 		return a.Plugins.DispatchActive(plugin.ContextWithRuntime(ctx, runtime), name, payload)
@@ -8744,6 +8902,170 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		return a.Plugins.CallActiveService(ctx, runtime, name, args...)
 	}
 	return runtime
+}
+
+func (a *App) openExtensionSQLite(ctx context.Context, owner, filename string) (*sql.DB, string, error) {
+	dbPath, err := a.extensionSQLitePath(owner, filename)
+	if err != nil {
+		return nil, "", err
+	}
+	key := filepath.Clean(dbPath)
+	a.extensionDBMu.Lock()
+	if db := a.extensionDBs[key]; db != nil {
+		a.extensionDBMu.Unlock()
+		return db, dbPath, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		a.extensionDBMu.Unlock()
+		return nil, "", fmt.Errorf("创建扩展数据库目录：%w", err)
+	}
+	dsn := dbPath + "?_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=on"
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		a.extensionDBMu.Unlock()
+		return nil, "", err
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
+		a.extensionDBMu.Unlock()
+		return nil, "", err
+	}
+	a.extensionDBs[key] = db
+	a.extensionDBMu.Unlock()
+	return db, dbPath, nil
+}
+
+func (a *App) extensionSQLitePath(owner, filename string) (string, error) {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		return "", fmt.Errorf("扩展名称不能为空")
+	}
+	cleanOwner, err := safeExtensionPathName(owner)
+	if err != nil {
+		return "", fmt.Errorf("扩展名称无效：%w", err)
+	}
+	file, err := safeSQLiteFilename(filename)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(a.DataDir, "extensions", cleanOwner, file), nil
+}
+
+func (a *App) extensionSQLiteSize(owner, filename string) (int64, error) {
+	dbPath, err := a.extensionSQLitePath(owner, filename)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		info, statErr := os.Stat(dbPath + suffix)
+		if statErr == nil {
+			total += info.Size()
+			continue
+		}
+		if !os.IsNotExist(statErr) {
+			return 0, statErr
+		}
+	}
+	return total, nil
+}
+
+func normalizeSQLiteDatabases(items []plugin.SQLiteDatabase) []plugin.SQLiteDatabase {
+	out := make([]plugin.SQLiteDatabase, 0, len(items))
+	seen := map[string]bool{}
+	for _, item := range items {
+		item.Name = strings.TrimSpace(item.Name)
+		item.Filename = strings.TrimSpace(item.Filename)
+		if item.Name == "" {
+			item.Name = strings.TrimSuffix(item.Filename, filepath.Ext(item.Filename))
+		}
+		if item.Filename == "" {
+			item.Filename = item.Name
+		}
+		if item.Name == "" || seen[item.Name] {
+			continue
+		}
+		if _, err := safeExtensionPathName(item.Name); err != nil {
+			continue
+		}
+		if filename, err := safeSQLiteFilename(item.Filename); err == nil {
+			item.Filename = filename
+		}
+		if item.Label == "" {
+			item.Label = item.Name
+		}
+		seen[item.Name] = true
+		out = append(out, item)
+	}
+	return out
+}
+
+func pluginDatabaseOwner(name string) string {
+	return "plugin-" + strings.TrimSpace(name)
+}
+
+func (a *App) clearExtensionSQLite(ctx context.Context, owner, filename string) error {
+	_ = ctx
+	dbPath, err := a.extensionSQLitePath(owner, filename)
+	if err != nil {
+		return err
+	}
+	key := filepath.Clean(dbPath)
+	a.extensionDBMu.Lock()
+	if db := a.extensionDBs[key]; db != nil {
+		_ = db.Close()
+		delete(a.extensionDBs, key)
+	}
+	a.extensionDBMu.Unlock()
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		err := os.Remove(dbPath + suffix)
+		if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+func safeExtensionPathName(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "." || value == ".." {
+		return "", fmt.Errorf("名称不能为空")
+	}
+	if strings.ContainsAny(value, `/\`) {
+		return "", fmt.Errorf("不能包含路径分隔符")
+	}
+	for _, r := range value {
+		if !(r == '-' || r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+			return "", fmt.Errorf("只能包含字母、数字、点、下划线和短横线")
+		}
+	}
+	return value, nil
+}
+
+func safeSQLiteFilename(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("数据库文件名不能为空")
+	}
+	base := filepath.Base(value)
+	if base != value || strings.ContainsAny(value, `/\`) || base == "." || base == ".." {
+		return "", fmt.Errorf("数据库文件名不能包含路径")
+	}
+	if strings.HasPrefix(base, ".") {
+		return "", fmt.Errorf("数据库文件名不能以点开头")
+	}
+	if !strings.HasSuffix(strings.ToLower(base), ".db") {
+		base += ".db"
+	}
+	for _, r := range base {
+		if !(r == '-' || r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
+			return "", fmt.Errorf("数据库文件名只能包含字母、数字、点、下划线和短横线")
+		}
+	}
+	return base, nil
 }
 
 func (a *App) pluginContentURL(ctx context.Context, id int64) (string, error) {

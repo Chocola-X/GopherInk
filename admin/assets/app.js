@@ -1418,6 +1418,14 @@
         return;
       }
       event.preventDefault();
+      if (form.dataset.confirmMessage) {
+        confirmAdminAction(form.dataset.confirmMessage, function (confirmed) {
+          if (confirmed) {
+            submitPjaxForm(form, submitter);
+          }
+        });
+        return;
+      }
       submitPjaxForm(form, submitter);
     }, true);
 
@@ -1760,6 +1768,23 @@
       return;
     }
     done(window.confirm("有未保存修改，确定离开？"));
+  }
+
+  function confirmAdminAction(message, callback) {
+    if (window.mdui && typeof window.mdui.confirm === "function") {
+      window.mdui.confirm({
+        headline: "确认操作",
+        description: message,
+        confirmText: "确认",
+        cancelText: "取消"
+      }).then(function () {
+        callback(true);
+      }).catch(function () {
+        callback(false);
+      });
+      return;
+    }
+    callback(window.confirm(message));
   }
 
   function sameAdminURL(url) {

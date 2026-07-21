@@ -2,12 +2,14 @@ package plugin
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"html/template"
 	"io"
 	"io/fs"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -53,6 +55,8 @@ type PublicComment struct {
 }
 
 type Runtime struct {
+	OwnerKind         string
+	Owner             string
 	ListPublished     func(context.Context, int, int) ([]PublicContent, error)
 	ContentByID       func(context.Context, int64) (PublicContent, error)
 	PageBySlug        func(context.Context, string) (PublicContent, error)
@@ -69,6 +73,10 @@ type Runtime struct {
 	ServiceAvailable  func(string) bool
 	CallService       func(context.Context, string, ...any) (any, error)
 	NotifyAdmin       func(http.ResponseWriter, *http.Request, ...AdminNotice)
+	OpenSQLiteFor     func(context.Context, string, string) (*sql.DB, string, error)
+	SQLitePath        func(string, string) (string, error)
+	SQLiteSize        func(string, string) (int64, error)
+	ClearSQLite       func(context.Context, string, string) error
 }
 
 type runtimeContextKey struct{}
@@ -91,6 +99,39 @@ func RuntimeFromContext(ctx context.Context) (*Runtime, bool) {
 	}
 	runtime, ok := ctx.Value(runtimeContextKey{}).(*Runtime)
 	return runtime, ok && runtime != nil
+}
+
+func (r *Runtime) WithOwner(owner string) *Runtime {
+	return r.WithComponent("plugin", owner)
+}
+
+func (r *Runtime) WithComponent(kind, owner string) *Runtime {
+	if r == nil {
+		return nil
+	}
+	next := *r
+	next.OwnerKind = kind
+	next.Owner = owner
+	return &next
+}
+
+func (r *Runtime) OpenSQLiteDatabase(ctx context.Context, filename string) (*sql.DB, string, error) {
+	if r == nil || r.OpenSQLiteFor == nil {
+		return nil, "", ErrRuntimeUnavailable
+	}
+	if strings.TrimSpace(r.Owner) == "" {
+		return nil, "", errors.New("plugin runtime owner is empty")
+	}
+	return r.OpenSQLiteFor(ctx, runtimeDatabaseOwner(r.OwnerKind, r.Owner), filename)
+}
+
+func runtimeDatabaseOwner(kind, owner string) string {
+	kind = strings.TrimSpace(kind)
+	owner = strings.TrimSpace(owner)
+	if kind == "" {
+		return owner
+	}
+	return kind + "-" + owner
 }
 
 type RouteHandler func(*Runtime, http.ResponseWriter, *http.Request)
@@ -181,6 +222,7 @@ const (
 	HookAttachmentAfterDelete   = "attachment.after_delete"
 	HookAttachmentURL           = "attachment.url"
 	HookAttachmentData          = "attachment.data"
+	HookRequestAfter            = "request.after"
 	HookAdminMenu               = "admin.menu"
 	HookFrontendHead            = "frontend.head"
 	HookFrontendFooter          = "frontend.footer"
@@ -357,6 +399,22 @@ type AttachmentDataPayload struct {
 	Handled bool
 }
 
+type RequestPayload struct {
+	Method      string
+	Path        string
+	RawQuery    string
+	RemoteAddr  string
+	IP          string
+	UserAgent   string
+	Referer     string
+	Status      int
+	Bytes       int64
+	Duration    int64
+	Admin       bool
+	Static      bool
+	ContentType string
+}
+
 type AdminMenuItem struct {
 	Label string
 	URL   string
@@ -507,6 +565,17 @@ type ConfigProvider interface {
 
 type PersonalConfigProvider interface {
 	PersonalConfigSchema() []FieldSchema
+}
+
+type SQLiteDatabase struct {
+	Name        string
+	Filename    string
+	Label       string
+	Description string
+}
+
+type SQLiteDatabaseProvider interface {
+	SQLiteDatabases() []SQLiteDatabase
 }
 
 type ContentFieldsProvider interface {
@@ -702,7 +771,11 @@ func (m *Manager) CallActiveService(ctx context.Context, runtime *Runtime, name 
 	if runtime == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	return service.Fn(ContextWithRuntime(ctx, runtime), runtime, args...)
+	serviceRuntime := runtime
+	if service.Plugin != "" {
+		serviceRuntime = runtime.WithOwner(service.Plugin)
+	}
+	return service.Fn(ContextWithRuntime(ctx, serviceRuntime), serviceRuntime, args...)
 }
 
 func (m *Manager) RegisterRoute(method, pattern string, handler RouteHandler) {
@@ -896,7 +969,12 @@ func dispatchHooks(ctx context.Context, hooks []ownedHook, active map[string]boo
 			if runtime == nil {
 				return HookDispatch{}, ErrRuntimeUnavailable
 			}
-			next, err = hook.RuntimeFn(ctx, runtime, result.Payload)
+			hookRuntime := runtime
+			if hook.Plugin != "" {
+				hookRuntime = runtime.WithOwner(hook.Plugin)
+			}
+			hookCtx := ContextWithRuntime(ctx, hookRuntime)
+			next, err = hook.RuntimeFn(hookCtx, hookRuntime, result.Payload)
 		} else if hook.Fn != nil {
 			next, err = hook.Fn(ctx, result.Payload)
 		} else {
