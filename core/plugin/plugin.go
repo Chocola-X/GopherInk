@@ -65,6 +65,24 @@ type PublicMeta struct {
 	Parent      int64
 }
 
+type PublicRevision struct {
+	RID          int64
+	CID          int64
+	Created      int64
+	AuthorID     int64
+	Title        string
+	Slug         string
+	Text         string
+	Status       string
+	Password     string
+	SortOrder    int64
+	Template     string
+	Parent       int64
+	AllowComment string
+	AllowPing    string
+	AllowFeed    string
+}
+
 type PublicContentQuery struct {
 	CID           int64
 	Slug          string
@@ -119,28 +137,35 @@ type PublicMetaQuery struct {
 }
 
 type Runtime struct {
-	OwnerKind        string
-	Owner            string
-	ListContents     func(context.Context, PublicContentQuery) ([]PublicContent, int64, error)
-	ListComments     func(context.Context, PublicCommentQuery) ([]PublicComment, int64, error)
-	ListUsers        func(context.Context, PublicUserQuery) ([]PublicUser, int64, error)
-	ListMetas        func(context.Context, PublicMetaQuery) ([]PublicMeta, int64, error)
-	ContentURL       func(context.Context, int64) (string, error)
-	CommentURL       func(context.Context, int64) (string, error)
-	AvatarURL        func(context.Context, string, int) string
-	ClientIP         func(*http.Request) string
-	CurrentUser      func(*http.Request) (PublicUser, bool)
-	Option           func(context.Context, string) (string, error)
-	Config           func(context.Context, string) (map[string]string, error)
-	PersonalConfig   func(context.Context, string, int64) (map[string]string, error)
-	DispatchHook     func(context.Context, string, any) (HookDispatch, error)
-	ServiceAvailable func(string) bool
-	CallService      func(context.Context, string, ...any) (any, error)
-	NotifyAdmin      func(http.ResponseWriter, *http.Request, ...AdminNotice)
-	OpenSQLiteFor    func(context.Context, string, string) (*sql.DB, string, error)
-	SQLitePath       func(string, string) (string, error)
-	SQLiteSize       func(string, string) (int64, error)
-	ClearSQLite      func(context.Context, string, string) error
+	OwnerKind         string
+	Owner             string
+	ListContents      func(context.Context, PublicContentQuery) ([]PublicContent, int64, error)
+	ListComments      func(context.Context, PublicCommentQuery) ([]PublicComment, int64, error)
+	ListUsers         func(context.Context, PublicUserQuery) ([]PublicUser, int64, error)
+	ListMetas         func(context.Context, PublicMetaQuery) ([]PublicMeta, int64, error)
+	ListRevisions     func(context.Context, int64) ([]PublicRevision, error)
+	ContentURL        func(context.Context, int64) (string, error)
+	CommentURL        func(context.Context, int64) (string, error)
+	AvatarURL         func(context.Context, string, int) string
+	ClientIP          func(*http.Request) string
+	CurrentUser       func(*http.Request) (PublicUser, bool)
+	Option            func(context.Context, string) (string, error)
+	SetOption         func(context.Context, string, string) error
+	Config            func(context.Context, string) (map[string]string, error)
+	PersonalConfig    func(context.Context, string, int64) (map[string]string, error)
+	DispatchHook      func(context.Context, string, any) (HookDispatch, error)
+	ServiceAvailable  func(string) bool
+	CallService       func(context.Context, string, ...any) (any, error)
+	NotifyAdmin       func(http.ResponseWriter, *http.Request, ...AdminNotice)
+	OpenPluginDB      func(context.Context) (*sql.DB, error)
+	PluginDBDialect   func(context.Context) string
+	IsIPBanned        func(context.Context, string) bool
+	IsURLAllowed      func(context.Context, string) bool
+	GetContentAuthor  func(context.Context, int64) (PublicUser, error)
+	ListContentMetas  func(context.Context, int64) ([]PublicMeta, error)
+	GetContentFields  func(context.Context, int64) (map[string]any, error)
+	ActiveTheme       func(context.Context) string
+	ContentRenderMode func(context.Context) string
 }
 
 type runtimeContextKey struct{}
@@ -179,14 +204,14 @@ func (r *Runtime) WithComponent(kind, owner string) *Runtime {
 	return &next
 }
 
-func (r *Runtime) OpenSQLiteDatabase(ctx context.Context, filename string) (*sql.DB, string, error) {
-	if r == nil || r.OpenSQLiteFor == nil {
-		return nil, "", ErrRuntimeUnavailable
+func (r *Runtime) OpenPluginDatabase(ctx context.Context) (*sql.DB, error) {
+	if r == nil || r.OpenPluginDB == nil {
+		return nil, ErrRuntimeUnavailable
 	}
 	if strings.TrimSpace(r.Owner) == "" {
-		return nil, "", errors.New("plugin runtime owner is empty")
+		return nil, errors.New("plugin runtime owner is empty")
 	}
-	return r.OpenSQLiteFor(ctx, runtimeDatabaseOwner(r.OwnerKind, r.Owner), filename)
+	return r.OpenPluginDB(ctx)
 }
 
 func runtimeDatabaseOwner(kind, owner string) string {
@@ -196,6 +221,87 @@ func runtimeDatabaseOwner(kind, owner string) string {
 		return owner
 	}
 	return kind + "-" + owner
+}
+
+func DatabaseTableName(owner, name string) string {
+	return "plugin_" + safeDatabaseIdentifier(owner) + "_" + safeDatabaseIdentifier(name)
+}
+
+func safeDatabaseIdentifier(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	var sb strings.Builder
+	lastUnderscore := false
+	for _, r := range value {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_'
+		if !ok {
+			if !lastUnderscore {
+				sb.WriteByte('_')
+				lastUnderscore = true
+			}
+			continue
+		}
+		sb.WriteRune(r)
+		lastUnderscore = false
+	}
+	out := strings.Trim(sb.String(), "_")
+	if out == "" {
+		out = "ext"
+	}
+	if out[0] >= '0' && out[0] <= '9' {
+		out = "x_" + out
+	}
+	return out
+}
+
+func (r *Runtime) DatabaseTableName(table string) string {
+	if r == nil {
+		return DatabaseTableName("", table)
+	}
+	owner := r.Owner
+	if r.OwnerKind != "" && r.OwnerKind != "plugin" {
+		owner = runtimeDatabaseOwner(r.OwnerKind, r.Owner)
+	}
+	return DatabaseTableName(owner, table)
+}
+
+func RebindSQL(dialect, query string) string {
+	if dialect != "postgres" && dialect != "postgresql" && dialect != "pgx" {
+		return query
+	}
+	var sb strings.Builder
+	arg := 1
+	for _, r := range query {
+		if r == '?' {
+			sb.WriteByte('$')
+			sb.WriteString(intString(arg))
+			arg++
+			continue
+		}
+		sb.WriteRune(r)
+	}
+	return sb.String()
+}
+
+func intString(value int) string {
+	if value == 0 {
+		return "0"
+	}
+	var buf [20]byte
+	i := len(buf)
+	for value > 0 {
+		i--
+		buf[i] = byte('0' + value%10)
+		value /= 10
+	}
+	return string(buf[i:])
+}
+
+func (r *Runtime) RebindSQL(ctx context.Context, query string) string {
+	dialect := ""
+	if r != nil && r.PluginDBDialect != nil {
+		dialect = r.PluginDBDialect(ctx)
+	}
+	return RebindSQL(dialect, query)
 }
 
 type RouteHandler func(*Runtime, http.ResponseWriter, *http.Request)
@@ -241,8 +347,6 @@ func StopHook(payload any) HookControl {
 const (
 	HookContentBeforeSave       = "content.before_save"
 	HookContentAfterSave        = "content.after_save"
-	HookContentAfterDraftSave   = "content.after_draft_save"
-	HookContentAfterPublish     = "content.after_publish"
 	HookContentBeforeDelete     = "content.before_delete"
 	HookContentAfterDelete      = "content.after_delete"
 	HookContentBeforeStatus     = "content.before_status_change"
@@ -251,18 +355,16 @@ const (
 	HookContentBeforeRender     = "content.before_render"
 	HookContentAfterRender      = "content.after_render"
 	HookContentTitle            = "content.title"
-	HookContentMarkdown         = "content.markdown"
-	HookContentAutoParagraph    = "content.auto_paragraph"
+	HookContentParse            = "content.parse"
 	HookExcerpt                 = "content.excerpt"
+	HookExcerptAfterRender      = "excerpt.after_render"
 	HookContentList             = "content.list"
 	HookContentFields           = "content.fields"
 	HookContentFieldReadOnly    = "content.field_read_only"
+	HookContentPermalink        = "content.permalink"
+	HookContentAuthor           = "content.author"
 	HookCommentBeforeSave       = "comment.before_save"
 	HookCommentAfterSave        = "comment.after_save"
-	HookCommentBeforeReply      = "comment.before_reply"
-	HookCommentAfterReply       = "comment.after_reply"
-	HookCommentBeforeEdit       = "comment.before_edit"
-	HookCommentAfterEdit        = "comment.after_edit"
 	HookCommentBeforeMark       = "comment.before_mark"
 	HookCommentAfterMark        = "comment.after_mark"
 	HookCommentBeforeDelete     = "comment.before_delete"
@@ -270,9 +372,13 @@ const (
 	HookCommentFilter           = "comment.filter"
 	HookCommentBeforeRender     = "comment.before_render"
 	HookCommentAfterRender      = "comment.after_render"
-	HookCommentMarkdown         = "comment.markdown"
-	HookCommentAutoParagraph    = "comment.auto_paragraph"
+	HookCommentParse            = "comment.parse"
 	HookCommentAvatar           = "comment.avatar"
+	HookCommentPermalink        = "comment.permalink"
+	HookCommentListRender       = "comment.list_render"
+	HookCommentReplyLink        = "comment.reply_link"
+	HookCommentCancelReply      = "comment.cancel_reply_link"
+	HookCommentPageNav          = "comment.page_nav"
 	HookUploadBeforeSave        = "upload.before_save"
 	HookUploadHandle            = "upload.handle"
 	HookUploadAfterSave         = "upload.after_save"
@@ -298,6 +404,29 @@ const (
 	HookAdminMenu               = "admin.menu"
 	HookFrontendHead            = "frontend.head"
 	HookFrontendFooter          = "frontend.footer"
+	HookArchiveBeforeQuery      = "archive.before_query"
+	HookArchiveAfterQuery       = "archive.after_query"
+	HookArchiveBeforeRender     = "archive.before_render"
+	HookArchiveAfterRender      = "archive.after_render"
+	HookArchiveSearch           = "archive.search"
+	HookMetaPermalink           = "meta.permalink"
+	HookFeedItem                = "feed.item"
+	HookFeedCommentItem         = "feed.comment_item"
+	HookXMLRPCTextFilter        = "xmlrpc.text_filter"
+	HookXMLRPCUpload            = "xmlrpc.upload"
+	HookXMLRPCPingback          = "xmlrpc.pingback"
+	HookXMLRPCFinishPingback    = "xmlrpc.finish_pingback"
+	HookTrackback               = "trackback.handle"
+	HookFinishTrackback         = "trackback.finish"
+	HookBackupExport            = "backup.export"
+	HookBackupImport            = "backup.import"
+	HookUserHashValidate        = "user.hash_validate"
+	HookRevisionBeforeSave      = "revision.before_save"
+	HookRevisionAfterSave       = "revision.after_save"
+	HookWAFCheck                = "waf.check"
+	HookImageProcess            = "image.process"
+	HookAutosaveBeforeSave      = "autosave.before_save"
+	HookAutosaveAfterSave       = "autosave.after_save"
 )
 
 type ContentSavePayload struct {
@@ -339,6 +468,7 @@ type ContentTitlePayload struct {
 type ContentParserPayload struct {
 	Content any
 	Text    string
+	Mode    string
 	HTML    template.HTML
 	Handled bool
 }
@@ -372,6 +502,44 @@ type ExcerptPayload struct {
 	Output string
 }
 
+type ExcerptAfterPayload struct {
+	Content PublicContent
+	Text    string
+	Limit   int
+	Excerpt string
+}
+
+type ArchivePayload struct {
+	Type    string
+	Slug    string
+	Query   *PublicContentQuery
+	Results []PublicContent
+	Total   int64
+	Data    map[string]any
+	Handled bool
+}
+
+type ContentPermalinkPayload struct {
+	Content PublicContent
+	URL     string
+}
+
+type ContentAuthorPayload struct {
+	Content PublicContent
+	Author  PublicUser
+}
+
+type MetaPermalinkPayload struct {
+	Meta PublicMeta
+	URL  string
+}
+
+type FrontendHTMLPayload struct {
+	Location string
+	HTML     template.HTML
+	Data     map[string]any
+}
+
 type CommentSavePayload struct {
 	ID        int64
 	Operation string
@@ -401,6 +569,7 @@ type CommentRenderPayload struct {
 type CommentParserPayload struct {
 	Comment any
 	Text    string
+	Mode    string
 	HTML    template.HTML
 	Handled bool
 }
@@ -410,6 +579,28 @@ type CommentAvatarPayload struct {
 	Mail    string
 	Size    int
 	URL     string
+}
+
+type CommentPermalinkPayload struct {
+	Comment PublicComment
+	Content PublicContent
+	URL     string
+}
+
+type CommentListPayload struct {
+	Content  PublicContent
+	Comments []PublicComment
+	Views    any
+	Pager    any
+	HTML     template.HTML
+	Handled  bool
+}
+
+type CommentLinkPayload struct {
+	Comment PublicComment
+	Content PublicContent
+	URL     string
+	HTML    template.HTML
 }
 
 type UploadPayload struct {
@@ -504,6 +695,15 @@ type UserLoginPayload struct {
 	Message   string
 }
 
+type UserHashValidatePayload struct {
+	Name     string
+	Password string
+	Hash     string
+	User     PublicUser
+	Valid    bool
+	Handled  bool
+}
+
 type UserLogoutPayload struct {
 	User      PublicUser
 	IP        string
@@ -520,9 +720,10 @@ type UserRegisterPayload struct {
 }
 
 type AdminMenuItem struct {
-	Label string
-	URL   string
-	Icon  string
+	Label      string
+	URL        string
+	Icon       string
+	OpenNewTab bool
 }
 
 const (
@@ -545,6 +746,80 @@ type AdminNotice struct {
 
 type AdminMenuProvider interface {
 	AdminMenuItems(context.Context) []AdminMenuItem
+}
+
+type FeedItemPayload struct {
+	Kind    string
+	Content PublicContent
+	Comment PublicComment
+	Item    any
+	Handled bool
+}
+
+type XMLRPCTextPayload struct {
+	Method  string
+	Content PublicContent
+	Text    string
+}
+
+type XMLRPCUploadPayload struct {
+	Name    string
+	Data    []byte
+	Result  map[string]any
+	Handled bool
+}
+
+type XMLRPCPingbackPayload struct {
+	SourceURI string
+	TargetURI string
+	Content   PublicContent
+	Comment   PublicComment
+	Message   string
+	Handled   bool
+}
+
+type TrackbackPayload struct {
+	Content PublicContent
+	Input   any
+	Comment PublicComment
+	Handled bool
+}
+
+type BackupPayload struct {
+	Data    any
+	Handled bool
+}
+
+type RevisionPayload struct {
+	ContentID int64
+	Revision  any
+	Input     any
+	Handled   bool
+}
+
+type WAFPayload struct {
+	Request *http.Request
+	IP      string
+	Path    string
+	Blocked bool
+	Reason  string
+	Handled bool
+}
+
+type ImageProcessPayload struct {
+	Name    string
+	Data    []byte
+	MIME    string
+	Result  []byte
+	Warning string
+	Handled bool
+}
+
+type AutosavePayload struct {
+	ContentID int64
+	Input     any
+	Result    any
+	Handled   bool
 }
 
 // AdminNoticeProvider supplies messages for a plugin's native configuration page.
@@ -671,25 +946,70 @@ type PersonalConfigProvider interface {
 	PersonalConfigSchema() []FieldSchema
 }
 
-type SQLiteDatabase struct {
-	Name        string
-	Filename    string
-	Label       string
-	Description string
+type ColumnType string
+
+const (
+	ColInt64    ColumnType = "int64"
+	ColVarchar  ColumnType = "varchar"
+	ColText     ColumnType = "text"
+	ColFloat    ColumnType = "float"
+	ColDatetime ColumnType = "datetime"
+	ColBool     ColumnType = "bool"
+)
+
+type ColumnDefinition struct {
+	Name     string
+	Type     ColumnType
+	Length   int
+	Nullable bool
+	Default  string
+	Primary  bool
+	AutoInc  bool
 }
 
-type SQLiteDatabaseProvider interface {
-	SQLiteDatabases() []SQLiteDatabase
+type IndexDefinition struct {
+	Name    string
+	Columns []string
+	Unique  bool
+}
+
+type TableDefinition struct {
+	Name    string
+	Columns []ColumnDefinition
+	Indexes []IndexDefinition
+}
+
+type DatabaseProvider interface {
+	DatabaseTables() []TableDefinition
+	DatabaseVersion() int
+}
+
+type DatabaseMigrator interface {
+	Migrate(ctx context.Context, db *sql.DB, dialect string, fromVersion, toVersion int) error
 }
 
 type ContentFieldsProvider interface {
 	ContentFieldSchema() []FieldSchema
 }
 
+type ConfigValidator interface {
+	ValidateConfig(values map[string]string) map[string]string
+}
+
+type ConfigHandler interface {
+	HandleConfig(ctx context.Context, rt *Runtime, values map[string]string, isInit bool) error
+}
+
 type CommentBadge struct {
 	Label string
 	Icon  string
 	Tone  string
+}
+
+type CommentEnrichment struct {
+	Badges     []CommentBadge
+	CSSClasses []string
+	Extra      map[string]any
 }
 
 type Theme struct {
@@ -706,12 +1026,15 @@ type Theme struct {
 	Funcs                 template.FuncMap
 	ConfigSchema          []FieldSchema
 	ContentFields         []FieldSchema
+	ConfigValidator       func(map[string]string) map[string]string
+	ConfigHandler         func(context.Context, *Runtime, map[string]string, bool) error
 	AdminNotices          func(context.Context, *Runtime, map[string]string) []AdminNotice
 	AdminPages            []AdminPage
 	RenderAdminPage       func(context.Context, *Runtime, string, AdminPageRenderContext) (template.HTML, error)
 	HandleAdminPageAction func(context.Context, *Runtime, string, map[string][]string) (AdminPageActionResult, error)
-	CommentBadges         func(context.Context, *Runtime, map[string]string, []PublicComment) map[int64]CommentBadge
+	EnrichComments        func(context.Context, *Runtime, map[string]string, []PublicComment) map[int64]CommentEnrichment
 	Capabilities          ThemeCapabilities
+	InitRuntime           func(context.Context, *Runtime) error
 	AdjustData            func(context.Context, map[string]any) error
 	EditableDir           string
 	Embedded              bool

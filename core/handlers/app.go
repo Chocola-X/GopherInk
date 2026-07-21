@@ -45,6 +45,7 @@ import (
 	"github.com/Chocola-X/GopherInk/pkg/render"
 
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type App struct {
@@ -388,7 +389,7 @@ func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "登录", "Errors": v.Errors, "Name": name, "Next": next})
 			return
 		}
-		user, err := a.Users.Authenticate(r.Context(), name, r.FormValue("password"))
+		user, err := a.authenticateUserWithHooks(r.Context(), name, r.FormValue("password"))
 		if err != nil {
 			a.recordLoginFailure(a.clientIP(r), name)
 			loginPayload.Success = false
@@ -425,6 +426,36 @@ func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
+}
+
+func (a *App) authenticateUserWithHooks(ctx context.Context, name, password string) (models.User, error) {
+	ctx = services.WithWriter(ctx)
+	user, err := a.Users.ByName(ctx, name)
+	if err != nil {
+		return models.User{}, err
+	}
+	payload := plugin.UserHashValidatePayload{
+		Name:     name,
+		Password: password,
+		Hash:     user.Password,
+		User:     publicUserForPlugin(user),
+	}
+	if out, hookErr := a.Plugins.ApplyActive(ctx, plugin.HookUserHashValidate, payload); hookErr != nil {
+		return models.User{}, hookErr
+	} else if next, ok := out.(plugin.UserHashValidatePayload); ok {
+		payload = next
+	}
+	valid := payload.Valid
+	if !payload.Handled {
+		valid = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)) == nil
+	}
+	if !valid {
+		return models.User{}, errors.New("invalid credentials")
+	}
+	if err := a.Users.TouchLogged(ctx, user.UID); err != nil {
+		return models.User{}, err
+	}
+	return user, nil
 }
 
 func (a *App) adminRegister(w http.ResponseWriter, r *http.Request) {
@@ -1170,13 +1201,13 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
-				if err := a.runContentAfterSave(r.Context(), savePayload, publishedID, plugin.HookContentAfterPublish); err != nil {
+				if err := a.runContentAfterSave(r.Context(), savePayload, publishedID); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
 				a.flashRedirect(w, r, contentActionURL(typ, publishedID), http.StatusSeeOther, flashNotice{Type: "success", Message: "内容已发布。"})
 			} else {
-				if err := a.runContentAfterSave(r.Context(), savePayload, draftID, plugin.HookContentAfterDraftSave); err != nil {
+				if err := a.runContentAfterSave(r.Context(), savePayload, draftID); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
@@ -1194,11 +1225,7 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		specificHook := plugin.HookContentAfterDraftSave
-		if operation == "publish" {
-			specificHook = plugin.HookContentAfterPublish
-		}
-		if err := a.runContentAfterSave(r.Context(), savePayload, id, specificHook); err != nil {
+		if err := a.runContentAfterSave(r.Context(), savePayload, id); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1242,10 +1269,25 @@ func (a *App) saveContentSnapshotFromForm(w http.ResponseWriter, r *http.Request
 		}
 	}
 	revision := contentRevisionFromInput(revisionCID, base, input, authorID)
+	revisionPayload := plugin.RevisionPayload{ContentID: revisionCID, Revision: revision, Input: input}
+	if out, hookErr := a.Plugins.ApplyActive(r.Context(), plugin.HookRevisionBeforeSave, revisionPayload); hookErr != nil {
+		http.Error(w, hookErr.Error(), http.StatusBadRequest)
+		return
+	} else if next, ok := out.(plugin.RevisionPayload); ok {
+		if next.Handled {
+			a.flashRedirect(w, r, contentActionURL(typ, revisionCID), http.StatusSeeOther, flashNotice{Type: "success", Message: "快照已保存。"})
+			return
+		}
+		if typed, ok := next.Revision.(models.Content); ok {
+			revision = typed
+		}
+	}
 	if err := a.Contents.SaveRevision(r.Context(), revision); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	revisionPayload.Revision = revision
+	_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookRevisionAfterSave, revisionPayload)
 	a.flashRedirect(w, r, contentActionURL(typ, revisionCID), http.StatusSeeOther, flashNotice{Type: "success", Message: "快照已保存。"})
 }
 
@@ -1317,18 +1359,12 @@ func (a *App) discardContentDraftFromForm(w http.ResponseWriter, r *http.Request
 	a.flashRedirect(w, r, redirectTo, http.StatusSeeOther, flashNotice{Type: "success", Message: "草稿已丢弃。"})
 }
 
-func (a *App) runContentAfterSave(ctx context.Context, payload plugin.ContentSavePayload, id int64, specificHook string) error {
+func (a *App) runContentAfterSave(ctx context.Context, payload plugin.ContentSavePayload, id int64) error {
 	payload.ID = id
 	if content, err := a.Contents.ByID(ctx, id); err == nil {
 		payload.Content = content
 	}
-	if _, err := a.Plugins.ApplyActive(ctx, plugin.HookContentAfterSave, payload); err != nil {
-		return err
-	}
-	if specificHook == "" {
-		return nil
-	}
-	_, err := a.Plugins.ApplyActive(ctx, specificHook, payload)
+	_, err := a.Plugins.ApplyActive(ctx, plugin.HookContentAfterSave, payload)
 	return err
 }
 
@@ -1351,14 +1387,7 @@ func (a *App) saveContentWithHooks(ctx context.Context, id int64, input services
 	if err != nil {
 		return id, err
 	}
-	specificHook := ""
-	switch operation {
-	case "publish":
-		specificHook = plugin.HookContentAfterPublish
-	case "draft", "autosave":
-		specificHook = plugin.HookContentAfterDraftSave
-	}
-	return id, a.runContentAfterSave(ctx, payload, id, specificHook)
+	return id, a.runContentAfterSave(ctx, payload, id)
 }
 
 func (a *App) runContentStatusAfter(ctx context.Context, payload plugin.ContentStatusPayload, id int64) error {
@@ -2034,24 +2063,6 @@ func (a *App) saveCommentWithHooks(ctx context.Context, input services.SaveComme
 			input = nextInput
 		}
 	}
-	specificBefore := ""
-	specificAfter := ""
-	switch operation {
-	case "reply":
-		specificBefore, specificAfter = plugin.HookCommentBeforeReply, plugin.HookCommentAfterReply
-	case "edit":
-		specificBefore, specificAfter = plugin.HookCommentBeforeEdit, plugin.HookCommentAfterEdit
-	}
-	if specificBefore != "" {
-		if out, err := a.Plugins.ApplyActive(ctx, specificBefore, payload); err != nil {
-			return payload, err
-		} else if next, ok := out.(plugin.CommentSavePayload); ok {
-			payload = next
-			if nextInput, ok := next.Input.(services.SaveCommentInput); ok {
-				input = nextInput
-			}
-		}
-	}
 	commentID, err := a.Comments.SaveReturningID(ctx, input, id)
 	if err != nil {
 		return payload, err
@@ -2063,11 +2074,6 @@ func (a *App) saveCommentWithHooks(ctx context.Context, input services.SaveComme
 	}
 	if _, err := a.Plugins.ApplyActive(ctx, plugin.HookCommentAfterSave, payload); err != nil {
 		return payload, err
-	}
-	if specificAfter != "" {
-		if _, err := a.Plugins.ApplyActive(ctx, specificAfter, payload); err != nil {
-			return payload, err
-		}
 	}
 	return payload, nil
 }
@@ -3000,11 +3006,18 @@ func (a *App) adminPluginRoutes(w http.ResponseWriter, r *http.Request) {
 			methodNotAllowed(w, http.MethodPost)
 			return
 		}
-		if len(parts) != 4 || parts[3] != "clear" {
+		if len(parts) != 4 {
 			http.NotFound(w, r)
 			return
 		}
-		a.adminPluginDatabaseClear(w, r, name, parts[2])
+		switch parts[3] {
+		case "clear":
+			a.adminPluginDatabaseClear(w, r, name, parts[2])
+		case "mode":
+			a.adminPluginDatabaseMode(w, r, name, parts[2])
+		default:
+			http.NotFound(w, r)
+		}
 	default:
 		http.NotFound(w, r)
 	}
@@ -3059,13 +3072,12 @@ type pluginView struct {
 }
 
 type pluginDatabaseView struct {
-	Name        string
-	Label       string
-	Description string
-	Filename    string
-	Size        string
-	SizeBytes   int64
-	Error       string
+	Name       string
+	TableCount int
+	Mode       string
+	Size       string
+	SizeBytes  int64
+	Error      string
 }
 
 func (a *App) pluginViews(ctx context.Context) []pluginView {
@@ -3097,29 +3109,33 @@ func (a *App) pluginViews(ctx context.Context) []pluginView {
 }
 
 func (a *App) pluginDatabaseViews(owner string, p plugin.Plugin) []pluginDatabaseView {
-	provider, ok := p.(plugin.SQLiteDatabaseProvider)
+	provider, ok := p.(plugin.DatabaseProvider)
 	if !ok {
 		return nil
 	}
-	dbs := normalizeSQLiteDatabases(provider.SQLiteDatabases())
-	out := make([]pluginDatabaseView, 0, len(dbs))
-	for _, item := range dbs {
-		view := pluginDatabaseView{
-			Name:        item.Name,
-			Label:       item.Label,
-			Description: item.Description,
-			Filename:    item.Filename,
-		}
-		size, err := a.extensionSQLiteSize(pluginDatabaseOwner(owner), item.Filename)
+	tables := provider.DatabaseTables()
+	if len(tables) == 0 {
+		return nil
+	}
+	view := pluginDatabaseView{
+		Name:       owner,
+		TableCount: len(tables),
+	}
+	ctx := context.Background()
+	dbMode := a.option(ctx, "plugin_db_mode_"+owner, "sqlite")
+	view.Mode = dbMode
+	if dbMode == "sqlite" {
+		dir := filepath.Join(a.DataDir, "extensions", "plugin-"+owner)
+		dbPath := filepath.Join(dir, owner+".db")
+		size, err := a.extensionSQLiteSizeByPath(dbPath)
 		if err != nil {
 			view.Error = err.Error()
 		} else {
 			view.SizeBytes = size
 			view.Size = formatBytes(size)
 		}
-		out = append(out, view)
 	}
-	return out
+	return []pluginDatabaseView{view}
 }
 
 func (a *App) adminPluginDatabaseClear(w http.ResponseWriter, r *http.Request, name, dbName string) {
@@ -3128,29 +3144,61 @@ func (a *App) adminPluginDatabaseClear(w http.ResponseWriter, r *http.Request, n
 		http.NotFound(w, r)
 		return
 	}
-	provider, ok := p.(plugin.SQLiteDatabaseProvider)
+	provider, ok := p.(plugin.DatabaseProvider)
 	if !ok {
 		http.NotFound(w, r)
 		return
 	}
-	var target plugin.SQLiteDatabase
-	found := false
-	for _, item := range normalizeSQLiteDatabases(provider.SQLiteDatabases()) {
-		if item.Name == dbName {
-			target = item
-			found = true
-			break
-		}
-	}
-	if !found {
+	tables := provider.DatabaseTables()
+	if len(tables) == 0 {
 		http.NotFound(w, r)
 		return
 	}
-	if err := a.clearExtensionSQLite(r.Context(), pluginDatabaseOwner(name), target.Filename); err != nil {
+	dbMode := a.option(r.Context(), "plugin_db_mode_"+name, "sqlite")
+	if dbMode == "sqlite" {
+		owner := pluginDatabaseOwner(name)
+		filename := name + ".db"
+		if err := a.clearExtensionSQLite(r.Context(), owner, filename); err != nil {
+			a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
+			return
+		}
+	} else {
+		if err := models.DropPluginTables(r.Context(), a.Contents.DB(), string(a.Contents.Dialect()), name, tables); err != nil {
+			a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
+			return
+		}
+	}
+	_ = a.Options.Set(r.Context(), "plugin_db_version_"+name, "0")
+	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "插件数据库已清除。"})
+}
+
+func (a *App) adminPluginDatabaseMode(w http.ResponseWriter, r *http.Request, name, dbName string) {
+	p, ok := a.Plugins.Plugin(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	provider, ok := p.(plugin.DatabaseProvider)
+	if !ok || len(provider.DatabaseTables()) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	mode := strings.TrimSpace(r.FormValue("mode"))
+	if mode != "merged" {
+		mode = "sqlite"
+	}
+	if err := a.Options.Set(r.Context(), "plugin_db_mode_"+name, mode); err != nil {
 		a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
 		return
 	}
-	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "插件数据库已清除。"})
+	if a.Plugins.IsActive(name) {
+		if err := a.initializePluginDatabase(r.Context(), name, p); err != nil {
+			a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
+			return
+		}
+	}
+	_ = dbName
+	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "插件数据库存储形式已保存。"})
 }
 
 func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name string, enable bool) {
@@ -3167,6 +3215,10 @@ func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name str
 	active := a.activePluginSet(r.Context())
 	runtime := a.pluginRuntime().WithOwner(name)
 	if enable {
+		if err := a.initializePluginDatabase(r.Context(), name, p); err != nil {
+			http.Error(w, "初始化插件数据库失败："+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		if activator, ok := p.(plugin.Activator); ok {
 			if err := activator.Activate(r.Context(), runtime); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -3189,6 +3241,49 @@ func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name str
 	}
 	a.syncActivePlugins(r.Context())
 	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: "success", Message: "插件状态已保存。"})
+}
+
+func (a *App) initializePluginDatabase(ctx context.Context, name string, p plugin.Plugin) error {
+	provider, ok := p.(plugin.DatabaseProvider)
+	if !ok || len(provider.DatabaseTables()) == 0 {
+		return nil
+	}
+	runtime := a.pluginRuntime().WithOwner(name)
+	dbMode := a.option(ctx, "plugin_db_mode_"+name, a.option(ctx, "plugin_db_default_mode", "sqlite"))
+	var pluginDB *sql.DB
+	var pluginDialect string
+	if dbMode == "merged" {
+		pluginDB = a.Contents.DB()
+		pluginDialect = string(a.Contents.Dialect())
+	} else {
+		var dbErr error
+		runtimeCtx := plugin.ContextWithRuntime(ctx, runtime)
+		pluginDB, dbErr = a.openPluginDBForRuntime(runtimeCtx)
+		if dbErr != nil {
+			return dbErr
+		}
+		pluginDialect = string(models.DialectSQLite)
+	}
+	if err := models.CreatePluginTables(ctx, pluginDB, pluginDialect, name, provider.DatabaseTables()); err != nil {
+		return err
+	}
+	toVersion := provider.DatabaseVersion()
+	if toVersion < 0 {
+		toVersion = 0
+	}
+	versionKey := "plugin_db_version_" + name
+	fromVersion := optionInt(a.option(ctx, versionKey, "0"), 0)
+	if migrator, ok := p.(plugin.DatabaseMigrator); ok && fromVersion != toVersion {
+		if err := migrator.Migrate(ctx, pluginDB, pluginDialect, fromVersion, toVersion); err != nil {
+			return err
+		}
+	}
+	if fromVersion != toVersion {
+		if err := a.Options.Set(ctx, versionKey, strconv.Itoa(toVersion)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name string, personal bool) {
@@ -3256,6 +3351,18 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 		AdminActions: adminActions,
 		PluginName:   name,
 		PluginPages:  adminPages,
+		Validator: func(values map[string]string) map[string]string {
+			if validator, ok := p.(plugin.ConfigValidator); ok {
+				return validator.ValidateConfig(copyStringMap(values))
+			}
+			return nil
+		},
+		Handler: func(ctx context.Context, values map[string]string, isInit bool) error {
+			if handler, ok := p.(plugin.ConfigHandler); ok {
+				return handler.HandleConfig(ctx, a.pluginRuntime().WithOwner(name), copyStringMap(values), isInit)
+			}
+			return nil
+		},
 	})
 }
 
@@ -3388,6 +3495,18 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 		},
 		ThemeName:  name,
 		ThemePages: adminPages,
+		Validator: func(values map[string]string) map[string]string {
+			if theme.ConfigValidator != nil {
+				return theme.ConfigValidator(copyStringMap(values))
+			}
+			return nil
+		},
+		Handler: func(ctx context.Context, values map[string]string, isInit bool) error {
+			if theme.ConfigHandler != nil {
+				return theme.ConfigHandler(ctx, a.pluginRuntime().WithComponent("theme", name), copyStringMap(values), isInit)
+			}
+			return nil
+		},
 	})
 }
 
@@ -3682,6 +3801,8 @@ type schemaFormConfig struct {
 	PluginPages  []plugin.AdminPage
 	ThemeName    string
 	ThemePages   []plugin.AdminPage
+	Validator    func(map[string]string) map[string]string
+	Handler      func(context.Context, map[string]string, bool) error
 }
 
 type schemaFieldView struct {
@@ -3733,13 +3854,26 @@ func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormC
 			a.renderSchemaForm(w, r, cfg, values, err.Error())
 			return
 		}
+		if cfg.Validator != nil {
+			if errs := cfg.Validator(values); len(errs) > 0 {
+				a.renderSchemaForm(w, r, cfg, values, strings.Join(schemaValidationMessages(errs), "；"))
+				return
+			}
+		}
 		existing, err := a.optionJSONForUser(r.Context(), cfg.OptionKey, cfg.UserID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		isInit := len(existing) == 0
 		for key, value := range values {
 			existing[key] = value
+		}
+		if cfg.Handler != nil {
+			if err := cfg.Handler(r.Context(), existing, isInit); err != nil {
+				a.renderSchemaForm(w, r, cfg, values, err.Error())
+				return
+			}
 		}
 		if err := a.setOptionJSONForUser(r.Context(), cfg.OptionKey, existing, cfg.UserID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -3821,6 +3955,15 @@ func (a *App) adminAutosave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := a.currentUser(r)
+	autosavePayload := plugin.AutosavePayload{ContentID: id, Input: input}
+	if out, hookErr := a.Plugins.ApplyActive(r.Context(), plugin.HookAutosaveBeforeSave, autosavePayload); hookErr != nil {
+		http.Error(w, hookErr.Error(), http.StatusBadRequest)
+		return
+	} else if next, ok := out.(plugin.AutosavePayload); ok {
+		if nextInput, ok := next.Input.(services.SaveContentInput); ok {
+			input = nextInput
+		}
+	}
 	savePayload := plugin.ContentSavePayload{ID: id, AuthorID: user.UID, Operation: "autosave", Input: input}
 	if payload, hookErr := a.Plugins.ApplyActive(r.Context(), plugin.HookContentBeforeSave, savePayload); hookErr != nil {
 		http.Error(w, hookErr.Error(), http.StatusBadRequest)
@@ -3863,11 +4006,14 @@ func (a *App) adminAutosave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	savePayload.PublishedID = responseID
-	if err := a.runContentAfterSave(r.Context(), savePayload, previewID, plugin.HookContentAfterDraftSave); err != nil {
+	if err := a.runContentAfterSave(r.Context(), savePayload, previewID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	item, _ := a.Contents.ByID(r.Context(), previewID)
+	autosavePayload.ContentID = responseID
+	autosavePayload.Result = item
+	_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookAutosaveAfterSave, autosavePayload)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cid": responseID, "preview": a.previewURL(r, item)})
 }
@@ -4882,6 +5028,14 @@ func (a *App) adminBackup(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
+			if out, hookErr := a.Plugins.ApplyActive(r.Context(), plugin.HookBackupExport, plugin.BackupPayload{Data: payload}); hookErr != nil {
+				http.Error(w, hookErr.Error(), http.StatusInternalServerError)
+				return
+			} else if next, ok := out.(plugin.BackupPayload); ok {
+				if data, ok := next.Data.(backupData); ok {
+					payload = data
+				}
+			}
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.Header().Set("Content-Disposition", `attachment; filename="gopherink-backup.json"`)
 			_ = json.NewEncoder(w).Encode(payload)
@@ -4909,6 +5063,14 @@ func (a *App) adminBackup(w http.ResponseWriter, r *http.Request) {
 				}
 				a.renderAdmin(w, r, "backup.html", map[string]any{"Title": "备份", "ImportPlan": plan})
 				return
+			}
+			if out, hookErr := a.Plugins.ApplyActive(r.Context(), plugin.HookBackupImport, plugin.BackupPayload{Data: payload}); hookErr != nil {
+				http.Error(w, hookErr.Error(), http.StatusInternalServerError)
+				return
+			} else if next, ok := out.(plugin.BackupPayload); ok {
+				if data, ok := next.Data.(backupData); ok {
+					payload = data
+				}
 			}
 			if err := a.importBackupPayload(r.Context(), payload, importSections(r)); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -5022,7 +5184,7 @@ func (a *App) renderPostContent(w http.ResponseWriter, r *http.Request, post mod
 	for i := range related {
 		related[i], _ = a.filterContentTitle(r.Context(), related[i])
 	}
-	a.renderTheme(w, r, "post.html", map[string]any{
+	data := map[string]any{
 		"Post":                post,
 		"ContentHTML":         contentHTML,
 		"Comments":            comments,
@@ -5043,7 +5205,18 @@ func (a *App) renderPostContent(w http.ResponseWriter, r *http.Request, post mod
 		"CommentsRequireMail": optionBool(a.option(r.Context(), "comments_require_mail", "1")),
 		"CommentsRequireURL":  optionBool(a.option(r.Context(), "comments_require_url", "0")),
 		"CanonicalPath":       a.contentURL(r.Context(), post),
-	})
+	}
+	if author, err := a.contentAuthorForPlugin(r.Context(), post); err == nil {
+		data["Author"] = author
+	}
+	data["ArchiveType"] = "post"
+	archivePayload := plugin.ArchivePayload{Type: "post", Slug: post.Slug, Results: []plugin.PublicContent{a.contentToPublic(post)}, Data: data}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookArchiveBeforeRender, archivePayload); err == nil {
+		if next, ok := out.(plugin.ArchivePayload); ok && next.Data != nil {
+			data = next.Data
+		}
+	}
+	a.renderTheme(w, r, "post.html", data)
 }
 
 func (a *App) frontPage(w http.ResponseWriter, r *http.Request) {
@@ -5098,9 +5271,19 @@ func (a *App) renderPageContent(w http.ResponseWriter, r *http.Request, pageData
 		"CommentsRequireURL":  optionBool(a.option(r.Context(), "comments_require_url", "0")),
 		"CanonicalPath":       a.contentURL(r.Context(), pageData),
 	}
+	if author, err := a.contentAuthorForPlugin(r.Context(), pageData); err == nil {
+		data["Author"] = author
+	}
 	for _, values := range extra {
 		for key, value := range values {
 			data[key] = value
+		}
+	}
+	data["ArchiveType"] = "page"
+	archivePayload := plugin.ArchivePayload{Type: "page", Slug: pageData.Slug, Results: []plugin.PublicContent{a.contentToPublic(pageData)}, Data: data}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookArchiveBeforeRender, archivePayload); err == nil {
+		if next, ok := out.(plugin.ArchivePayload); ok && next.Data != nil {
+			data = next.Data
 		}
 	}
 	a.renderTheme(w, r, "post.html", data)
@@ -5212,7 +5395,28 @@ func (a *App) frontSearch(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/search/") {
 		keywords, _ = neturl.PathUnescape(strings.Trim(strings.TrimPrefix(r.URL.Path, "/search/"), "/"))
 	}
-	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Keywords: keywords}, "搜索："+keywords, map[string]any{"Keywords": keywords, "CanonicalPath": searchPath(keywords)})
+	publicQuery := plugin.PublicContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Keywords: keywords}
+	searchPayload := plugin.ArchivePayload{Type: "search", Slug: keywords, Query: &publicQuery}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookArchiveSearch, searchPayload); err == nil {
+		if next, ok := out.(plugin.ArchivePayload); ok && next.Handled {
+			results := next.Results
+			data := map[string]any{
+				"Title":        "搜索：" + keywords,
+				"ArchiveTitle": "搜索：" + keywords,
+				"Posts":        results,
+				"PostFields":   map[int64]map[string]string{},
+				"Keywords":     keywords,
+				"ArchiveType":  "search",
+				"Pagination": pagination{
+					Page: 1, PageSize: 20, Total: next.Total, TotalPages: 1,
+				},
+				"CanonicalPath": searchPath(keywords),
+			}
+			a.renderTheme(w, r, "index.html", data)
+			return
+		}
+	}
+	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Keywords: keywords}, "搜索："+keywords, map[string]any{"Keywords": keywords, "ArchiveType": "search", "CanonicalPath": searchPath(keywords)})
 }
 
 func (a *App) frontArchive(w http.ResponseWriter, r *http.Request) {
@@ -5523,14 +5727,32 @@ func (a *App) writeRSS(w http.ResponseWriter, r *http.Request, posts []models.Co
 	for _, post := range posts {
 		text := feedText(post.Text, site["feed_full_text"] == "1")
 		link := baseURL + a.contentURL(r.Context(), post)
-		items = append(items, rssItem{Title: post.Title, Link: link, GUID: link, PubDate: time.Unix(post.Created, 0).Format(time.RFC1123Z), Description: text})
+		item := rssItem{Title: post.Title, Link: link, GUID: link, PubDate: time.Unix(post.Created, 0).Format(time.RFC1123Z), Description: text}
+		payload := plugin.FeedItemPayload{Kind: "rss", Content: a.contentToPublic(post), Item: item}
+		if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFeedItem, payload); err == nil {
+			if next, ok := out.(plugin.FeedItemPayload); ok {
+				if typed, ok := next.Item.(rssItem); ok {
+					item = typed
+				}
+			}
+		}
+		items = append(items, item)
 	}
 	for _, comment := range comments {
 		link := baseURL + "#comment-" + strconv.FormatInt(comment.COID, 10)
 		if content, err := a.Contents.ByID(r.Context(), comment.CID); err == nil && (content.Type == models.ContentTypePost || content.Type == models.ContentTypePage) {
 			link = baseURL + a.contentURL(r.Context(), content) + "#comment-" + strconv.FormatInt(comment.COID, 10)
 		}
-		items = append(items, rssItem{Title: comment.Author + " 的评论", Link: link, GUID: link, PubDate: time.Unix(comment.Created, 0).Format(time.RFC1123Z), Description: render.Excerpt(comment.Text, 240)})
+		item := rssItem{Title: comment.Author + " 的评论", Link: link, GUID: link, PubDate: time.Unix(comment.Created, 0).Format(time.RFC1123Z), Description: render.Excerpt(comment.Text, 240)}
+		payload := plugin.FeedItemPayload{Kind: "rss_comment", Comment: a.commentToPublic(comment), Item: item}
+		if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFeedCommentItem, payload); err == nil {
+			if next, ok := out.(plugin.FeedItemPayload); ok {
+				if typed, ok := next.Item.(rssItem); ok {
+					item = typed
+				}
+			}
+		}
+		items = append(items, item)
 	}
 	feed := rssFeed{Version: "2.0", Channel: rssChannel{Title: title, Link: baseURL + strings.TrimSuffix(feedPath, "/feed.xml"), Description: description, Items: items}}
 	w.Header().Set("Content-Type", "application/rss+xml; charset=utf-8")
@@ -5554,7 +5776,16 @@ func (a *App) frontAtom(w http.ResponseWriter, r *http.Request) {
 	feed := atomFeed{Xmlns: "http://www.w3.org/2005/Atom", ID: baseURL + "/", Title: site["site_title"], Updated: time.Now().Format(time.RFC3339), Links: []atomLink{{Href: baseURL + "/atom.xml", Rel: "self"}, {Href: baseURL + "/", Rel: "alternate"}}}
 	for _, post := range posts {
 		link := baseURL + a.contentURL(r.Context(), post)
-		feed.Entries = append(feed.Entries, atomEntry{ID: link, Title: post.Title, Link: atomLink{Href: link, Rel: "alternate"}, Updated: time.Unix(post.Modified, 0).Format(time.RFC3339), Published: time.Unix(post.Created, 0).Format(time.RFC3339), Content: atomContent{Type: "html", Body: feedText(post.Text, site["feed_full_text"] == "1")}})
+		entry := atomEntry{ID: link, Title: post.Title, Link: atomLink{Href: link, Rel: "alternate"}, Updated: time.Unix(post.Modified, 0).Format(time.RFC3339), Published: time.Unix(post.Created, 0).Format(time.RFC3339), Content: atomContent{Type: "html", Body: feedText(post.Text, site["feed_full_text"] == "1")}}
+		payload := plugin.FeedItemPayload{Kind: "atom", Content: a.contentToPublic(post), Item: entry}
+		if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFeedItem, payload); err == nil {
+			if next, ok := out.(plugin.FeedItemPayload); ok {
+				if typed, ok := next.Item.(atomEntry); ok {
+					entry = typed
+				}
+			}
+		}
+		feed.Entries = append(feed.Entries, entry)
 	}
 	w.Header().Set("Content-Type", "application/atom+xml; charset=utf-8")
 	_, _ = w.Write([]byte(xml.Header))
@@ -5622,6 +5853,83 @@ func (a *App) listContentsWithListHook(ctx context.Context, view, title string, 
 }
 
 func (a *App) renderPostListWithData(w http.ResponseWriter, r *http.Request, query services.ContentQuery, title string, extra map[string]any) {
+	archiveType := "index"
+	if t, ok := extra["ArchiveType"]; ok {
+		if s, ok := t.(string); ok && s != "" {
+			archiveType = s
+		}
+	} else {
+		switch {
+		case query.Keywords != "":
+			archiveType = "search"
+		case query.Category > 0:
+			archiveType = "category"
+		case query.Tag > 0:
+			archiveType = "tag"
+		case query.AuthorID > 0:
+			archiveType = "author"
+		case query.Year > 0:
+			archiveType = "date"
+		}
+	}
+	publicQuery := plugin.PublicContentQuery{
+		CID: query.CID, Slug: query.Slug, SlugID: query.SlugID, Type: query.Type,
+		Status: query.Status, Keywords: query.Keywords, Category: query.Category,
+		Tag: query.Tag, AuthorID: query.AuthorID, Year: query.Year, Month: query.Month,
+		Day: query.Day, Limit: query.Limit, Offset: query.Offset,
+		IncludeDrafts: query.IncludeDrafts, ExcludeFuture: query.ExcludeFuture,
+	}
+	archivePayload := plugin.ArchivePayload{Type: archiveType, Query: &publicQuery}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookArchiveBeforeQuery, archivePayload); err == nil {
+		if next, ok := out.(plugin.ArchivePayload); ok {
+			archivePayload = next
+			if next.Query != nil {
+				publicQuery = *next.Query
+				query.CID = publicQuery.CID
+				query.Slug = publicQuery.Slug
+				query.SlugID = publicQuery.SlugID
+				query.Type = publicQuery.Type
+				query.Status = publicQuery.Status
+				query.Keywords = publicQuery.Keywords
+				query.Category = publicQuery.Category
+				query.Tag = publicQuery.Tag
+				query.AuthorID = publicQuery.AuthorID
+				query.Year = publicQuery.Year
+				query.Month = publicQuery.Month
+				query.Day = publicQuery.Day
+				query.IncludeDrafts = publicQuery.IncludeDrafts
+				query.ExcludeFuture = publicQuery.ExcludeFuture
+			}
+			if next.Handled {
+				results := next.Results
+				data := map[string]any{
+					"Title":        title,
+					"ArchiveTitle": title,
+					"ArchiveType":  archiveType,
+					"Posts":        results,
+					"PostFields":   map[int64]map[string]string{},
+					"Keywords":     query.Keywords,
+					"Pagination": pagination{
+						Page:       1,
+						PageSize:   query.Limit,
+						Total:      next.Total,
+						TotalPages: 1,
+					},
+				}
+				for key, value := range extra {
+					data[key] = value
+				}
+				archivePayload.Data = data
+				if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookArchiveBeforeRender, archivePayload); err == nil {
+					if next, ok := out.(plugin.ArchivePayload); ok && next.Data != nil {
+						data = next.Data
+					}
+				}
+				a.renderTheme(w, r, "index.html", data)
+				return
+			}
+		}
+	}
 	page := optionInt(r.URL.Query().Get("page"), 1)
 	if page < 1 {
 		page = 1
@@ -5637,6 +5945,21 @@ func (a *App) renderPostListWithData(w http.ResponseWriter, r *http.Request, que
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+	publicResults := make([]plugin.PublicContent, 0, len(posts))
+	for _, p := range posts {
+		publicResults = append(publicResults, a.contentToPublic(p))
+	}
+	archivePayload.Results = publicResults
+	archivePayload.Total = total
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookArchiveAfterQuery, archivePayload); err == nil {
+		if next, ok := out.(plugin.ArchivePayload); ok {
+			archivePayload = next
+			publicResults = next.Results
+			if next.Total > 0 {
+				total = next.Total
+			}
+		}
 	}
 	for i := range posts {
 		filtered, err := a.filterContentTitle(r.Context(), posts[i])
@@ -5659,6 +5982,7 @@ func (a *App) renderPostListWithData(w http.ResponseWriter, r *http.Request, que
 	data := map[string]any{
 		"Title":        title,
 		"ArchiveTitle": title,
+		"ArchiveType":  archiveType,
 		"Posts":        posts,
 		"PostFields":   fieldMaps,
 		"Keywords":     query.Keywords,
@@ -5675,6 +5999,12 @@ func (a *App) renderPostListWithData(w http.ResponseWriter, r *http.Request, que
 	}
 	for key, value := range extra {
 		data[key] = value
+	}
+	archivePayload.Data = data
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookArchiveBeforeRender, archivePayload); err == nil {
+		if next, ok := out.(plugin.ArchivePayload); ok && next.Data != nil {
+			data = next.Data
+		}
 	}
 	a.renderTheme(w, r, "index.html", data)
 }
@@ -5724,7 +6054,6 @@ func (a *App) commentsForPost(r *http.Request, post models.Content) ([]commentVi
 	} else if maxLevel > 7 {
 		maxLevel = 7
 	}
-	views := a.commentViews(r, comments, roots[start:end], maxLevel, a.themeCommentBadges(r.Context(), comments))
 	pager := commentPagination{
 		Page:       page,
 		PageSize:   pageSize,
@@ -5735,10 +6064,33 @@ func (a *App) commentsForPost(r *http.Request, post models.Content) ([]commentVi
 		HasPrev:    page > 1,
 		HasNext:    page < totalPages,
 	}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookCommentPageNav, plugin.CommentListPayload{Content: a.contentToPublic(post), Comments: a.publicComments(comments), Pager: pager}); err == nil {
+		if next, ok := out.(plugin.CommentListPayload); ok {
+			if typed, ok := next.Pager.(commentPagination); ok {
+				pager = typed
+			}
+		}
+	}
+	views := a.commentViews(r, post, comments, roots[start:end], maxLevel, a.themeEnrichComments(r.Context(), comments))
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookCommentListRender, plugin.CommentListPayload{Content: a.contentToPublic(post), Comments: a.publicComments(comments), Views: views, Pager: pager}); err == nil {
+		if next, ok := out.(plugin.CommentListPayload); ok {
+			if typed, ok := next.Views.([]commentView); ok {
+				views = typed
+			}
+		}
+	}
 	return views, pager, nil
 }
 
-func (a *App) commentViews(r *http.Request, comments []models.Comment, roots []models.Comment, maxLevel int, badges map[int64]plugin.CommentBadge) []commentView {
+func (a *App) publicComments(comments []models.Comment) []plugin.PublicComment {
+	out := make([]plugin.PublicComment, 0, len(comments))
+	for _, comment := range comments {
+		out = append(out, a.commentToPublic(comment))
+	}
+	return out
+}
+
+func (a *App) commentViews(r *http.Request, post models.Content, comments []models.Comment, roots []models.Comment, maxLevel int, enrichments map[int64]plugin.CommentEnrichment) []commentView {
 	children := make(map[int64][]models.Comment)
 	byID := make(map[int64]models.Comment)
 	for _, comment := range comments {
@@ -5753,7 +6105,7 @@ func (a *App) commentViews(r *http.Request, comments []models.Comment, roots []m
 		if maxLevel > 0 && displayLevel >= maxLevel {
 			displayLevel = maxLevel - 1
 		}
-		view := a.commentView(r, comment, displayLevel, badges[comment.COID])
+		view := a.commentView(r, post, comment, displayLevel, enrichments[comment.COID])
 		if parent, ok := byID[comment.Parent]; ok {
 			view.ParentAuthor = parent.Author
 			view.ParentAnchor = fmt.Sprintf("comment-%d", parent.COID)
@@ -5770,24 +6122,31 @@ func (a *App) commentViews(r *http.Request, comments []models.Comment, roots []m
 	return out
 }
 
-func (a *App) commentView(r *http.Request, comment models.Comment, level int, badge plugin.CommentBadge) commentView {
+func (a *App) commentView(r *http.Request, post models.Content, comment models.Comment, level int, enrichment plugin.CommentEnrichment) commentView {
 	comment = a.filterComment(r.Context(), comment)
+	replyURL := commentReplyURL(r, comment.COID)
+	replyPayload := plugin.CommentLinkPayload{Content: a.contentToPublic(post), Comment: a.commentToPublic(comment), URL: replyURL}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookCommentReplyLink, replyPayload); err == nil {
+		if next, ok := out.(plugin.CommentLinkPayload); ok && next.URL != "" {
+			replyURL = next.URL
+		}
+	}
 	return commentView{
 		Comment:    comment,
 		Level:      level,
 		BodyHTML:   a.renderCommentText(r, comment),
 		AuthorHTML: a.commentAuthorHTML(r, comment),
 		AvatarURL:  a.commentAvatarURL(r.Context(), comment, 48),
-		ReplyURL:   commentReplyURL(r, comment.COID),
+		ReplyURL:   replyURL,
 		Anchor:     fmt.Sprintf("comment-%d", comment.COID),
 		Pending:    comment.Status == "waiting",
-		Badge:      badge,
+		Enrichment: enrichment,
 	}
 }
 
-func (a *App) themeCommentBadges(ctx context.Context, comments []models.Comment) map[int64]plugin.CommentBadge {
+func (a *App) themeEnrichComments(ctx context.Context, comments []models.Comment) map[int64]plugin.CommentEnrichment {
 	theme, ok := a.activeTheme(ctx)
-	if !ok || theme.CommentBadges == nil || len(comments) == 0 {
+	if !ok || theme.EnrichComments == nil || len(comments) == 0 {
 		return nil
 	}
 	config, err := a.themeConfig(ctx, theme.Name)
@@ -5804,7 +6163,7 @@ func (a *App) themeCommentBadges(ctx context.Context, comments []models.Comment)
 		})
 	}
 	runtime := a.pluginRuntime().WithComponent("theme", theme.Name)
-	return theme.CommentBadges(plugin.ContextWithRuntime(ctx, runtime), runtime, config, publicComments)
+	return theme.EnrichComments(plugin.ContextWithRuntime(ctx, runtime), runtime, config, publicComments)
 }
 
 func (a *App) relatedPosts(ctx context.Context, post models.Content, categories, tags []models.Meta, limit int) ([]models.Content, error) {
@@ -6352,17 +6711,44 @@ func (a *App) saveUpload(ctx context.Context, src io.Reader, original string, pa
 		if err != nil {
 			return result, err
 		}
-		processed, err := imageproc.ProcessUpload(data, name, a.option(ctx, "upload_image_processing", imageproc.UploadOriginal), optionInt(a.option(ctx, "upload_webp_quality", "85"), imageproc.DefaultWebPQuality), a.imageProcessingMemoryLimit(ctx))
-		if err != nil {
-			result.Warning = imageProcessingFallbackWarning
-		} else {
-			if err := staged.replace(processed.Data); err != nil {
-				return result, err
+		handledByPlugin := false
+		imagePayload := plugin.ImageProcessPayload{Name: name, Data: data, MIME: mimeType}
+		if out, hookErr := a.Plugins.ApplyActive(ctx, plugin.HookImageProcess, imagePayload); hookErr != nil {
+			return result, hookErr
+		} else if next, ok := out.(plugin.ImageProcessPayload); ok {
+			name = firstNonEmpty(next.Name, name)
+			if next.Handled {
+				handledByPlugin = true
+				if len(next.Result) > 0 {
+					if err := staged.replace(next.Result); err != nil {
+						return result, err
+					}
+					data = next.Result
+				}
+				if next.MIME != "" {
+					mimeType = next.MIME
+				}
+				if next.Warning != "" {
+					result.Warning = next.Warning
+				}
+				ext = strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
+			} else if next.Data != nil {
+				data = next.Data
 			}
-			data = processed.Data
-			name = processed.Name
-			ext = processed.Extension
-			mimeType = processed.MIME
+		}
+		if !handledByPlugin {
+			processed, err := imageproc.ProcessUpload(data, name, a.option(ctx, "upload_image_processing", imageproc.UploadOriginal), optionInt(a.option(ctx, "upload_webp_quality", "85"), imageproc.DefaultWebPQuality), a.imageProcessingMemoryLimit(ctx))
+			if err != nil {
+				result.Warning = imageProcessingFallbackWarning
+			} else {
+				if err := staged.replace(processed.Data); err != nil {
+					return result, err
+				}
+				data = processed.Data
+				name = processed.Name
+				ext = processed.Extension
+				mimeType = processed.MIME
+			}
 		}
 	}
 	bucket, err := a.uploadBucketForParent(ctx, parent)
@@ -6503,12 +6889,31 @@ func (a *App) saveSettingsUpload(ctx context.Context, bucket string, src io.Read
 	if !mimeAllowedForExt(ext, mimeType) {
 		return result, fmt.Errorf("文件内容与扩展名不匹配")
 	}
-	processed, err := imageproc.ProcessUpload(data, name, a.option(ctx, "upload_image_processing", imageproc.UploadOriginal), optionInt(a.option(ctx, "upload_webp_quality", "85"), imageproc.DefaultWebPQuality), a.imageProcessingMemoryLimit(ctx))
-	if err != nil {
-		result.Warning = imageProcessingFallbackWarning
-	} else {
-		data = processed.Data
-		name = processed.Name
+	handledByPlugin := false
+	if out, hookErr := a.Plugins.ApplyActive(ctx, plugin.HookImageProcess, plugin.ImageProcessPayload{Name: name, Data: data, MIME: mimeType}); hookErr != nil {
+		return result, hookErr
+	} else if next, ok := out.(plugin.ImageProcessPayload); ok {
+		name = firstNonEmpty(next.Name, name)
+		if next.Handled {
+			handledByPlugin = true
+			if len(next.Result) > 0 {
+				data = next.Result
+			}
+			if next.Warning != "" {
+				result.Warning = next.Warning
+			}
+		} else if next.Data != nil {
+			data = next.Data
+		}
+	}
+	if !handledByPlugin {
+		processed, err := imageproc.ProcessUpload(data, name, a.option(ctx, "upload_image_processing", imageproc.UploadOriginal), optionInt(a.option(ctx, "upload_webp_quality", "85"), imageproc.DefaultWebPQuality), a.imageProcessingMemoryLimit(ctx))
+		if err != nil {
+			result.Warning = imageProcessingFallbackWarning
+		} else {
+			data = processed.Data
+			name = processed.Name
+		}
 	}
 	dir := filepath.Join(a.UploadDir, bucket)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -7082,7 +7487,7 @@ type commentView struct {
 	ReplyURL      string
 	Anchor        string
 	Pending       bool
-	Badge         plugin.CommentBadge
+	Enrichment    plugin.CommentEnrichment
 }
 
 type publicCommentIdentity struct {
@@ -7467,19 +7872,19 @@ func (a *App) renderCommentText(r *http.Request, comment models.Comment) templat
 			payload = next
 		}
 	}
-	parser := plugin.CommentParserPayload{Comment: comment, Text: payload.Text, HTML: payload.HTML}
-	parserHook := plugin.HookCommentAutoParagraph
+	parseMode := "autop"
 	if a.option(ctx, "comments_markdown", "0") == "1" {
-		parserHook = plugin.HookCommentMarkdown
+		parseMode = "markdown"
 	}
-	if out, err := a.Plugins.ApplyActive(ctx, parserHook, parser); err == nil {
+	parser := plugin.CommentParserPayload{Comment: comment, Text: payload.Text, HTML: payload.HTML, Mode: parseMode}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookCommentParse, parser); err == nil {
 		if next, ok := out.(plugin.CommentParserPayload); ok {
 			parser = next
 		}
 	}
 	if parser.Handled {
 		payload.HTML = parser.HTML
-	} else if parserHook == plugin.HookCommentMarkdown {
+	} else if parseMode == "markdown" {
 		payload.HTML = render.MarkdownHTML(parser.Text)
 	} else if allowedTags := a.option(ctx, "comments_html_tag_allowed", ""); strings.TrimSpace(allowedTags) != "" {
 		payload.HTML = sanitizeCommentHTML(parser.Text, allowedTags, optionBool(a.option(ctx, "comments_url_nofollow", "1")))
@@ -7796,20 +8201,20 @@ func (a *App) renderContentHTML(ctx context.Context, content models.Content, dat
 	}
 	payload.Content = content
 	mode := a.option(ctx, "content_render_mode", "markdown")
-	parserHook := ""
+	parseMode := ""
 	switch {
 	case strings.HasPrefix(content.Text, "<!--markdown-->"):
-		parserHook = plugin.HookContentMarkdown
+		parseMode = "markdown"
 	case strings.HasPrefix(content.Text, "<!--plaintext-->"):
-		parserHook = plugin.HookContentAutoParagraph
+		parseMode = "autop"
 	case mode == "autop" || mode == "plaintext" || mode == "plain":
-		parserHook = plugin.HookContentAutoParagraph
+		parseMode = "autop"
 	case mode != "html":
-		parserHook = plugin.HookContentMarkdown
+		parseMode = "markdown"
 	}
-	if parserHook != "" {
-		parserPayload := plugin.ContentParserPayload{Content: content, Text: content.Text}
-		if out, err := a.Plugins.ApplyActive(ctx, parserHook, parserPayload); err != nil {
+	if parseMode != "" {
+		parserPayload := plugin.ContentParserPayload{Content: content, Text: content.Text, Mode: parseMode}
+		if out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentParse, parserPayload); err != nil {
 			return "", err
 		} else if next, ok := out.(plugin.ContentParserPayload); ok && next.Handled {
 			payload.HTML = next.HTML
@@ -7854,7 +8259,13 @@ func (a *App) excerpt(ctx context.Context, text string, limit int) string {
 	payload := plugin.ExcerptPayload{Text: text, Limit: limit, Output: output}
 	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookExcerpt, payload); err == nil {
 		if next, ok := out.(plugin.ExcerptPayload); ok {
-			return next.Output
+			output = next.Output
+		}
+	}
+	afterPayload := plugin.ExcerptAfterPayload{Text: text, Limit: limit, Excerpt: output}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookExcerptAfterRender, afterPayload); err == nil {
+		if next, ok := out.(plugin.ExcerptAfterPayload); ok && next.Excerpt != "" {
+			return next.Excerpt
 		}
 	}
 	return output
@@ -7868,6 +8279,12 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	}
 	lang := a.option(r.Context(), "site_language", "zh-CN")
 	pluginRuntime := a.pluginRuntime().WithComponent("theme", theme.Name)
+	if theme.InitRuntime != nil {
+		if err := theme.InitRuntime(plugin.ContextWithRuntime(r.Context(), pluginRuntime), pluginRuntime); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	funcs := template.FuncMap{
 		"date": func(ts int64) string { return a.formatDate(r.Context(), ts, "post_date_format") },
 		"T":    func(key string) string { return i18n.T(lang, key) },
@@ -7880,15 +8297,14 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 		"metaURL": func(m models.Meta) string {
 			return a.metaURL(r.Context(), m)
 		},
+		"isArchiveType": func(expected string) bool {
+			if t, ok := data["ArchiveType"].(string); ok {
+				return t == expected
+			}
+			return false
+		},
 		"commentURL": func(c models.Comment) string {
-			if c.CID <= 0 {
-				return "#comment-" + strconv.FormatInt(c.COID, 10)
-			}
-			content, err := a.Contents.ByID(r.Context(), c.CID)
-			if err != nil || (content.Type != models.ContentTypePost && content.Type != models.ContentTypePage) {
-				return "#comment-" + strconv.FormatInt(c.COID, 10)
-			}
-			return a.contentURL(r.Context(), content) + "#comment-" + strconv.FormatInt(c.COID, 10)
+			return a.commentURL(r.Context(), c)
 		},
 		"commentDate": func(ts int64) string {
 			layout := a.option(r.Context(), "comment_date_format", "2006-01-02 15:04")
@@ -7958,21 +8374,32 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 		data["RSDURL"] = baseURL + "/rsd.xml"
 		data["WLWManifestURL"] = baseURL + "/wlwmanifest.xml"
 	}
-	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFrontendHead, ""); err != nil {
+	headPayload := plugin.FrontendHTMLPayload{Location: "head", Data: data}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFrontendHead, headPayload); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if head, ok := out.(string); ok {
 		data["FrontendHead"] = template.HTML(head)
+	} else if next, ok := out.(plugin.FrontendHTMLPayload); ok {
+		data["FrontendHead"] = next.HTML
 	}
-	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFrontendFooter, ""); err != nil {
+	footerPayload := plugin.FrontendHTMLPayload{Location: "footer", Data: data}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFrontendFooter, footerPayload); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if footer, ok := out.(string); ok {
 		data["FrontendFooter"] = template.HTML(footer)
+	} else if next, ok := out.(plugin.FrontendHTMLPayload); ok {
+		data["FrontendFooter"] = next.HTML
 	}
 	w.WriteHeader(status)
 	if err := tmpl.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if archiveType, ok := data["ArchiveType"].(string); ok && archiveType != "" {
+		payload := plugin.ArchivePayload{Type: archiveType, Data: data}
+		_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookArchiveAfterRender, payload)
 	}
 }
 
@@ -8437,23 +8864,59 @@ func joinMetaNames(items []models.Meta) string {
 }
 
 func (a *App) contentURL(ctx context.Context, c models.Content) string {
+	var url string
 	switch c.Type {
 	case models.ContentTypePage:
 		pattern := a.option(ctx, "permalink_page", "/page/{slug}.html")
-		return cleanPublicPath(applyContentPattern(pattern, c, a.pageDirectory(ctx, c)))
+		url = cleanPublicPath(applyContentPattern(pattern, c, a.pageDirectory(ctx, c)))
 	default:
 		pattern := a.option(ctx, "permalink_post", "/post/{slug}.html")
 		category, directory := a.primaryCategoryPath(ctx, c.CID)
-		return cleanPublicPath(applyContentPattern(pattern, c, directory, category))
+		url = cleanPublicPath(applyContentPattern(pattern, c, directory, category))
 	}
+	payload := plugin.ContentPermalinkPayload{Content: a.contentToPublic(c), URL: url}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentPermalink, payload); err == nil {
+		if next, ok := out.(plugin.ContentPermalinkPayload); ok && next.URL != "" {
+			return next.URL
+		}
+	}
+	return url
 }
 
 func (a *App) metaURL(ctx context.Context, m models.Meta) string {
+	var url string
 	if m.Type == "category" {
 		pattern := a.option(ctx, "permalink_category", "/category/{slug}")
-		return cleanPublicPath(applyMetaPattern(pattern, m, a.metaDirectory(ctx, m)))
+		url = cleanPublicPath(applyMetaPattern(pattern, m, a.metaDirectory(ctx, m)))
+	} else {
+		url = cleanPublicPath("/tag/" + m.Slug)
 	}
-	return cleanPublicPath("/tag/" + m.Slug)
+	publicMeta := plugin.PublicMeta{MID: m.MID, Name: m.Name, Slug: m.Slug, Type: m.Type, Description: m.Description, Count: m.Count, SortOrder: m.SortOrder, Parent: m.Parent}
+	payload := plugin.MetaPermalinkPayload{Meta: publicMeta, URL: url}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookMetaPermalink, payload); err == nil {
+		if next, ok := out.(plugin.MetaPermalinkPayload); ok && next.URL != "" {
+			return next.URL
+		}
+	}
+	return url
+}
+
+func (a *App) commentURL(ctx context.Context, comment models.Comment) string {
+	url := "#comment-" + strconv.FormatInt(comment.COID, 10)
+	var publicContent plugin.PublicContent
+	if comment.CID > 0 {
+		if content, err := a.Contents.ByID(ctx, comment.CID); err == nil && (content.Type == models.ContentTypePost || content.Type == models.ContentTypePage) {
+			publicContent = a.contentToPublic(content)
+			url = a.contentURL(ctx, content) + "#comment-" + strconv.FormatInt(comment.COID, 10)
+		}
+	}
+	payload := plugin.CommentPermalinkPayload{Comment: a.commentToPublic(comment), Content: publicContent, URL: url}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookCommentPermalink, payload); err == nil {
+		if next, ok := out.(plugin.CommentPermalinkPayload); ok && next.URL != "" {
+			return next.URL
+		}
+	}
+	return url
 }
 
 func (a *App) pageDirectory(ctx context.Context, c models.Content) string {
@@ -8987,23 +9450,30 @@ func (a *App) pluginConfig(ctx context.Context, name string) (map[string]string,
 
 func (a *App) pluginRuntime() *plugin.Runtime {
 	runtime := &plugin.Runtime{
-		ListContents:   a.Contents.ListContentsPlugin,
-		ListComments:   a.Comments.ListCommentsPlugin,
-		ListUsers:      a.Users.ListUsersPlugin,
-		ListMetas:      a.Metas.ListMetasPlugin,
-		ContentURL:     a.pluginContentURL,
-		CommentURL:     a.pluginCommentURL,
-		AvatarURL:      a.emailAvatarURL,
-		ClientIP:       a.clientIP,
-		CurrentUser:    a.currentUserPlugin,
-		Option:         a.Options.Get,
-		Config:         a.pluginConfig,
-		PersonalConfig: a.pluginPersonalConfig,
-		NotifyAdmin:    a.setFlash,
-		OpenSQLiteFor:  a.openExtensionSQLite,
-		SQLitePath:     a.extensionSQLitePath,
-		SQLiteSize:     a.extensionSQLiteSize,
-		ClearSQLite:    a.clearExtensionSQLite,
+		ListContents:      a.Contents.ListContentsPlugin,
+		ListComments:      a.Comments.ListCommentsPlugin,
+		ListUsers:         a.Users.ListUsersPlugin,
+		ListMetas:         a.Metas.ListMetasPlugin,
+		ListRevisions:     a.listRevisionsPlugin,
+		ContentURL:        a.pluginContentURL,
+		CommentURL:        a.pluginCommentURL,
+		AvatarURL:         a.emailAvatarURL,
+		ClientIP:          a.clientIP,
+		CurrentUser:       a.currentUserPlugin,
+		Option:            a.Options.Get,
+		SetOption:         a.Options.Set,
+		Config:            a.pluginConfig,
+		PersonalConfig:    a.pluginPersonalConfig,
+		NotifyAdmin:       a.setFlash,
+		OpenPluginDB:      a.openPluginDBForRuntime,
+		PluginDBDialect:   a.pluginDBDialectForRuntime,
+		IsIPBanned:        a.pluginIsIPBanned,
+		IsURLAllowed:      a.pluginIsURLAllowed,
+		GetContentAuthor:  a.getContentAuthorPlugin,
+		ListContentMetas:  a.listContentMetasPlugin,
+		GetContentFields:  a.getContentFieldsPlugin,
+		ActiveTheme:       a.activeThemeName,
+		ContentRenderMode: a.contentRenderModePlugin,
 	}
 	runtime.DispatchHook = func(ctx context.Context, name string, payload any) (plugin.HookDispatch, error) {
 		return a.Plugins.DispatchActive(plugin.ContextWithRuntime(ctx, runtime), name, payload)
@@ -9013,40 +9483,6 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		return a.Plugins.CallActiveService(ctx, runtime, name, args...)
 	}
 	return runtime
-}
-
-func (a *App) openExtensionSQLite(ctx context.Context, owner, filename string) (*sql.DB, string, error) {
-	dbPath, err := a.extensionSQLitePath(owner, filename)
-	if err != nil {
-		return nil, "", err
-	}
-	key := filepath.Clean(dbPath)
-	a.extensionDBMu.Lock()
-	if db := a.extensionDBs[key]; db != nil {
-		a.extensionDBMu.Unlock()
-		return db, dbPath, nil
-	}
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		a.extensionDBMu.Unlock()
-		return nil, "", fmt.Errorf("创建扩展数据库目录：%w", err)
-	}
-	dsn := dbPath + "?_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=on"
-	db, err := sql.Open("sqlite3", dsn)
-	if err != nil {
-		a.extensionDBMu.Unlock()
-		return nil, "", err
-	}
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
-	db.SetConnMaxLifetime(0)
-	if err := db.PingContext(ctx); err != nil {
-		db.Close()
-		a.extensionDBMu.Unlock()
-		return nil, "", err
-	}
-	a.extensionDBs[key] = db
-	a.extensionDBMu.Unlock()
-	return db, dbPath, nil
 }
 
 func (a *App) extensionSQLitePath(owner, filename string) (string, error) {
@@ -9070,6 +9506,10 @@ func (a *App) extensionSQLiteSize(owner, filename string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	return a.extensionSQLiteSizeByPath(dbPath)
+}
+
+func (a *App) extensionSQLiteSizeByPath(dbPath string) (int64, error) {
 	var total int64
 	for _, suffix := range []string{"", "-wal", "-shm"} {
 		info, statErr := os.Stat(dbPath + suffix)
@@ -9084,38 +9524,17 @@ func (a *App) extensionSQLiteSize(owner, filename string) (int64, error) {
 	return total, nil
 }
 
-func normalizeSQLiteDatabases(items []plugin.SQLiteDatabase) []plugin.SQLiteDatabase {
-	out := make([]plugin.SQLiteDatabase, 0, len(items))
-	seen := map[string]bool{}
-	for _, item := range items {
-		item.Name = strings.TrimSpace(item.Name)
-		item.Filename = strings.TrimSpace(item.Filename)
-		if item.Name == "" {
-			item.Name = strings.TrimSuffix(item.Filename, filepath.Ext(item.Filename))
-		}
-		if item.Filename == "" {
-			item.Filename = item.Name
-		}
-		if item.Name == "" || seen[item.Name] {
-			continue
-		}
-		if _, err := safeExtensionPathName(item.Name); err != nil {
-			continue
-		}
-		if filename, err := safeSQLiteFilename(item.Filename); err == nil {
-			item.Filename = filename
-		}
-		if item.Label == "" {
-			item.Label = item.Name
-		}
-		seen[item.Name] = true
-		out = append(out, item)
-	}
-	return out
-}
-
 func pluginDatabaseOwner(name string) string {
 	return "plugin-" + strings.TrimSpace(name)
+}
+
+func extensionDatabaseOwner(kind, owner string) string {
+	kind = strings.TrimSpace(kind)
+	owner = strings.TrimSpace(owner)
+	if kind == "" {
+		return owner
+	}
+	return kind + "-" + owner
 }
 
 func (a *App) clearExtensionSQLite(ctx context.Context, owner, filename string) error {
@@ -9193,11 +9612,8 @@ func (a *App) pluginCommentURL(ctx context.Context, id int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	contentURL, err := a.pluginContentURL(ctx, comment.CID)
-	if err != nil {
-		return "", err
-	}
-	return contentURL + "#comment-" + strconv.FormatInt(comment.COID, 10), nil
+	baseURL := strings.TrimRight(a.option(ctx, "base_url", ""), "/")
+	return absolutePublicURL(baseURL, a.commentURL(ctx, comment)), nil
 }
 
 func (a *App) pluginPersonalConfig(ctx context.Context, name string, userID int64) (map[string]string, error) {
@@ -9483,6 +9899,30 @@ func validateSchemaValues(schema []plugin.FieldSchema, values map[string]string)
 		return fmt.Errorf("%s为必填项", label)
 	}
 	return nil
+}
+
+func schemaValidationMessages(errs map[string]string) []string {
+	messages := make([]string, 0, len(errs))
+	keys := make([]string, 0, len(errs))
+	for key := range errs {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		message := strings.TrimSpace(errs[key])
+		if message == "" {
+			continue
+		}
+		if key != "" {
+			messages = append(messages, key+"："+message)
+		} else {
+			messages = append(messages, message)
+		}
+	}
+	if len(messages) == 0 {
+		messages = append(messages, "配置校验未通过")
+	}
+	return messages
 }
 
 func normalizeSchemaValues(schema []plugin.FieldSchema, values map[string]string) {
@@ -10367,4 +10807,164 @@ func uniqueUploadName(dir, name string) string {
 		}
 	}
 	return fmt.Sprintf("%d-%s", time.Now().UnixNano(), name)
+}
+
+func (a *App) openPluginDBForRuntime(ctx context.Context) (*sql.DB, error) {
+	rt, ok := plugin.RuntimeFromContext(ctx)
+	if !ok || rt == nil {
+		return nil, plugin.ErrRuntimeUnavailable
+	}
+	owner := rt.Owner
+	if strings.TrimSpace(owner) == "" {
+		return nil, errors.New("plugin runtime owner is empty")
+	}
+	ownerID := extensionDatabaseOwner(rt.OwnerKind, owner)
+	modeKey := owner
+	if rt.OwnerKind != "" && rt.OwnerKind != "plugin" {
+		modeKey = ownerID
+	}
+	dbMode := a.option(ctx, "plugin_db_mode_"+modeKey, a.option(ctx, "plugin_db_default_mode", "sqlite"))
+	switch dbMode {
+	case "merged":
+		db := a.getRawWriterDB()
+		if db == nil {
+			return nil, errors.New("failed to get main database connection")
+		}
+		return db, nil
+	default:
+		dir := filepath.Join(a.DataDir, "extensions", ownerID)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, err
+		}
+		dbPath := filepath.Join(dir, owner+".db")
+		db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL")
+		if err != nil {
+			return nil, err
+		}
+		a.extensionDBMu.Lock()
+		a.extensionDBs[ownerID] = db
+		a.extensionDBMu.Unlock()
+		return db, nil
+	}
+}
+
+func (a *App) pluginDBDialectForRuntime(ctx context.Context) string {
+	rt, ok := plugin.RuntimeFromContext(ctx)
+	if !ok || rt == nil {
+		return string(models.DialectSQLite)
+	}
+	owner := rt.Owner
+	ownerID := extensionDatabaseOwner(rt.OwnerKind, owner)
+	modeKey := owner
+	if rt.OwnerKind != "" && rt.OwnerKind != "plugin" {
+		modeKey = ownerID
+	}
+	dbMode := a.option(ctx, "plugin_db_mode_"+modeKey, a.option(ctx, "plugin_db_default_mode", "sqlite"))
+	switch dbMode {
+	case "merged":
+		return string(a.Contents.Dialect())
+	default:
+		return string(models.DialectSQLite)
+	}
+}
+
+func (a *App) getRawWriterDB() *sql.DB {
+	return a.Contents.DB()
+}
+
+func (a *App) contentToPublic(c models.Content) plugin.PublicContent {
+	return plugin.PublicContent{
+		CID: c.CID, Title: c.Title, Slug: c.Slug, SlugID: c.SlugID,
+		Created: c.Created, Modified: c.Modified, Text: c.Text,
+		Type: c.Type, Status: c.Status, AuthorID: c.AuthorID,
+	}
+}
+
+func (a *App) commentToPublic(comment models.Comment) plugin.PublicComment {
+	return plugin.PublicComment{
+		COID: comment.COID, CID: comment.CID, Created: comment.Created,
+		Author: comment.Author, AuthorID: comment.AuthorID, OwnerID: comment.OwnerID,
+		Mail: comment.Mail, URL: comment.URL, IP: comment.IP, Agent: comment.Agent,
+		Text: comment.Text, Type: comment.Type, Status: comment.Status, Parent: comment.Parent,
+	}
+}
+
+func (a *App) getContentAuthorPlugin(ctx context.Context, authorID int64) (plugin.PublicUser, error) {
+	user, err := a.Users.ByID(ctx, authorID)
+	if err != nil {
+		return plugin.PublicUser{}, err
+	}
+	return plugin.PublicUser{
+		UID: user.UID, Name: user.Name, Mail: user.Mail, URL: user.URL,
+		ScreenName: user.ScreenName, Role: user.Role,
+	}, nil
+}
+
+func (a *App) contentAuthorForPlugin(ctx context.Context, content models.Content) (plugin.PublicUser, error) {
+	author, err := a.getContentAuthorPlugin(ctx, content.AuthorID)
+	if err != nil {
+		return plugin.PublicUser{}, err
+	}
+	payload := plugin.ContentAuthorPayload{Content: a.contentToPublic(content), Author: author}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentAuthor, payload); err == nil {
+		if next, ok := out.(plugin.ContentAuthorPayload); ok {
+			return next.Author, nil
+		}
+	}
+	return author, nil
+}
+
+func (a *App) listContentMetasPlugin(ctx context.Context, cid int64) ([]plugin.PublicMeta, error) {
+	categories, err := a.Metas.CategoriesForContent(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	tags, err := a.Metas.TagsForContent(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	var result []plugin.PublicMeta
+	for _, m := range categories {
+		result = append(result, plugin.PublicMeta{
+			MID: m.MID, Name: m.Name, Slug: m.Slug, Type: m.Type,
+			Description: m.Description, Count: m.Count, SortOrder: m.SortOrder, Parent: m.Parent,
+		})
+	}
+	for _, m := range tags {
+		result = append(result, plugin.PublicMeta{
+			MID: m.MID, Name: m.Name, Slug: m.Slug, Type: m.Type,
+			Description: m.Description, Count: m.Count, SortOrder: m.SortOrder, Parent: m.Parent,
+		})
+	}
+	return result, nil
+}
+
+func (a *App) listRevisionsPlugin(ctx context.Context, cid int64) ([]plugin.PublicRevision, error) {
+	revisions, err := a.Contents.Revisions(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]plugin.PublicRevision, 0, len(revisions))
+	for _, rev := range revisions {
+		out = append(out, plugin.PublicRevision{
+			RID: rev.RID, CID: rev.CID, Created: rev.Created, AuthorID: rev.AuthorID,
+			Title: rev.Title, Slug: rev.Slug, Text: rev.Text, Status: rev.Status,
+			Password: rev.Password, SortOrder: rev.SortOrder, Template: rev.Template,
+			Parent: rev.Parent, AllowComment: rev.AllowComment, AllowPing: rev.AllowPing,
+			AllowFeed: rev.AllowFeed,
+		})
+	}
+	return out, nil
+}
+
+func (a *App) getContentFieldsPlugin(ctx context.Context, cid int64) (map[string]any, error) {
+	return a.Contents.FieldMap(ctx, cid)
+}
+
+func (a *App) activeThemeName(ctx context.Context) string {
+	return a.option(ctx, "active_theme", "default")
+}
+
+func (a *App) contentRenderModePlugin(ctx context.Context) string {
+	return a.option(ctx, "content_render_mode", "markdown")
 }

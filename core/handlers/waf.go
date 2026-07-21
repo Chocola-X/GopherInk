@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Chocola-X/GopherInk/core/models"
+	"github.com/Chocola-X/GopherInk/core/plugin"
 	"github.com/Chocola-X/GopherInk/core/services"
 )
 
@@ -121,6 +122,26 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 		}
 		ip := clientIP(r, cfg.TrustProxy)
 		now := time.Now()
+		wafPayload := plugin.WAFPayload{Request: r, IP: ip, Path: r.URL.Path}
+		if out, err := m.app.Plugins.ApplyActive(r.Context(), plugin.HookWAFCheck, wafPayload); err != nil {
+			m.logEvent(cfg, "plugin WAF check failed for IP %s on %s: %v", ip, r.URL.Path, err)
+			http.Error(sw, "forbidden", http.StatusForbidden)
+			return
+		} else if nextPayload, ok := out.(plugin.WAFPayload); ok {
+			if nextPayload.Blocked {
+				reason := strings.TrimSpace(nextPayload.Reason)
+				if reason == "" {
+					reason = "plugin WAF rule"
+				}
+				m.logEvent(cfg, "%s blocked IP %s on %s", reason, ip, r.URL.Path)
+				http.Error(sw, "forbidden", http.StatusForbidden)
+				return
+			}
+			if nextPayload.Handled {
+				next.ServeHTTP(sw, r)
+				return
+			}
+		}
 		if m.isBanned(ip, now) {
 			m.logEvent(cfg, "blocked banned IP %s on %s", ip, r.URL.Path)
 			http.Error(sw, "forbidden", http.StatusForbidden)
@@ -548,6 +569,25 @@ func (m *wafManager) isBanned(ip string, now time.Time) bool {
 		return false
 	}
 	return true
+}
+
+func (a *App) pluginIsIPBanned(ctx context.Context, ip string) bool {
+	if a.WAF == nil {
+		return false
+	}
+	return a.WAF.isBanned(strings.TrimSpace(ip), time.Now())
+}
+
+func (a *App) pluginIsURLAllowed(ctx context.Context, pathValue string) bool {
+	if a.WAF == nil {
+		return false
+	}
+	cfg := a.WAF.currentConfig(ctx)
+	if !cfg.URLIndexEnabled {
+		return true
+	}
+	exists, err := a.WAF.publicURLExists(ctx, pathValue, cfg, time.Now())
+	return err == nil && exists
 }
 
 func (m *wafManager) recordInvalidPath(ip string, cfg wafConfig, now time.Time) bool {

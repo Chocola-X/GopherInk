@@ -55,7 +55,7 @@ func init() {
 		}},
 		RenderAdminPage:       renderFriendAdminPage,
 		HandleAdminPageAction: handleFriendAdminPageAction,
-		CommentBadges:         friendCommentBadges,
+		EnrichComments:       friendEnrichComments,
 		AdjustData:            adjustDefaultThemeData,
 		Funcs: template.FuncMap{
 			"themeValue":   themeValue,

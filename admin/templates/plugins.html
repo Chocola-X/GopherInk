@@ -21,8 +21,15 @@
           <div class="plugin-db-list">
             {{range .Databases}}
             <div class="plugin-db-item">
-              <span><strong>{{.Label}}</strong> <span class="muted">{{.Filename}}</span>{{if .Description}}<span class="muted"> · {{.Description}}</span>{{end}}</span>
-              <span class="muted">{{if .Error}}{{.Error}}{{else}}{{.Size}}{{end}}</span>
+              <span><strong>数据库</strong> <span class="muted">{{.TableCount}} 张表</span></span>
+              <form method="post" action="/admin/plugins/{{$plugin.Name}}/database/{{.Name}}/mode" class="plugin-db-mode-form">
+                <mdui-select name="mode" label="插件数据库存储形式" value="{{.Mode}}">
+                  <mdui-menu-item value="sqlite">SQLite 独立库</mdui-menu-item>
+                  <mdui-menu-item value="merged">合并到主库</mdui-menu-item>
+                </mdui-select>
+                <mdui-button type="submit" variant="outlined">保存</mdui-button>
+              </form>
+              <span class="muted">{{if .Error}}{{.Error}}{{else if .Size}}{{.Size}}{{end}}</span>
             </div>
             {{end}}
           </div>
@@ -36,7 +43,7 @@
             {{if .HasConfig}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/config">设置</mdui-button>{{end}}
             {{if .HasPersonal}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/personal">个人设置</mdui-button>{{end}}
             {{range .Databases}}
-            <form method="post" action="/admin/plugins/{{$plugin.Name}}/database/{{.Name}}/clear" data-confirm-message="确定清除 {{.Label}} 数据库？该操作会删除对应 .db、WAL 和 SHM 文件。">
+            <form method="post" action="/admin/plugins/{{$plugin.Name}}/database/{{.Name}}/clear" data-confirm-message="确定清除插件数据库？该操作会删除对应的数据库文件和所有表数据。">
               <mdui-button type="submit" variant="outlined" class="danger-action">清除数据库</mdui-button>
             </form>
             {{end}}

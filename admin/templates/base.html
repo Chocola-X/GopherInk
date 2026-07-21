@@ -55,7 +55,7 @@
         <mdui-list-item href="/admin/profile"><mdui-icon slot="icon" name="person"></mdui-icon>{{T "Profile"}}</mdui-list-item>
         {{if .AdminMenu}}
         <div class="nav-section">插件扩展</div>
-        {{range .AdminMenu}}<mdui-list-item href="{{.URL}}"><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}</mdui-list-item>{{end}}
+        {{range .AdminMenu}}<mdui-list-item href="{{.URL}}" {{if .OpenNewTab}}target="_blank" rel="noopener noreferrer"{{end}}><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}</mdui-list-item>{{end}}
         {{end}}
       </mdui-list>
       <footer class="admin-product-info">

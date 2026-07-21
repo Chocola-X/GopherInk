@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Chocola-X/GopherInk/core/models"
+	"github.com/Chocola-X/GopherInk/core/plugin"
 	"github.com/Chocola-X/GopherInk/core/services"
 	compathttp "github.com/Chocola-X/GopherInk/pkg/httpclient"
 	"github.com/Chocola-X/GopherInk/pkg/render"
@@ -392,6 +393,18 @@ func (a *App) handleXMLRPCMethod(ctx context.Context, method string, params []xm
 			name = "upload.bin"
 		}
 		data := media["bits"].BytesValue()
+		uploadPayload := plugin.XMLRPCUploadPayload{Name: name, Data: data}
+		if out, err := a.Plugins.ApplyActive(ctx, plugin.HookXMLRPCUpload, uploadPayload); err != nil {
+			return nil, &xmlRPCFault{Code: 500, Message: err.Error()}
+		} else if next, ok := out.(plugin.XMLRPCUploadPayload); ok {
+			if next.Handled {
+				return next.Result, nil
+			}
+			name = firstNonEmpty(next.Name, name)
+			if next.Data != nil {
+				data = next.Data
+			}
+		}
 		saved, err := a.saveUpload(ctx, bytes.NewReader(data), name, 0)
 		if err != nil {
 			return nil, &xmlRPCFault{Code: 400, Message: "invalid upload"}
@@ -416,7 +429,7 @@ func (a *App) xmlRPCUser(ctx context.Context, params []xmlRPCParam, userIndex, p
 	if len(params) <= userIndex || len(params) <= passIndex {
 		return models.User{}, &xmlRPCFault{Code: 401, Message: "authentication failed"}
 	}
-	user, err := a.Users.Authenticate(ctx, params[userIndex].Value.StringValue(), params[passIndex].Value.StringValue())
+	user, err := a.authenticateUserWithHooks(ctx, params[userIndex].Value.StringValue(), params[passIndex].Value.StringValue())
 	if err != nil {
 		return models.User{}, &xmlRPCFault{Code: 401, Message: "authentication failed"}
 	}
@@ -446,6 +459,11 @@ func (a *App) xmlRPCContentInput(ctx context.Context, value xmlRPCValue, publish
 	text := m["description"].StringValue()
 	if more := m["mt_text_more"].StringValue(); more != "" {
 		text += "\n\n<!--more-->\n\n" + more
+	}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookXMLRPCTextFilter, plugin.XMLRPCTextPayload{Method: "content", Text: text}); err == nil {
+		if next, ok := out.(plugin.XMLRPCTextPayload); ok {
+			text = next.Text
+		}
 	}
 	input := services.SaveContentInput{
 		Title:        firstNonEmpty(m["title"].StringValue(), "Untitled"),
@@ -546,6 +564,19 @@ func contentToSaveInput(ctx context.Context, a *App, item models.Content) servic
 }
 
 func (a *App) receivePingback(ctx context.Context, sourceURI, targetURI string) (string, error) {
+	pingPayload := plugin.XMLRPCPingbackPayload{SourceURI: sourceURI, TargetURI: targetURI}
+	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookXMLRPCPingback, pingPayload); err != nil {
+		return "", err
+	} else if next, ok := out.(plugin.XMLRPCPingbackPayload); ok {
+		if next.Handled {
+			if next.Message != "" {
+				return next.Message, nil
+			}
+			return "Pingback registered.", nil
+		}
+		sourceURI = next.SourceURI
+		targetURI = next.TargetURI
+	}
 	if !optionBool(a.option(ctx, "enable_pingback", "1")) {
 		return "", errors.New("pingback is disabled")
 	}
@@ -581,9 +612,15 @@ func (a *App) receivePingback(ctx context.Context, sourceURI, targetURI string) 
 	if text == "" {
 		text = sourceURI
 	}
-	if _, err := a.saveCommentWithHooks(ctx, services.SaveCommentInput{CID: content.CID, Author: author, URL: sourceURI, Text: text, Type: "pingback", Status: "approved"}, 0, "pingback", content); err != nil {
+	commentPayload, err := a.saveCommentWithHooks(ctx, services.SaveCommentInput{CID: content.CID, Author: author, URL: sourceURI, Text: text, Type: "pingback", Status: "approved"}, 0, "pingback", content)
+	if err != nil {
 		return "", errors.New("internal error")
 	}
+	finishPayload := plugin.XMLRPCPingbackPayload{SourceURI: sourceURI, TargetURI: targetURI, Content: a.contentToPublic(content), Message: "Pingback registered."}
+	if comment, ok := commentPayload.Comment.(models.Comment); ok {
+		finishPayload.Comment = a.commentToPublic(comment)
+	}
+	_, _ = a.Plugins.ApplyActive(ctx, plugin.HookXMLRPCFinishPingback, finishPayload)
 	return "Pingback registered.", nil
 }
 
@@ -631,10 +668,30 @@ func (a *App) trackback(w http.ResponseWriter, r *http.Request) {
 	} else if title != "" {
 		text = title
 	}
-	if _, err := a.saveCommentWithHooks(r.Context(), services.SaveCommentInput{CID: cid, Author: author, URL: source, Text: text, Type: "trackback", Status: "approved", IP: a.clientIP(r), Agent: r.UserAgent()}, 0, "trackback", content); err != nil {
+	input := services.SaveCommentInput{CID: cid, Author: author, URL: source, Text: text, Type: "trackback", Status: "approved", IP: a.clientIP(r), Agent: r.UserAgent()}
+	trackPayload := plugin.TrackbackPayload{Content: a.contentToPublic(content), Input: input}
+	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookTrackback, trackPayload); err != nil {
+		writeTrackbackResponse(w, 1, err.Error())
+		return
+	} else if next, ok := out.(plugin.TrackbackPayload); ok {
+		if next.Handled {
+			writeTrackbackResponse(w, 0, "")
+			return
+		}
+		if nextInput, ok := next.Input.(services.SaveCommentInput); ok {
+			input = nextInput
+		}
+	}
+	commentPayload, err := a.saveCommentWithHooks(r.Context(), input, 0, "trackback", content)
+	if err != nil {
 		writeTrackbackResponse(w, 1, "internal error")
 		return
 	}
+	finishPayload := plugin.TrackbackPayload{Content: a.contentToPublic(content), Input: input}
+	if comment, ok := commentPayload.Comment.(models.Comment); ok {
+		finishPayload.Comment = a.commentToPublic(comment)
+	}
+	_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookFinishTrackback, finishPayload)
 	writeTrackbackResponse(w, 0, "")
 }
 

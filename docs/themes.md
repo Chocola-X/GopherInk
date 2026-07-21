@@ -8,7 +8,7 @@
 
 后台“主题”页面只能在已编译主题之间切换，不支持上传压缩包后热加载源码。
 
-主题的后台扩展页、数据调整回调和评论徽章回调会收到带主题名 owner 的 `plugin.Runtime`。确实需要保存主题私有的大量结构化数据时，可以复用 [插件独占 SQLite 数据库](plugins-and-hooks.md#独占-sqlite-数据库) 接口；常规主题设置仍应优先使用 `ConfigSchema`。
+主题的后台扩展页、数据调整回调和评论徽章回调会收到带主题名 owner 的 `plugin.Runtime`。确实需要保存主题私有的大量结构化数据时，可以复用 [插件数据库](plugins-and-hooks.md#插件数据库) 接口；常规主题设置仍应优先使用 `ConfigSchema`。
 
 ## 最小主题结构
 
@@ -101,6 +101,8 @@ plugin.RegisterTheme(plugin.Theme{
 | `Funcs` | 解析模板时加入的函数 |
 | `ConfigSchema` | 主题设置表单 Schema |
 | `ContentFields` | 文章/页面自定义字段 Schema |
+| `ConfigValidator` | 保存主题设置前执行跨字段校验 |
+| `ConfigHandler` | 保存主题设置前执行额外处理或外部同步 |
 | `AdminNotices` | 为主题原生设置页提供持续提示信息 |
 | `AdminPages` | 主题设置页中的原生附加选项卡 |
 | `RenderAdminPage` | 渲染附加选项卡的可信后台 HTML |

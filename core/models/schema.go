@@ -5,6 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+	"strings"
+
+	"github.com/Chocola-X/GopherInk/core/plugin"
 )
 
 const CurrentSchemaVersion = 1
@@ -277,6 +280,214 @@ func mysqlSchema() []string {
 			PRIMARY KEY (rid),
 			KEY gb_revisions_cid (cid)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+	}
+}
+
+func CreatePluginTables(ctx context.Context, db *sql.DB, dialect string, owner string, tables []plugin.TableDefinition) error {
+	for _, table := range tables {
+		tableName := PluginTableName(owner, table.Name)
+		stmt := buildCreateTableSQL(dialect, tableName, table)
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("create plugin table %s: %w", tableName, err)
+		}
+		for _, idx := range table.Indexes {
+			idxStmt := buildCreateIndexSQL(dialect, tableName, idx)
+			if _, err := db.ExecContext(ctx, idxStmt); err != nil {
+				return fmt.Errorf("create plugin index %s on %s: %w", idx.Name, tableName, err)
+			}
+		}
+	}
+	return nil
+}
+
+func DropPluginTables(ctx context.Context, db *sql.DB, dialect string, owner string, tables []plugin.TableDefinition) error {
+	for _, table := range tables {
+		tableName := PluginTableName(owner, table.Name)
+		var stmt string
+		switch Dialect(dialect) {
+		case DialectMySQL:
+			stmt = fmt.Sprintf("DROP TABLE IF EXISTS `%s`", tableName)
+		case DialectPostgres:
+			stmt = fmt.Sprintf("DROP TABLE IF EXISTS \"%s\"", tableName)
+		default:
+			stmt = fmt.Sprintf("DROP TABLE IF EXISTS \"%s\"", tableName)
+		}
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("drop plugin table %s: %w", tableName, err)
+		}
+	}
+	return nil
+}
+
+func PluginTableName(owner, name string) string {
+	return plugin.DatabaseTableName(owner, name)
+}
+
+func safePluginIdentifier(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	var sb strings.Builder
+	lastUnderscore := false
+	for _, r := range value {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_'
+		if !ok {
+			if !lastUnderscore {
+				sb.WriteByte('_')
+				lastUnderscore = true
+			}
+			continue
+		}
+		sb.WriteRune(r)
+		lastUnderscore = false
+	}
+	out := strings.Trim(sb.String(), "_")
+	if out == "" {
+		return "ext"
+	}
+	if out[0] >= '0' && out[0] <= '9' {
+		out = "x_" + out
+	}
+	return out
+}
+
+func buildCreateTableSQL(dialect string, tableName string, table plugin.TableDefinition) string {
+	var sb strings.Builder
+	switch Dialect(dialect) {
+	case DialectMySQL:
+		sb.WriteString(fmt.Sprintf("CREATE TABLE IF NOT EXISTS `%s` (", tableName))
+	default:
+		sb.WriteString(fmt.Sprintf("CREATE TABLE IF NOT EXISTS \"%s\" (", tableName))
+	}
+	cols := make([]string, 0, len(table.Columns))
+	var pkCols []string
+	for _, col := range table.Columns {
+		cols = append(cols, buildColumnDef(dialect, col))
+		if col.Primary && !col.AutoInc {
+			pkCols = append(pkCols, safePluginIdentifier(col.Name))
+		}
+	}
+	if len(pkCols) > 0 {
+		cols = append(cols, "PRIMARY KEY ("+strings.Join(pkCols, ", ")+")")
+	}
+	sb.WriteString(strings.Join(cols, ", "))
+	sb.WriteString(")")
+	switch Dialect(dialect) {
+	case DialectMySQL:
+		sb.WriteString(" ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
+	}
+	return sb.String()
+}
+
+func buildColumnDef(dialect string, col plugin.ColumnDefinition) string {
+	var sb strings.Builder
+	sb.WriteString(safePluginIdentifier(col.Name) + " ")
+	sb.WriteString(columnTypeSQL(dialect, col))
+	if !col.Nullable {
+		sb.WriteString(" NOT NULL")
+	}
+	if col.AutoInc {
+		switch Dialect(dialect) {
+		case DialectMySQL:
+			sb.WriteString(" AUTO_INCREMENT")
+		case DialectPostgres:
+			if col.Type == plugin.ColInt64 {
+				sb.WriteString(" GENERATED ALWAYS AS IDENTITY")
+			}
+		default:
+			sb.WriteString(" PRIMARY KEY AUTOINCREMENT")
+		}
+		if col.Primary {
+			switch Dialect(dialect) {
+			case DialectMySQL, DialectPostgres:
+				sb.WriteString(" PRIMARY KEY")
+			}
+		}
+	}
+	if col.Default != "" {
+		sb.WriteString(" DEFAULT " + col.Default)
+	}
+	return sb.String()
+}
+
+func columnTypeSQL(dialect string, col plugin.ColumnDefinition) string {
+	switch col.Type {
+	case plugin.ColInt64:
+		switch Dialect(dialect) {
+		case DialectMySQL:
+			return "bigint"
+		case DialectPostgres:
+			return "bigint"
+		default:
+			return "INTEGER"
+		}
+	case plugin.ColVarchar:
+		length := col.Length
+		if length <= 0 {
+			length = 255
+		}
+		return fmt.Sprintf("varchar(%d)", length)
+	case plugin.ColText:
+		switch Dialect(dialect) {
+		case DialectMySQL:
+			return "longtext"
+		default:
+			return "text"
+		}
+	case plugin.ColFloat:
+		switch Dialect(dialect) {
+		case DialectMySQL:
+			return "double"
+		case DialectPostgres:
+			return "double precision"
+		default:
+			return "real"
+		}
+	case plugin.ColDatetime:
+		switch Dialect(dialect) {
+		case DialectMySQL:
+			return "datetime"
+		case DialectPostgres:
+			return "timestamptz"
+		default:
+			return "int64"
+		}
+	case plugin.ColBool:
+		switch Dialect(dialect) {
+		case DialectMySQL:
+			return "tinyint(1)"
+		case DialectPostgres:
+			return "boolean"
+		default:
+			return "int64"
+		}
+	default:
+		return "text"
+	}
+}
+
+func buildCreateIndexSQL(dialect string, tableName string, idx plugin.IndexDefinition) string {
+	idxName := fmt.Sprintf("idx_%s_%s", tableName, safePluginIdentifier(idx.Name))
+	indexCols := make([]string, 0, len(idx.Columns))
+	for _, column := range idx.Columns {
+		indexCols = append(indexCols, safePluginIdentifier(column))
+	}
+	cols := strings.Join(indexCols, ", ")
+	if idx.Unique {
+		switch Dialect(dialect) {
+		case DialectMySQL:
+			return fmt.Sprintf("CREATE UNIQUE INDEX `%s` ON `%s` (%s)", idxName, tableName, cols)
+		case DialectPostgres:
+			return fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS \"%s\" ON \"%s\" (%s)", idxName, tableName, cols)
+		default:
+			return fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS \"%s\" ON \"%s\" (%s)", idxName, tableName, cols)
+		}
+	}
+	switch Dialect(dialect) {
+	case DialectMySQL:
+		return fmt.Sprintf("CREATE INDEX `%s` ON `%s` (%s)", idxName, tableName, cols)
+	case DialectPostgres:
+		return fmt.Sprintf("CREATE INDEX IF NOT EXISTS \"%s\" ON \"%s\" (%s)", idxName, tableName, cols)
+	default:
+		return fmt.Sprintf("CREATE INDEX IF NOT EXISTS \"%s\" ON \"%s\" (%s)", idxName, tableName, cols)
 	}
 }
 

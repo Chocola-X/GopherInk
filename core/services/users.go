@@ -73,6 +73,12 @@ func (s *UserService) Authenticate(ctx context.Context, name, password string) (
 	return user, nil
 }
 
+func (s *UserService) TouchLogged(ctx context.Context, id int64) error {
+	ctx = WithWriter(ctx)
+	_, err := s.db.ExecContext(ctx, `UPDATE gb_users SET logged = ? WHERE uid = ?`, time.Now().Unix(), id)
+	return err
+}
+
 func (s *UserService) ByName(ctx context.Context, name string) (models.User, error) {
 	var u models.User
 	err := s.db.QueryRowContext(ctx, `

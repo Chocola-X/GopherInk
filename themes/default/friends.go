@@ -329,7 +329,7 @@ func adjustDefaultThemeData(ctx context.Context, data map[string]any) error {
 	return nil
 }
 
-func friendCommentBadges(_ context.Context, _ *plugin.Runtime, config map[string]string, comments []plugin.PublicComment) map[int64]plugin.CommentBadge {
+func friendEnrichComments(_ context.Context, _ *plugin.Runtime, config map[string]string, comments []plugin.PublicComment) map[int64]plugin.CommentEnrichment {
 	links, _ := decodeFriendLinks(config[friendLinksKey])
 	emails := make(map[string]bool, len(links))
 	for _, link := range links {
@@ -337,16 +337,20 @@ func friendCommentBadges(_ context.Context, _ *plugin.Runtime, config map[string
 			emails[email] = true
 		}
 	}
-	badges := make(map[int64]plugin.CommentBadge)
+	enrichments := make(map[int64]plugin.CommentEnrichment)
 	for _, comment := range comments {
 		switch {
 		case comment.AuthorID > 0 && comment.AuthorID == comment.OwnerID:
-			badges[comment.COID] = plugin.CommentBadge{Label: "博主", Icon: "bolt", Tone: "owner"}
+			enrichments[comment.COID] = plugin.CommentEnrichment{
+				Badges: []plugin.CommentBadge{{Label: "博主", Icon: "bolt", Tone: "owner"}},
+			}
 		case emails[strings.ToLower(strings.TrimSpace(comment.Mail))]:
-			badges[comment.COID] = plugin.CommentBadge{Label: "好朋友", Icon: "bolt", Tone: "friend"}
+			enrichments[comment.COID] = plugin.CommentEnrichment{
+				Badges: []plugin.CommentBadge{{Label: "好朋友", Icon: "bolt", Tone: "friend"}},
+			}
 		}
 	}
-	return badges
+	return enrichments
 }
 
 func firstFriendFormValue(form map[string][]string, name string) string {

@@ -338,6 +338,17 @@ body.admin-pjax-loading .admin-main {
   background: rgba(var(--mdui-color-surface-container-highest), 0.42);
 }
 
+.plugin-db-mode-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 260px;
+}
+
+.plugin-db-mode-form mdui-select {
+  width: 180px;
+}
+
 .field-stack {
   display: grid;
   gap: 20px;
