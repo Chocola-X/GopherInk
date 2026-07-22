@@ -65,6 +65,18 @@ type CommentSaveRequest struct {
 	Content   any
 }
 
+type AutosaveRequest struct {
+	ContentID int64
+	AuthorID  int64
+	Input     services.SaveContentInput
+}
+
+type AutosaveResult struct {
+	ContentID int64
+	PreviewID int64
+	Content   models.Content
+}
+
 type Writer struct {
 	Contents          *services.ContentService
 	Comments          *services.CommentService
@@ -87,6 +99,10 @@ func (w *Writer) SaveContent(ctx context.Context, req ContentSaveRequest) (plugi
 	if err != nil {
 		return plugin.ContentSavePayload{ID: req.ID, PublishedID: req.PublishedID, AuthorID: req.AuthorID, Operation: req.Operation, Input: req.Input}, err
 	}
+	return w.saveContent(ctx, req)
+}
+
+func (w *Writer) saveContent(ctx context.Context, req ContentSaveRequest) (plugin.ContentSavePayload, error) {
 	payload := plugin.ContentSavePayload{ID: req.ID, PublishedID: req.PublishedID, AuthorID: req.AuthorID, Operation: req.Operation, Input: req.Input}
 	if out, err := w.Plugins.ApplyActive(ctx, plugin.HookContentBeforeSave, payload); err != nil {
 		return payload, err
@@ -98,6 +114,7 @@ func (w *Writer) SaveContent(ctx context.Context, req ContentSaveRequest) (plugi
 	}
 
 	id := req.ID
+	var err error
 	switch {
 	case req.PublishedID > 0:
 		draftID, err := w.Contents.SaveEditingDraft(ctx, req.PublishedID, req.Input, req.AuthorID)
@@ -131,6 +148,56 @@ func (w *Writer) SaveContent(ctx context.Context, req ContentSaveRequest) (plugi
 	}
 	_, err = w.Plugins.ApplyActive(ctx, plugin.HookContentAfterSave, payload)
 	return payload, err
+}
+
+func (w *Writer) SaveAutosave(ctx context.Context, req AutosaveRequest) (AutosaveResult, error) {
+	ctx, err := enterWrite(ctx)
+	if err != nil {
+		return AutosaveResult{ContentID: req.ContentID, PreviewID: req.ContentID}, err
+	}
+	autosavePayload := plugin.AutosavePayload{ContentID: req.ContentID, Input: req.Input}
+	if out, err := w.Plugins.ApplyActive(ctx, plugin.HookAutosaveBeforeSave, autosavePayload); err != nil {
+		return AutosaveResult{ContentID: req.ContentID, PreviewID: req.ContentID}, err
+	} else if next, ok := out.(plugin.AutosavePayload); ok {
+		autosavePayload = next
+		if nextInput, ok := next.Input.(services.SaveContentInput); ok {
+			req.Input = nextInput
+		}
+	}
+
+	responseID := req.ContentID
+	saveReq := ContentSaveRequest{ID: req.ContentID, AuthorID: req.AuthorID, Operation: "autosave", Input: req.Input}
+	if req.ContentID > 0 {
+		existing, err := w.Contents.ByID(ctx, req.ContentID)
+		switch {
+		case err == nil && existing.DraftOf > 0:
+			saveReq.PublishedID = existing.DraftOf
+			responseID = existing.DraftOf
+		case err == nil && existing.Status == models.ContentStatusPost && existing.DraftOf == 0:
+			saveReq.PublishedID = existing.CID
+			responseID = existing.CID
+		case err == nil:
+			responseID = existing.CID
+		default:
+			return AutosaveResult{ContentID: req.ContentID, PreviewID: req.ContentID}, err
+		}
+	}
+	savePayload, err := w.saveContent(ctx, saveReq)
+	if err != nil {
+		return AutosaveResult{ContentID: responseID, PreviewID: savePayload.ID}, err
+	}
+	previewID := savePayload.ID
+	if responseID <= 0 {
+		responseID = previewID
+	}
+	item, err := w.Contents.ByID(ctx, previewID)
+	if err != nil {
+		return AutosaveResult{ContentID: responseID, PreviewID: previewID}, err
+	}
+	autosavePayload.ContentID = responseID
+	autosavePayload.Result = item
+	_, _ = w.Plugins.ApplyActive(ctx, plugin.HookAutosaveAfterSave, autosavePayload)
+	return AutosaveResult{ContentID: responseID, PreviewID: previewID, Content: item}, nil
 }
 
 func (w *Writer) DeleteContent(ctx context.Context, id int64) error {

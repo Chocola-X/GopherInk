@@ -3875,67 +3875,17 @@ func (a *App) adminAutosave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, _ := a.currentUser(r)
-	autosavePayload := plugin.AutosavePayload{ContentID: id, Input: input}
-	if out, hookErr := a.Plugins.ApplyActive(r.Context(), plugin.HookAutosaveBeforeSave, autosavePayload); hookErr != nil {
-		http.Error(w, hookErr.Error(), http.StatusBadRequest)
-		return
-	} else if next, ok := out.(plugin.AutosavePayload); ok {
-		if nextInput, ok := next.Input.(services.SaveContentInput); ok {
-			input = nextInput
-		}
-	}
-	savePayload := plugin.ContentSavePayload{ID: id, AuthorID: user.UID, Operation: "autosave", Input: input}
-	if payload, hookErr := a.Plugins.ApplyActive(r.Context(), plugin.HookContentBeforeSave, savePayload); hookErr != nil {
-		http.Error(w, hookErr.Error(), http.StatusBadRequest)
-		return
-	} else if next, ok := payload.(plugin.ContentSavePayload); ok {
-		savePayload = next
-		if nextInput, ok := next.Input.(services.SaveContentInput); ok {
-			input = nextInput
-		}
-	}
-
-	responseID := id
-	previewID := id
-	if id > 0 {
-		existing, existErr := a.Contents.ByID(r.Context(), id)
-		if existErr == nil && existing.DraftOf > 0 {
-			var draftID int64
-			draftID, err = a.Contents.SaveEditingDraft(r.Context(), existing.DraftOf, input, user.UID)
-			responseID = existing.DraftOf
-			previewID = draftID
-		} else if existErr == nil && existing.Status == models.ContentStatusPost && existing.DraftOf == 0 {
-			var draftID int64
-			draftID, err = a.Contents.SaveEditingDraft(r.Context(), id, input, user.UID)
-			responseID = id
-			previewID = draftID
-		} else if existErr == nil {
-			err = a.Contents.Update(r.Context(), id, input)
-			responseID = id
-			previewID = id
-		} else {
-			err = existErr
-		}
-	} else {
-		id, err = a.Contents.Create(r.Context(), input, user.UID)
-		responseID = id
-		previewID = id
-	}
+	result, err := a.contentWriter().SaveAutosave(r.Context(), orchestration.AutosaveRequest{
+		ContentID: id,
+		AuthorID:  user.UID,
+		Input:     input,
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	savePayload.PublishedID = responseID
-	if err := a.runContentAfterSave(r.Context(), savePayload, previewID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	item, _ := a.Contents.ByID(r.Context(), previewID)
-	autosavePayload.ContentID = responseID
-	autosavePayload.Result = item
-	_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookAutosaveAfterSave, autosavePayload)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cid": responseID, "preview": a.previewURL(r, item)})
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cid": result.ContentID, "preview": a.previewURL(r, result.Content)})
 }
 
 func (a *App) adminMarkdownPreview(w http.ResponseWriter, r *http.Request) {

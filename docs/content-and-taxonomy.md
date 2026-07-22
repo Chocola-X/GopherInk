@@ -99,7 +99,7 @@ return payload, nil
 
 自动保存不是修订版本，也不应创建多个草稿。修改编辑器前端时必须保留当前草稿 ID/发布 ID 的后续回写，否则下一次自动保存会被误认为新建内容。
 
-自动保存触发内容保存通用钩子，`ContentSavePayload.Operation` 为 `autosave`。插件进行外发通知时通常应忽略该操作，避免每次输入都触发昂贵任务。
+自动保存由核心写入编排层处理，会先触发 `autosave.before_save`，再触发内容保存通用钩子，`ContentSavePayload.Operation` 为 `autosave`，保存完成后触发 `content.after_save` 和 `autosave.after_save`。插件进行外发通知时通常应忽略该操作，避免每次输入都触发昂贵任务。
 
 ## 修订版本
 
