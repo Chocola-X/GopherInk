@@ -112,7 +112,7 @@
   <h2 class="comment-title">评论</h2>
   {{if .CommentOK}}<div class="notice-card">{{if .CommentPending}}评论已提交，正在等待审核。{{else}}评论已提交。{{end}}</div>{{end}}
   {{if .CommentError}}<div class="notice-card notice-error">{{.CommentErrorMessage}}</div>{{end}}
-  <form id="comment-form" class="mdui-card comment-respond{{if .CommentFormAvatar.Enabled}} has-avatar{{end}}" method="post" action="/comment"{{if .CommentGuardEnabled}} data-comment-guard-endpoint="{{.CommentGuardEndpoint}}"{{end}}>
+  <form id="{{.CommentRespondID}}" class="mdui-card comment-respond{{if .CommentFormAvatar.Enabled}} has-avatar{{end}}" method="post" action="{{.CommentAction}}"{{if .CommentGuardEnabled}} data-comment-guard-endpoint="{{.CommentGuardEndpoint}}"{{end}}>
     <input type="hidden" name="_csrf" value="{{.CommentCSRF}}">
     <input type="hidden" name="cid" value="{{.Post.CID}}">
     <input type="hidden" name="parent" value="{{.ReplyTo}}">
@@ -133,9 +133,9 @@
     </div>
     {{else}}
     <div class="comment-web">
-      <mdui-text-field name="author" label="称呼" required></mdui-text-field>
-      <mdui-text-field name="mail" label="邮箱" type="email" {{if .CommentsRequireMail}}required{{end}}></mdui-text-field>
-      <mdui-text-field name="url" label="网址" {{if .CommentsRequireURL}}required{{end}}></mdui-text-field>
+      <mdui-text-field name="author" label="称呼" value="{{remember "author"}}" required></mdui-text-field>
+      <mdui-text-field name="mail" label="邮箱" type="email" value="{{remember "mail"}}" {{if .CommentsRequireMail}}required{{end}}></mdui-text-field>
+      <mdui-text-field name="url" label="网址" value="{{remember "url"}}" {{if .CommentsRequireURL}}required{{end}}></mdui-text-field>
     </div>
     {{end}}
     <mdui-text-field class="comment-textarea" name="text" label="评论" rows="5" required></mdui-text-field>

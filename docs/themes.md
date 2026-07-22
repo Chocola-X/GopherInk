@@ -270,20 +270,27 @@ form?.addEventListener("submit", async (event) => {
 核心还提供 `isArchiveType` 模板函数，用于判断当前归档类型，作用接近 Typecho 的 `$this->is()`：
 
 ```gotemplate
-{{if isArchiveType . "post"}}...{{end}}
+{{if isArchiveType "post"}}...{{end}}
 ```
+
+单篇文章和独立页面会额外提供一组评论和权限相关数据：
+
+- `PostAllow.Comment`、`PostAllow.Ping`、`PostAllow.Feed`：当前内容是否允许评论、引用和 Feed 输出。
+- `PostPasswordProtected`：当前内容是否设置了访问密码。
+- `CommentAction`：评论提交地址，当前为 `/comment`。
+- `CommentRespondID`：评论表单锚点 ID，默认是 `comment-form`。
+
+评论表单可以使用 `remember "author"`、`remember "mail"` 和 `remember "url"` 读取匿名访客上次评论时保存的称呼、邮箱和网址。该函数只读取核心评论记忆 Cookie，不做身份认证判断。
 
 ## 主题静态资源
 
-当前核心在启动时把内置主题静态文件挂载到：
+当前核心按主题技术名称动态挂载主题静态文件：
 
 ```text
-/theme/default/
+/theme/<theme-name>/
 ```
 
-这是当前 v0.5.0 的实际实现边界：静态挂载仍针对技术名称 `default`。新增第三方主题若需要独立 `/theme/<name>/` 静态目录，应同步扩展 `core/handlers/app.go` 的主题静态路由，或在主题方案中使用已有公开资源。仅注册 `Theme.Static` 不会自动得到任意名称的静态 URL。
-
-不要把这个限制误解成推荐所有主题复用 `/theme/default/`；后续若通用化路由，应以主题名称动态挂载并同步 WAF 静态资源分类。
+例如技术名为 `default` 的主题仍然使用 `/theme/default/`，第三方主题 `minimal` 会使用 `/theme/minimal/`。主题只要注册 `Theme.Static`，就可以通过自己的技术名访问静态资源；嵌入主题和非嵌入主题使用同一 URL 规则。
 
 ## 主题配置
 
@@ -449,6 +456,7 @@ AdjustData: func(ctx context.Context, data map[string]any) error {
 
 - `pluginServiceAvailable "name"`：服务存在且所属插件已启用时返回 `true`。
 - `pluginCall "name" arg...`：调用服务并返回结构化结果；失败会终止模板渲染。
+- `pluginConfig "plugin-name"`：读取指定插件的站点配置，返回 `map[string]string`；插件不存在、未配置或读取失败时返回空 map。
 
 以友情链接插件提供的 `links.list` 为例：
 

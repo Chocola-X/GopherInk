@@ -16,16 +16,25 @@ import (
 const GopherInkVersion = "0.5.0"
 
 type PublicContent struct {
-	CID      int64
-	Title    string
-	Slug     string
-	SlugID   int64
-	Created  int64
-	Modified int64
-	Text     string
-	Type     string
-	Status   string
-	AuthorID int64
+	CID          int64
+	Title        string
+	Slug         string
+	SlugID       int64
+	Created      int64
+	Modified     int64
+	Text         string
+	Type         string
+	Status       string
+	AuthorID     int64
+	Password     string
+	CommentsNum  int64
+	AllowComment string
+	AllowPing    string
+	AllowFeed    string
+	Template     string
+	Parent       int64
+	SortOrder    int64
+	DraftOf      int64
 }
 
 type PublicUser struct {
@@ -43,15 +52,16 @@ type PublicComment struct {
 	Created  int64
 	Author   string
 	AuthorID int64
-	OwnerID  int64
-	Mail     string
-	URL      string
-	IP       string
-	Agent    string
-	Text     string
-	Type     string
-	Status   string
-	Parent   int64
+	// OwnerID is the author UID of the content this comment belongs to.
+	OwnerID int64
+	Mail    string
+	URL     string
+	IP      string
+	Agent   string
+	Text    string
+	Type    string
+	Status  string
+	Parent  int64
 }
 
 type PublicMeta struct {
@@ -81,6 +91,15 @@ type PublicRevision struct {
 	AllowComment string
 	AllowPing    string
 	AllowFeed    string
+}
+
+type PublicArchivePeriod struct {
+	Year  int
+	Month int
+	Day   int
+	Date  string
+	Count int
+	URL   string
 }
 
 type PublicContentQuery struct {
@@ -144,11 +163,16 @@ type Runtime struct {
 	ListUsers         func(context.Context, PublicUserQuery) ([]PublicUser, int64, error)
 	ListMetas         func(context.Context, PublicMetaQuery) ([]PublicMeta, int64, error)
 	ListRevisions     func(context.Context, int64) ([]PublicRevision, error)
-	ListThemeFiles    func(context.Context, string) ([]string, error)
-	ThemeEditableDir  func(context.Context, string) (string, bool)
+	ArchiveMonths     func(context.Context, int) ([]PublicArchivePeriod, error)
+	AdjacentPosts     func(context.Context, int64) (PublicContent, PublicContent, error)
+	RelatedPosts      func(context.Context, int64, int) ([]PublicContent, error)
+	ListThemeFiles    func(context.Context, ...string) ([]string, error)
+	ThemeEditableDir  func(context.Context, ...string) (string, bool)
 	ContentURL        func(context.Context, int64) (string, error)
 	CommentURL        func(context.Context, int64) (string, error)
 	AvatarURL         func(context.Context, string, int) string
+	SiteURL           func(context.Context) string
+	AdminURL          func(context.Context) string
 	ClientIP          func(*http.Request) string
 	CurrentUser       func(*http.Request) (PublicUser, bool)
 	Option            func(context.Context, string) (string, error)
@@ -304,6 +328,102 @@ func (r *Runtime) RebindSQL(ctx context.Context, query string) string {
 		dialect = r.PluginDBDialect(ctx)
 	}
 	return RebindSQL(dialect, query)
+}
+
+func (r *Runtime) GetContent(ctx context.Context, cid int64) (PublicContent, error) {
+	if r == nil || r.ListContents == nil {
+		return PublicContent{}, ErrRuntimeUnavailable
+	}
+	if cid <= 0 {
+		return PublicContent{}, sql.ErrNoRows
+	}
+	items, _, err := r.ListContents(ctx, PublicContentQuery{CID: cid, Type: "all", Status: "all", IncludeDrafts: true, Limit: 1})
+	if err != nil {
+		return PublicContent{}, err
+	}
+	if len(items) == 0 {
+		return PublicContent{}, sql.ErrNoRows
+	}
+	return items[0], nil
+}
+
+func (r *Runtime) GetComment(ctx context.Context, coid int64) (PublicComment, error) {
+	if r == nil || r.ListComments == nil {
+		return PublicComment{}, ErrRuntimeUnavailable
+	}
+	if coid <= 0 {
+		return PublicComment{}, sql.ErrNoRows
+	}
+	items, _, err := r.ListComments(ctx, PublicCommentQuery{COID: coid, Status: "all", Type: "all", Limit: 1})
+	if err != nil {
+		return PublicComment{}, err
+	}
+	if len(items) == 0 {
+		return PublicComment{}, sql.ErrNoRows
+	}
+	return items[0], nil
+}
+
+func (r *Runtime) GetUser(ctx context.Context, uid int64) (PublicUser, error) {
+	if r == nil || r.ListUsers == nil {
+		return PublicUser{}, ErrRuntimeUnavailable
+	}
+	if uid <= 0 {
+		return PublicUser{}, sql.ErrNoRows
+	}
+	items, _, err := r.ListUsers(ctx, PublicUserQuery{UID: uid, Limit: 1})
+	if err != nil {
+		return PublicUser{}, err
+	}
+	if len(items) == 0 {
+		return PublicUser{}, sql.ErrNoRows
+	}
+	return items[0], nil
+}
+
+func (r *Runtime) GetMeta(ctx context.Context, mid int64) (PublicMeta, error) {
+	if r == nil || r.ListMetas == nil {
+		return PublicMeta{}, ErrRuntimeUnavailable
+	}
+	if mid <= 0 {
+		return PublicMeta{}, sql.ErrNoRows
+	}
+	items, _, err := r.ListMetas(ctx, PublicMetaQuery{MID: mid, Type: "all", Limit: 1})
+	if err != nil {
+		return PublicMeta{}, err
+	}
+	if len(items) == 0 {
+		return PublicMeta{}, sql.ErrNoRows
+	}
+	return items[0], nil
+}
+
+func (r *Runtime) GetSiteURL(ctx context.Context) string {
+	if r == nil {
+		return ""
+	}
+	if r.SiteURL != nil {
+		return r.SiteURL(ctx)
+	}
+	if r.Option != nil {
+		value, _ := r.Option(ctx, "base_url")
+		return strings.TrimRight(value, "/")
+	}
+	return ""
+}
+
+func (r *Runtime) GetAdminURL(ctx context.Context) string {
+	if r == nil {
+		return ""
+	}
+	if r.AdminURL != nil {
+		return r.AdminURL(ctx)
+	}
+	base := strings.TrimRight(r.GetSiteURL(ctx), "/")
+	if base == "" {
+		return "/admin"
+	}
+	return base + "/admin"
 }
 
 type RouteHandler func(*Runtime, http.ResponseWriter, *http.Request)

@@ -191,7 +191,15 @@ func (s *ContentService) ListContentsPlugin(ctx context.Context, query plugin.Pu
 }
 
 func publicContentForPlugin(content models.Content) plugin.PublicContent {
-	return plugin.PublicContent{CID: content.CID, Title: content.Title, Slug: content.Slug, SlugID: content.SlugID, Created: content.Created, Modified: content.Modified, Text: content.Text, Type: content.Type, Status: content.Status, AuthorID: content.AuthorID}
+	return plugin.PublicContent{
+		CID: content.CID, Title: content.Title, Slug: content.Slug, SlugID: content.SlugID,
+		Created: content.Created, Modified: content.Modified, Text: content.Text,
+		Type: content.Type, Status: content.Status, AuthorID: content.AuthorID,
+		Password: content.Password, CommentsNum: content.CommentsNum,
+		AllowComment: content.AllowComment, AllowPing: content.AllowPing, AllowFeed: content.AllowFeed,
+		Template: content.Template, Parent: content.Parent, SortOrder: content.SortOrder,
+		DraftOf: content.DraftOf,
+	}
 }
 
 func (s *ContentService) ListAll(ctx context.Context, limit, offset int) ([]models.Content, error) {

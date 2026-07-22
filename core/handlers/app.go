@@ -114,9 +114,7 @@ func (a *App) Handler() http.Handler {
 	adminAssets, _ := fs.Sub(admin.FS, "assets")
 	mux.Handle("/admin/assets/", http.StripPrefix("/admin/assets/", http.FileServer(http.FS(adminAssets))))
 
-	if theme, ok := a.activeTheme(context.Background()); ok && theme.Static != nil {
-		mux.Handle("/theme/default/", http.StripPrefix("/theme/default/", http.FileServer(http.FS(theme.Static))))
-	}
+	mux.HandleFunc("/theme/", a.themeStatic)
 	if a.UploadDir != "" {
 		mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(a.UploadDir))))
 	}
@@ -5185,26 +5183,30 @@ func (a *App) renderPostContent(w http.ResponseWriter, r *http.Request, post mod
 		related[i], _ = a.filterContentTitle(r.Context(), related[i])
 	}
 	data := map[string]any{
-		"Post":                post,
-		"ContentHTML":         contentHTML,
-		"Comments":            comments,
-		"CommentPager":        commentPager,
-		"ReplyTo":             r.URL.Query().Get("reply"),
-		"Categories":          categories,
-		"Tags":                tags,
-		"Fields":              fields,
-		"PrevPost":            prev,
-		"NextPost":            next,
-		"RelatedPosts":        related,
-		"CommentError":        r.URL.Query().Get("comment_error"),
-		"CommentErrorMessage": commentErrorMessage(r.URL.Query().Get("comment_error")),
-		"CommentOK":           r.URL.Query().Get("comment_ok") == "1",
-		"CommentPending":      r.URL.Query().Get("comment_status") == "waiting",
-		"CommentIdentity":     a.publicCommentIdentity(r),
-		"CommentFormAvatar":   a.commentFormAvatar(r.Context(), 96),
-		"CommentsRequireMail": optionBool(a.option(r.Context(), "comments_require_mail", "1")),
-		"CommentsRequireURL":  optionBool(a.option(r.Context(), "comments_require_url", "0")),
-		"CanonicalPath":       a.contentURL(r.Context(), post),
+		"Post":                  post,
+		"ContentHTML":           contentHTML,
+		"Comments":              comments,
+		"CommentPager":          commentPager,
+		"ReplyTo":               r.URL.Query().Get("reply"),
+		"Categories":            categories,
+		"Tags":                  tags,
+		"Fields":                fields,
+		"PrevPost":              prev,
+		"NextPost":              next,
+		"RelatedPosts":          related,
+		"CommentError":          r.URL.Query().Get("comment_error"),
+		"CommentErrorMessage":   commentErrorMessage(r.URL.Query().Get("comment_error")),
+		"CommentOK":             r.URL.Query().Get("comment_ok") == "1",
+		"CommentPending":        r.URL.Query().Get("comment_status") == "waiting",
+		"CommentIdentity":       a.publicCommentIdentity(r),
+		"CommentFormAvatar":     a.commentFormAvatar(r.Context(), 96),
+		"CommentAction":         "/comment",
+		"CommentRespondID":      "comment-form",
+		"CommentsRequireMail":   optionBool(a.option(r.Context(), "comments_require_mail", "1")),
+		"CommentsRequireURL":    optionBool(a.option(r.Context(), "comments_require_url", "0")),
+		"CanonicalPath":         a.contentURL(r.Context(), post),
+		"PostAllow":             contentAllow(post),
+		"PostPasswordProtected": strings.TrimSpace(post.Password) != "",
 	}
 	if author, err := a.contentAuthorForPlugin(r.Context(), post); err == nil {
 		data["Author"] = author
@@ -5253,23 +5255,27 @@ func (a *App) renderPageContent(w http.ResponseWriter, r *http.Request, pageData
 		return
 	}
 	data := map[string]any{
-		"Post":                pageData,
-		"ContentHTML":         contentHTML,
-		"Comments":            comments,
-		"CommentPager":        commentPager,
-		"ReplyTo":             r.URL.Query().Get("reply"),
-		"Fields":              fields,
-		"PrevPost":            models.Content{},
-		"NextPost":            models.Content{},
-		"CommentError":        r.URL.Query().Get("comment_error"),
-		"CommentErrorMessage": commentErrorMessage(r.URL.Query().Get("comment_error")),
-		"CommentOK":           r.URL.Query().Get("comment_ok") == "1",
-		"CommentPending":      r.URL.Query().Get("comment_status") == "waiting",
-		"CommentIdentity":     a.publicCommentIdentity(r),
-		"CommentFormAvatar":   a.commentFormAvatar(r.Context(), 96),
-		"CommentsRequireMail": optionBool(a.option(r.Context(), "comments_require_mail", "1")),
-		"CommentsRequireURL":  optionBool(a.option(r.Context(), "comments_require_url", "0")),
-		"CanonicalPath":       a.contentURL(r.Context(), pageData),
+		"Post":                  pageData,
+		"ContentHTML":           contentHTML,
+		"Comments":              comments,
+		"CommentPager":          commentPager,
+		"ReplyTo":               r.URL.Query().Get("reply"),
+		"Fields":                fields,
+		"PrevPost":              models.Content{},
+		"NextPost":              models.Content{},
+		"CommentError":          r.URL.Query().Get("comment_error"),
+		"CommentErrorMessage":   commentErrorMessage(r.URL.Query().Get("comment_error")),
+		"CommentOK":             r.URL.Query().Get("comment_ok") == "1",
+		"CommentPending":        r.URL.Query().Get("comment_status") == "waiting",
+		"CommentIdentity":       a.publicCommentIdentity(r),
+		"CommentFormAvatar":     a.commentFormAvatar(r.Context(), 96),
+		"CommentAction":         "/comment",
+		"CommentRespondID":      "comment-form",
+		"CommentsRequireMail":   optionBool(a.option(r.Context(), "comments_require_mail", "1")),
+		"CommentsRequireURL":    optionBool(a.option(r.Context(), "comments_require_url", "0")),
+		"CanonicalPath":         a.contentURL(r.Context(), pageData),
+		"PostAllow":             contentAllow(pageData),
+		"PostPasswordProtected": strings.TrimSpace(pageData.Password) != "",
 	}
 	if author, err := a.contentAuthorForPlugin(r.Context(), pageData); err == nil {
 		data["Author"] = author
@@ -5574,6 +5580,7 @@ func (a *App) frontComment(w http.ResponseWriter, r *http.Request) {
 		cookies := a.cookieOptions(r.Context())
 		http.SetCookie(w, &http.Cookie{Name: cookies.Name("comment_author"), Value: author, Path: "/", MaxAge: 86400 * 365, HttpOnly: true, SameSite: cookies.SameSite, Secure: cookies.Secure})
 		http.SetCookie(w, &http.Cookie{Name: cookies.Name("comment_mail"), Value: mail, Path: "/", MaxAge: 86400 * 365, HttpOnly: true, SameSite: cookies.SameSite, Secure: cookies.Secure})
+		http.SetCookie(w, &http.Cookie{Name: cookies.Name("comment_url"), Value: urlValue, Path: "/", MaxAge: 86400 * 365, HttpOnly: true, SameSite: cookies.SameSite, Secure: cookies.Secure})
 	}
 	if input.Status == "waiting" {
 		a.rememberUnapprovedComment(w, r, commentID)
@@ -7502,6 +7509,12 @@ type commentFormAvatarView struct {
 	DefaultURL string
 }
 
+type contentAllowView struct {
+	Comment bool
+	Ping    bool
+	Feed    bool
+}
+
 type commentPagination struct {
 	Page       int
 	PageSize   int
@@ -7973,6 +7986,34 @@ func (a *App) publicCommentIdentity(r *http.Request) publicCommentIdentity {
 	return publicCommentIdentity{LoggedIn: true, Name: name, AvatarURL: a.gravatarURL(r, user.Mail)}
 }
 
+func (a *App) rememberedCommentField(r *http.Request, field string) string {
+	names := map[string]string{
+		"author": "comment_author",
+		"name":   "comment_author",
+		"mail":   "comment_mail",
+		"email":  "comment_mail",
+		"url":    "comment_url",
+		"site":   "comment_url",
+	}
+	cookieName, ok := names[strings.ToLower(strings.TrimSpace(field))]
+	if !ok {
+		return ""
+	}
+	cookie, err := r.Cookie(a.cookieOptions(r.Context()).Name(cookieName))
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
+}
+
+func contentAllow(content models.Content) contentAllowView {
+	return contentAllowView{
+		Comment: content.AllowComment == "1",
+		Ping:    content.AllowPing == "1",
+		Feed:    content.AllowFeed == "1",
+	}
+}
+
 func (a *App) nameReserved(ctx context.Context, name string) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
 	if name == "" {
@@ -8330,6 +8371,19 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 		}
 		return pluginRuntime.CallService(r.Context(), name, args...)
 	}
+	funcs["pluginConfig"] = func(name string) map[string]string {
+		if pluginRuntime.Config == nil {
+			return map[string]string{}
+		}
+		cfg, err := pluginRuntime.Config(r.Context(), name)
+		if err != nil {
+			return map[string]string{}
+		}
+		return cfg
+	}
+	funcs["remember"] = func(field string) string {
+		return a.rememberedCommentField(r, field)
+	}
 	tmpl, err := template.New("base.html").Funcs(funcs).ParseFS(theme.Templates, "templates/base.html", "templates/"+page)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -8418,6 +8472,21 @@ func (a *App) activeTheme(ctx context.Context) (plugin.Theme, bool) {
 		return theme, true
 	}
 	return plugin.Theme{}, false
+}
+
+func (a *App) themeStatic(w http.ResponseWriter, r *http.Request) {
+	rel := strings.TrimPrefix(r.URL.Path, "/theme/")
+	name, filePath, ok := strings.Cut(rel, "/")
+	if !ok || strings.TrimSpace(name) == "" || strings.TrimSpace(filePath) == "" || strings.Contains(name, "..") {
+		http.NotFound(w, r)
+		return
+	}
+	theme, ok := a.Plugins.Theme(name)
+	if !ok || theme.Static == nil {
+		http.NotFound(w, r)
+		return
+	}
+	http.StripPrefix("/theme/"+name+"/", http.FileServer(http.FS(theme.Static))).ServeHTTP(w, r)
 }
 
 func (a *App) enrichData(ctx context.Context, data map[string]any) {
@@ -9455,11 +9524,16 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		ListUsers:         a.Users.ListUsersPlugin,
 		ListMetas:         a.Metas.ListMetasPlugin,
 		ListRevisions:     a.listRevisionsPlugin,
+		ArchiveMonths:     a.archiveMonthsPlugin,
+		AdjacentPosts:     a.adjacentPostsPlugin,
+		RelatedPosts:      a.relatedPostsPlugin,
 		ListThemeFiles:    a.listThemeFilesPlugin,
 		ThemeEditableDir:  a.themeEditableDirPlugin,
 		ContentURL:        a.pluginContentURL,
 		CommentURL:        a.pluginCommentURL,
 		AvatarURL:         a.emailAvatarURL,
+		SiteURL:           a.siteURLPlugin,
+		AdminURL:          a.adminURLPlugin,
 		ClientIP:          a.clientIP,
 		CurrentUser:       a.currentUserPlugin,
 		Option:            a.Options.Get,
@@ -10879,6 +10953,10 @@ func (a *App) contentToPublic(c models.Content) plugin.PublicContent {
 		CID: c.CID, Title: c.Title, Slug: c.Slug, SlugID: c.SlugID,
 		Created: c.Created, Modified: c.Modified, Text: c.Text,
 		Type: c.Type, Status: c.Status, AuthorID: c.AuthorID,
+		Password: c.Password, CommentsNum: c.CommentsNum,
+		AllowComment: c.AllowComment, AllowPing: c.AllowPing, AllowFeed: c.AllowFeed,
+		Template: c.Template, Parent: c.Parent, SortOrder: c.SortOrder,
+		DraftOf: c.DraftOf,
 	}
 }
 
@@ -10959,8 +11037,62 @@ func (a *App) listRevisionsPlugin(ctx context.Context, cid int64) ([]plugin.Publ
 	return out, nil
 }
 
-func (a *App) themeEditableDirPlugin(ctx context.Context, name string) (string, bool) {
-	_ = ctx
+func (a *App) archiveMonthsPlugin(ctx context.Context, limit int) ([]plugin.PublicArchivePeriod, error) {
+	periods, err := a.Contents.ArchiveMonths(ctx, a.siteLocation(ctx), limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]plugin.PublicArchivePeriod, 0, len(periods))
+	for _, period := range periods {
+		out = append(out, plugin.PublicArchivePeriod{
+			Year: period.Year, Month: period.Month, Day: period.Day,
+			Date: period.Date, Count: period.Count,
+			URL: archivePath(period.Year, period.Month, 0),
+		})
+	}
+	return out, nil
+}
+
+func (a *App) adjacentPostsPlugin(ctx context.Context, cid int64) (plugin.PublicContent, plugin.PublicContent, error) {
+	content, err := a.Contents.ByID(ctx, cid)
+	if err != nil {
+		return plugin.PublicContent{}, plugin.PublicContent{}, err
+	}
+	prev, next, err := a.Contents.Adjacent(ctx, content)
+	if err != nil {
+		return plugin.PublicContent{}, plugin.PublicContent{}, err
+	}
+	return a.contentToPublic(prev), a.contentToPublic(next), nil
+}
+
+func (a *App) relatedPostsPlugin(ctx context.Context, cid int64, limit int) ([]plugin.PublicContent, error) {
+	content, err := a.Contents.ByID(ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+	categories, _ := a.Metas.CategoriesForContent(ctx, content.CID)
+	tags, _ := a.Metas.TagsForContent(ctx, content.CID)
+	posts, err := a.relatedPosts(ctx, content, categories, tags, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]plugin.PublicContent, 0, len(posts))
+	for _, post := range posts {
+		out = append(out, a.contentToPublic(post))
+	}
+	return out, nil
+}
+
+func (a *App) themeEditableDirPlugin(ctx context.Context, names ...string) (string, bool) {
+	name := ""
+	if len(names) > 0 {
+		name = names[0]
+	}
+	if strings.TrimSpace(name) == "" {
+		if active, ok := a.activeTheme(ctx); ok {
+			name = active.Name
+		}
+	}
 	theme, ok := a.Plugins.Theme(strings.TrimSpace(name))
 	if !ok || theme.Embedded || strings.TrimSpace(theme.EditableDir) == "" {
 		return "", false
@@ -10968,8 +11100,8 @@ func (a *App) themeEditableDirPlugin(ctx context.Context, name string) (string, 
 	return theme.EditableDir, true
 }
 
-func (a *App) listThemeFilesPlugin(ctx context.Context, name string) ([]string, error) {
-	dir, ok := a.themeEditableDirPlugin(ctx, name)
+func (a *App) listThemeFilesPlugin(ctx context.Context, names ...string) ([]string, error) {
+	dir, ok := a.themeEditableDirPlugin(ctx, names...)
 	if !ok {
 		return nil, fmt.Errorf("theme is not editable")
 	}
@@ -10978,6 +11110,18 @@ func (a *App) listThemeFilesPlugin(ctx context.Context, name string) ([]string, 
 
 func (a *App) getContentFieldsPlugin(ctx context.Context, cid int64) (map[string]any, error) {
 	return a.Contents.FieldMap(ctx, cid)
+}
+
+func (a *App) siteURLPlugin(ctx context.Context) string {
+	return strings.TrimRight(a.option(ctx, "base_url", ""), "/")
+}
+
+func (a *App) adminURLPlugin(ctx context.Context) string {
+	base := a.siteURLPlugin(ctx)
+	if base == "" {
+		return "/admin"
+	}
+	return base + "/admin"
 }
 
 func (a *App) activeThemeName(ctx context.Context) string {
