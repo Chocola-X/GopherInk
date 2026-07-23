@@ -1,29 +1,29 @@
 {{define "content"}}
 <div class="page-head">
   <div>
-    <h1>主题</h1>
-    <p class="muted">主题通过 Go 编译期注册；新增或修改主题源码后需要重新编译并重启。</p>
+    <h1>{{T "Themes"}}</h1>
+    <p class="muted">{{T "Themes are registered at Go compile time; recompile and restart after adding or changing theme source."}}</p>
   </div>
 </div>
-{{if .Saved}}<div class="notice">主题已切换。</div>{{end}}
+{{if .Saved}}<div class="notice">{{T "Theme switched."}}</div>{{end}}
 <section class="grid">
   {{range .Themes}}
   <article class="stat-panel">
     {{if .Screenshot}}<img class="theme-shot" src="{{.Screenshot}}" alt="">{{end}}
     <strong>{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}</strong>
     <p class="muted">{{.Description}}</p>
-    <p class="muted">版本 {{.Version}} {{if .Author}}/ {{.Author}}{{end}}</p>
+    <p class="muted">{{T "Version"}} {{.Version}} {{if .Author}}/ {{.Author}}{{end}}</p>
     <div class="row-actions">
       <form method="post" action="/admin/themes">
         <input type="hidden" name="theme" value="{{.Name}}">
-        <mdui-button type="submit" {{if eq $.ActiveTheme .Name}}disabled{{end}}>{{if eq $.ActiveTheme .Name}}已启用{{else}}启用{{end}}</mdui-button>
+        <mdui-button type="submit" {{if eq $.ActiveTheme .Name}}disabled{{end}}>{{if eq $.ActiveTheme .Name}}{{T "Enabled"}}{{else}}{{T "Enable"}}{{end}}</mdui-button>
       </form>
-      {{if or .ConfigSchema .AdminPages}}<mdui-button variant="outlined" href="/admin/themes/{{.Name}}/config">设置</mdui-button>{{end}}
-      {{if and .EditableDir (not .Embedded)}}<mdui-button variant="outlined" href="/admin/themes/{{.Name}}/files">文件</mdui-button>{{end}}
+      {{if or .ConfigSchema .AdminPages}}<mdui-button variant="outlined" href="/admin/themes/{{.Name}}/config">{{T "Settings"}}</mdui-button>{{end}}
+      {{if and .EditableDir (not .Embedded)}}<mdui-button variant="outlined" href="/admin/themes/{{.Name}}/files">{{T "File"}}</mdui-button>{{end}}
     </div>
   </article>
   {{else}}
-  <div class="stat-panel muted">暂无主题。</div>
+  <div class="stat-panel muted">{{T "No themes."}}</div>
   {{end}}
 </section>
 {{end}}

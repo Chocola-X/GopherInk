@@ -1,13 +1,13 @@
 {{define "content"}}
 <div class="page-head">
-  <div><h1>编辑附件</h1><p class="muted">修改附件标题和描述，不会改变文件 URL。</p></div>
-  <mdui-button variant="outlined" href="/admin/medias">返回</mdui-button>
+  <div><h1>{{T "Edit attachment"}}</h1><p class="muted">{{T "Edit attachment title and description without changing its file URL."}}</p></div>
+  <mdui-button variant="outlined" href="/admin/medias">{{T "Back"}}</mdui-button>
 </div>
 <form method="post" action="{{.Action}}" class="form-panel field-stack">
-  {{if .Error}}<div class="notice danger">{{.Error}}</div>{{end}}
-  <mdui-text-field name="title" label="标题" value="{{.Media.Title}}" required></mdui-text-field>
-  <mdui-text-field label="文件名" value="{{.Meta.Name}}" readonly></mdui-text-field>
-  <mdui-text-field name="description" label="描述" rows="4" autosize>{{.Meta.Description}}</mdui-text-field>
-  <div class="form-actions"><mdui-button type="submit">保存</mdui-button></div>
+  {{if .Error}}<div class="notice danger">{{T .Error}}</div>{{end}}
+  <mdui-text-field name="title" label="{{T "Title"}}" value="{{.Media.Title}}" required></mdui-text-field>
+  <mdui-text-field label="{{T "Filename"}}" value="{{.Meta.Name}}" readonly></mdui-text-field>
+  <mdui-text-field name="description" label="{{T "Description"}}" rows="4" autosize>{{.Meta.Description}}</mdui-text-field>
+  <div class="form-actions"><mdui-button type="submit">{{T "Save"}}</mdui-button></div>
 </form>
 {{end}}

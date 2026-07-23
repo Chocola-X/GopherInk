@@ -2,7 +2,7 @@
 <section class="login-panel">
   <h1>{{T "Install"}}</h1>
   <p class="muted">{{T "Initialize site and admin account"}}</p>
-  {{if .Error}}<div class="notice danger">{{.Error}}</div>{{end}}
+  {{if .Error}}<div class="notice danger">{{T .Error}}</div>{{end}}
   <form method="post" class="field-stack">
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
     <mdui-text-field name="site_title" label="{{T "Site title"}}" value="{{.SiteTitle}}" required></mdui-text-field>
@@ -11,7 +11,7 @@
     <mdui-text-field name="screenName" label="{{T "Nickname"}}" value="{{.User.ScreenName}}"></mdui-text-field>
     <mdui-text-field name="mail" label="{{T "Email"}}" value="{{.User.Mail}}" {{if fieldError .Errors "mail"}}helper="{{fieldError .Errors "mail"}}"{{end}} required></mdui-text-field>
     <mdui-text-field name="password" label="{{T "Password"}}" type="password" {{if fieldError .Errors "password"}}helper="{{fieldError .Errors "password"}}"{{end}} required></mdui-text-field>
-    <mdui-text-field name="confirm" label="确认密码" type="password" {{if fieldError .Errors "confirm"}}helper="{{fieldError .Errors "confirm"}}"{{end}} required></mdui-text-field>
+    <mdui-text-field name="confirm" label="{{T "Confirm password"}}" type="password" {{if fieldError .Errors "confirm"}}helper="{{fieldError .Errors "confirm"}}"{{end}} required></mdui-text-field>
     <mdui-button type="submit" full-width>{{T "Start install"}}</mdui-button>
   </form>
 </section>

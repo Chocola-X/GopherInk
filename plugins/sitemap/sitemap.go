@@ -25,7 +25,17 @@ func (sitemapPlugin) Version() string {
 }
 
 func (sitemapPlugin) Description() string {
-	return "生成 /sitemap.xml，展示已发布文章。"
+	return "Generate /sitemap.xml for published content."
+}
+
+func (sitemapPlugin) Translate(lang, key string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(lang)), "zh") {
+		switch key {
+		case "Generate /sitemap.xml for published content.":
+			return "生成 /sitemap.xml，展示已发布内容。"
+		}
+	}
+	return key
 }
 
 func (sitemapPlugin) Init(m *plugin.Manager) {

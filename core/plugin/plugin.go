@@ -241,6 +241,7 @@ type Runtime struct {
 	ContentURL         func(context.Context, int64) (string, error)
 	CommentURL         func(context.Context, int64) (string, error)
 	AvatarURL          func(context.Context, string, int) string
+	Language           func(context.Context) string
 	SiteURL            func(context.Context) string
 	AdminURL           func(context.Context) string
 	ClientIP           func(*http.Request) string
@@ -951,9 +952,10 @@ const (
 
 // AdminNotice is a plain-text message displayed by the native admin UI.
 type AdminNotice struct {
-	Type    string `json:"type"`
-	Mode    string `json:"mode,omitempty"`
-	Message string `json:"message"`
+	Type         string `json:"type"`
+	Mode         string `json:"mode,omitempty"`
+	Message      string `json:"message"`
+	SkipCoreI18n bool   `json:"skipCoreI18n,omitempty"`
 }
 
 type AdminMenuProvider interface {
@@ -1158,6 +1160,13 @@ type PersonalConfigProvider interface {
 	PersonalConfigSchema() []FieldSchema
 }
 
+// Translator lets an extension localize its own labels and messages.
+// Core only provides the current language through Runtime.Language and calls
+// this method when rendering native extension UI.
+type Translator interface {
+	Translate(lang, key string) string
+}
+
 type ColumnType string
 
 const (
@@ -1236,6 +1245,7 @@ type Theme struct {
 	Templates             fs.FS
 	Static                fs.FS
 	Funcs                 template.FuncMap
+	Translate             func(lang, key string) string
 	ConfigSchema          []FieldSchema
 	ContentFields         []FieldSchema
 	ConfigValidator       func(map[string]string) map[string]string

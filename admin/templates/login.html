@@ -2,7 +2,7 @@
 <section class="login-panel">
   <h1>{{T "Login"}}</h1>
   <p class="muted">{{T "Enter admin"}}</p>
-  {{if .Error}}<div class="notice danger">{{.Error}}</div>{{end}}
+  {{if .Error}}<div class="notice danger">{{T .Error}}</div>{{end}}
   <form method="post" class="field-stack">
     <input type="hidden" name="_csrf" value="{{.CSRF}}">
     <input type="hidden" name="next" value="{{.Next}}">

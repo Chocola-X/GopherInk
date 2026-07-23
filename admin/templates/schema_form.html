@@ -1,55 +1,55 @@
 {{define "schema_field"}}
 <div class="{{schemaFieldClass .Field}}" data-schema-field data-schema-required="{{if .Field.Required}}1{{else}}0{{end}}" {{if .Field.ShowWhenField}}data-schema-show-field="{{.Field.ShowWhenField}}" data-schema-show-value="{{.Field.ShowWhenValue}}"{{end}} {{if not .Visible}}hidden{{end}}>
   {{if eq .Field.Type "textarea"}}
-    <mdui-text-field name="{{.Field.Name}}" label="{{.Field.Label}}" rows="7" autosize {{if and .Field.Required .Visible}}required{{end}}>{{schemaValue .Values .Field.Name}}</mdui-text-field>
-    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+    <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" rows="7" autosize {{if and .Field.Required .Visible}}required{{end}}>{{schemaValue .Values .Field.Name}}</mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{else if eq .Field.Type "password"}}
-    <mdui-text-field type="password" name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
-    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+    <mdui-text-field type="password" name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{else if eq .Field.Type "number"}}
-    <mdui-text-field type="number" {{if .Field.Min}}min="{{.Field.Min}}"{{end}} {{if .Field.Max}}max="{{.Field.Max}}"{{end}} {{if .Field.Step}}step="{{.Field.Step}}"{{end}} name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
-    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+    <mdui-text-field type="number" {{if .Field.Min}}min="{{.Field.Min}}"{{end}} {{if .Field.Max}}max="{{.Field.Max}}"{{end}} {{if .Field.Step}}step="{{.Field.Step}}"{{end}} name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{else if eq .Field.Type "color"}}
-    <mdui-text-field name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}" placeholder="#RRGGBB" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
-    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+    <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" placeholder="#RRGGBB" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{else if eq .Field.Type "image"}}
     <div class="schema-image-field">
-      <mdui-text-field name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}" class="schema-image-input" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
-      {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+      <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" class="schema-image-input" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+      {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
       <div class="schema-upload-row">
         <input type="file" name="{{.Field.Name}}_file" accept="image/*" class="schema-native-file" hidden>
         <mdui-button type="button" variant="outlined" class="schema-upload-button" data-target="{{.Field.Name}}">
-          <mdui-icon slot="icon" name="upload"></mdui-icon><span class="button-label">上传并填入</span>
+          <mdui-icon slot="icon" name="upload"></mdui-icon><span class="button-label">{{T "Upload and Fill"}}</span>
         </mdui-button>
       </div>
     </div>
   {{else if eq .Field.Type "checkbox"}}
     <div class="schema-option-field">
-      <mdui-checkbox name="{{.Field.Name}}" value="1" {{if schemaChecked .Values .Field.Name}}checked{{end}}>{{.Field.Label}}</mdui-checkbox>
-      {{if .Field.Description}}<span class="muted">{{.Field.Description}}</span>{{end}}
+      <mdui-checkbox name="{{.Field.Name}}" value="1" {{if schemaChecked .Values .Field.Name}}checked{{end}}>{{call .Translate .Field.Label}}</mdui-checkbox>
+      {{if .Field.Description}}<span class="muted">{{call .Translate .Field.Description}}</span>{{end}}
     </div>
   {{else if eq .Field.Type "radio"}}
     <div class="schema-option-field">
-      <span class="muted">{{.Field.Label}}</span>
+      <span class="muted">{{call .Translate .Field.Label}}</span>
       <mdui-radio-group name="{{.Field.Name}}" value="{{schemaValue .Values .Field.Name}}">
-        {{range .Field.Options}}<mdui-radio value="{{.Value}}">{{.Label}}</mdui-radio>{{end}}
+        {{$tr := .Translate}}{{range .Field.Options}}<mdui-radio value="{{.Value}}">{{call $tr .Label}}</mdui-radio>{{end}}
       </mdui-radio-group>
-      {{if .Field.Description}}<span class="muted">{{.Field.Description}}</span>{{end}}
+      {{if .Field.Description}}<span class="muted">{{call .Translate .Field.Description}}</span>{{end}}
     </div>
   {{else if eq .Field.Type "select"}}
     <div class="schema-option-field">
-      <mdui-select name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}>
+      <mdui-select name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}>
         {{if schemaOptionsAreColors .Field.Options}}
-          {{range .Field.Options}}<mdui-menu-item value="{{.Value}}"><span class="schema-color-option"><span class="schema-color-chip" style="--swatch: {{.Value}}"></span>{{.Label}} · {{.Value}}</span></mdui-menu-item>{{end}}
+          {{$tr := .Translate}}{{range .Field.Options}}<mdui-menu-item value="{{.Value}}"><span class="schema-color-option"><span class="schema-color-chip" style="--swatch: {{.Value}}"></span>{{call $tr .Label}} · {{.Value}}</span></mdui-menu-item>{{end}}
         {{else}}
-          {{range .Field.Options}}<mdui-menu-item value="{{.Value}}">{{.Label}}</mdui-menu-item>{{end}}
+          {{$tr := .Translate}}{{range .Field.Options}}<mdui-menu-item value="{{.Value}}">{{call $tr .Label}}</mdui-menu-item>{{end}}
         {{end}}
       </mdui-select>
-      {{if .Field.Description}}<span class="muted">{{.Field.Description}}</span>{{end}}
+      {{if .Field.Description}}<span class="muted">{{call .Translate .Field.Description}}</span>{{end}}
     </div>
   {{else}}
-    <mdui-text-field name="{{.Field.Name}}" label="{{.Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
-    {{if .Field.Description}}<span class="muted schema-field-description">{{.Field.Description}}</span>{{end}}
+    <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{end}}
 </div>
 {{end}}
@@ -60,36 +60,36 @@
     <h1>{{.Title}}</h1>
     <p class="muted">{{.Description}}</p>
   </div>
-  <mdui-button variant="outlined" href="{{.BackURL}}">返回</mdui-button>
+  <mdui-button variant="outlined" href="{{.BackURL}}">{{T "Back"}}</mdui-button>
 </div>
 {{if .PluginPages}}
 <div class="subnav">
-  <mdui-button variant="filled" href="/admin/plugins/{{.PluginName}}/config"><mdui-icon slot="icon" name="tune"></mdui-icon>设置</mdui-button>
-  {{range .PluginPages}}<mdui-button variant="tonal" href="/admin/plugins/{{$.PluginName}}/config?tab={{.Name}}"><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}</mdui-button>{{end}}
+  <mdui-button variant="filled" href="/admin/plugins/{{.PluginName}}/config"><mdui-icon slot="icon" name="tune"></mdui-icon>{{T "Settings"}}</mdui-button>
+  {{range .PluginPages}}<mdui-button variant="tonal" href="/admin/plugins/{{$.PluginName}}/config?tab={{.Name}}"><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{call $.ExtensionT .Label}}</mdui-button>{{end}}
 </div>
 {{else if .ThemePages}}
 <div class="subnav">
-  <mdui-button variant="filled" href="/admin/themes/{{.ThemeName}}/config"><mdui-icon slot="icon" name="tune"></mdui-icon>设置</mdui-button>
-  {{range .ThemePages}}<mdui-button variant="tonal" href="/admin/themes/{{$.ThemeName}}/config?tab={{.Name}}"><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}</mdui-button>{{end}}
+  <mdui-button variant="filled" href="/admin/themes/{{.ThemeName}}/config"><mdui-icon slot="icon" name="tune"></mdui-icon>{{T "Settings"}}</mdui-button>
+  {{range .ThemePages}}<mdui-button variant="tonal" href="/admin/themes/{{$.ThemeName}}/config?tab={{.Name}}"><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{call $.ExtensionT .Label}}</mdui-button>{{end}}
 </div>
 {{end}}
-{{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
+{{if .Saved}}<div class="notice">{{T "Settings saved."}}</div>{{end}}
 {{if .Error}}<div class="notice danger">{{.Error}}</div>{{end}}
 <form method="post" class="form-panel field-stack schema-form" data-schema-upload-url="{{.UploadURL}}">
   <input type="hidden" name="_csrf" value="{{.CSRF}}">
   {{range .SchemaGroups}}
     <fieldset class="fieldset schema-group {{.Class}}">
-      {{if .Title}}<legend>{{.Title}}</legend>{{end}}
+      {{if .Title}}<legend>{{call .Translate .Title}}</legend>{{end}}
       {{range .Fields}}{{template "schema_field" .}}{{end}}
     </fieldset>
   {{else}}
-    <span class="muted">没有可配置项目。</span>
+    <span class="muted">{{T "No configurable items."}}</span>
   {{end}}
   <div class="form-actions schema-form-actions">
-    <mdui-button type="submit"><mdui-icon slot="icon" name="save"></mdui-icon>保存</mdui-button>
+    <mdui-button type="submit"><mdui-icon slot="icon" name="save"></mdui-icon>{{T "Save"}}</mdui-button>
     {{range .AdminActions}}
-    <mdui-button type="submit" variant="{{.Variant}}" formaction="/admin/plugins/{{$.PluginName}}/action/{{.Name}}" formmethod="post" {{if .Description}}title="{{.Description}}"{{end}}>
-      <mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}
+    <mdui-button type="submit" variant="{{.Variant}}" formaction="/admin/plugins/{{$.PluginName}}/action/{{.Name}}" formmethod="post" {{if .Description}}title="{{call $.ExtensionT .Description}}"{{end}}>
+      <mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{call $.ExtensionT .Label}}
     </mdui-button>
     {{end}}
   </div>
@@ -98,12 +98,12 @@
 <section class="form-panel field-stack asset-manager">
   <div class="asset-manager-head">
     <div>
-      <h2>{{.Title}}</h2>
-      {{if .Description}}<p class="muted">{{.Description}}</p>{{end}}
+      <h2>{{T .Title}}</h2>
+      {{if .Description}}<p class="muted">{{T .Description}}</p>{{end}}
     </div>
     <form method="post" action="{{.CleanURL}}">
       <input type="hidden" name="_csrf" value="{{$.CSRF}}">
-      <mdui-button type="submit" variant="outlined"><mdui-icon slot="icon" name="cleaning_services"></mdui-icon>清理未使用素材</mdui-button>
+      <mdui-button type="submit" variant="outlined"><mdui-icon slot="icon" name="cleaning_services"></mdui-icon>{{T "Clean Unused Assets"}}</mdui-button>
     </form>
   </div>
   {{if .Files}}
@@ -115,22 +115,22 @@
             <div class="asset-main">
               <strong>{{.Name}}</strong>
               <code>{{.URL}}</code>
-              <span class="muted">{{.SizeLabel}} · {{.Modified}}{{if .Used}} · 使用中{{else}} · 未使用{{end}}</span>
+              <span class="muted">{{.SizeLabel}} · {{.Modified}}{{if .Used}} · {{T "In use"}}{{else}} · {{T "Unused"}}{{end}}</span>
             </div>
           </div>
           <div class="asset-actions">
-            <mdui-button type="button" variant="text" class="copy-text copy-notice-button" data-copy="{{.URL}}"><mdui-icon slot="icon" name="content_copy"></mdui-icon>复制相对 URL</mdui-button>
+            <mdui-button type="button" variant="text" class="copy-text copy-notice-button" data-copy="{{.URL}}"><mdui-icon slot="icon" name="content_copy"></mdui-icon>{{T "Copy Relative URL"}}</mdui-button>
             <form method="post" action="{{$.AssetManager.DeleteURL}}">
               <input type="hidden" name="_csrf" value="{{$.CSRF}}">
               <input type="hidden" name="name" value="{{.Name}}">
-              <mdui-button type="submit" variant="text"><mdui-icon slot="icon" name="delete"></mdui-icon>删除</mdui-button>
+              <mdui-button type="submit" variant="text"><mdui-icon slot="icon" name="delete"></mdui-icon>{{T "Delete"}}</mdui-button>
             </form>
           </div>
         </div>
       {{end}}
     </div>
   {{else}}
-    <span class="muted">暂无上传素材。</span>
+    <span class="muted">{{T "No uploaded assets."}}</span>
   {{end}}
 </section>
 {{end}}

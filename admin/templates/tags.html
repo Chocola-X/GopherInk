@@ -1,23 +1,23 @@
 {{define "content"}}
-<div class="page-head"><div><h1>标签</h1><p class="muted">管理标签云。</p></div><mdui-button href="/admin/tags/new"><mdui-icon slot="icon" name="add"></mdui-icon>新增标签</mdui-button></div>
+<div class="page-head"><div><h1>{{T "Tags"}}</h1><p class="muted">{{T "Manage the tag cloud."}}</p></div><mdui-button href="/admin/tags/new"><mdui-icon slot="icon" name="add"></mdui-icon>{{T "Add Tag"}}</mdui-button></div>
 <div class="meta-toolbar">
   <form id="tag-batch" method="post" action="/admin/tags/batch" class="bulk-actions meta-bulk-actions">
-    <mdui-select name="target" label="合并到" value="" class="meta-merge-target">
-      <mdui-menu-item value="">选择目标标签</mdui-menu-item>
+    <mdui-select name="target" label="{{T "Merge into"}}" value="" class="meta-merge-target">
+      <mdui-menu-item value="">{{T "Choose target tag"}}</mdui-menu-item>
       {{range .AllItems}}<mdui-menu-item value="{{.MID}}">{{.Name}}</mdui-menu-item>{{end}}
     </mdui-select>
-    <mdui-button type="submit" name="action" value="merge" variant="tonal">合并所选</mdui-button>
-    <mdui-button type="submit" name="action" value="refresh" variant="text">刷新计数</mdui-button>
-    <mdui-button type="submit" name="action" value="delete" variant="outlined">删除所选</mdui-button>
+    <mdui-button type="submit" name="action" value="merge" variant="tonal">{{T "Merge selected"}}</mdui-button>
+    <mdui-button type="submit" name="action" value="refresh" variant="text">{{T "Refresh counts"}}</mdui-button>
+    <mdui-button type="submit" name="action" value="delete" variant="outlined">{{T "Delete selected"}}</mdui-button>
   </form>
-  <form method="post" action="/admin/tags/clean"><mdui-button type="submit" variant="text"><mdui-icon slot="icon" name="cleaning_services"></mdui-icon>清理孤立标签</mdui-button></form>
+  <form method="post" action="/admin/tags/clean"><mdui-button type="submit" variant="text"><mdui-icon slot="icon" name="cleaning_services"></mdui-icon>{{T "Clean orphan tags"}}</mdui-button></form>
 </div>
 <section class="table-panel"><table>
-  <thead><tr><th></th><th>名称</th><th>缩略名</th><th>文章数</th><th></th></tr></thead>
+  <thead><tr><th></th><th>{{T "Name"}}</th><th>{{T "Slug"}}</th><th>{{T "Posts"}}</th><th></th></tr></thead>
   <tbody>{{range .Items}}<tr>
-    <td><mdui-checkbox name="id" value="{{.MID}}" form="tag-batch" aria-label="选择标签"></mdui-checkbox></td>
+    <td><mdui-checkbox name="id" value="{{.MID}}" form="tag-batch" aria-label="{{T "Select tag"}}"></mdui-checkbox></td>
     <td><strong>{{.Name}}</strong></td><td>{{.Slug}}</td><td>{{.Count}}</td>
-    <td><div class="row-actions"><form method="post" action="/admin/tags/{{.MID}}/move"><input type="hidden" name="direction" value="up"><mdui-button-icon type="submit" title="上移"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon></form><form method="post" action="/admin/tags/{{.MID}}/move"><input type="hidden" name="direction" value="down"><mdui-button-icon type="submit" title="下移"><mdui-icon name="arrow_downward"></mdui-button-icon></form><mdui-button-icon href="/admin/tags/{{.MID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon><form method="post" action="/admin/tags/{{.MID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form></div></td>
-  </tr>{{else}}<tr><td colspan="5" class="muted">没有任何标签。</td></tr>{{end}}</tbody>
+    <td><div class="row-actions"><form method="post" action="/admin/tags/{{.MID}}/move"><input type="hidden" name="direction" value="up"><mdui-button-icon type="submit" title="{{T "Move up"}}"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon></form><form method="post" action="/admin/tags/{{.MID}}/move"><input type="hidden" name="direction" value="down"><mdui-button-icon type="submit" title="{{T "Move down"}}"><mdui-icon name="arrow_downward"></mdui-button-icon></form><mdui-button-icon href="/admin/tags/{{.MID}}/edit" title="{{T "Edit"}}"><mdui-icon name="edit"></mdui-icon></mdui-button-icon><form method="post" action="/admin/tags/{{.MID}}/delete"><mdui-button-icon type="submit" title="{{T "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form></div></td>
+  </tr>{{else}}<tr><td colspan="5" class="muted">{{T "No tags."}}</td></tr>{{end}}</tbody>
 </table></section>
 {{end}}

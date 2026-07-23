@@ -1,14 +1,14 @@
 {{define "content"}}
 <div class="page-head">
   <div>
-    <h1>插件</h1>
-    <p class="muted">后台控制当前二进制中插件的启停和配置；插件源码变更后需要重新编译并重启。</p>
+    <h1>{{T "Plugins"}}</h1>
+    <p class="muted">{{T "Manage plugin activation and configuration in the current binary; recompile and restart after plugin source changes."}}</p>
   </div>
 </div>
-{{if .Saved}}<div class="notice">插件状态已保存。</div>{{end}}
+{{if .Saved}}<div class="notice">{{T "Plugin status saved."}}</div>{{end}}
 <section class="table-panel">
   <table>
-    <thead><tr><th>插件</th><th>版本</th><th>作者</th><th>状态</th><th>操作</th></tr></thead>
+    <thead><tr><th>{{T "Plugins"}}</th><th>{{T "Version"}}</th><th>{{T "Author"}}</th><th>{{T "Status"}}</th><th>{{T "Actions"}}</th></tr></thead>
     <tbody>
       {{range .Plugins}}
       {{$plugin := .}}
@@ -16,20 +16,20 @@
         <td>
           <strong>{{.Name}}</strong>
           <div class="muted">{{.Description}}</div>
-          {{if .RequireGopherInk}}<div class="muted">要求 GopherInk {{.RequireGopherInk}}+</div>{{end}}
+          {{if .RequireGopherInk}}<div class="muted">{{T "Requires GopherInk"}} {{.RequireGopherInk}}+</div>{{end}}
           {{if .Databases}}
           <div class="plugin-db-list">
             {{range .Databases}}
             <div class="plugin-db-item">
-              <span><strong>数据库</strong> <span class="muted">{{.TableCount}} 张表</span></span>
+              <span><strong>{{T "Database"}}</strong> <span class="muted">{{.TableCount}} {{T "tables"}}</span></span>
               <form method="post" action="/admin/plugins/{{$plugin.Name}}/database/{{.Name}}/mode" class="plugin-db-mode-form">
-                <mdui-select name="mode" label="插件数据库存储形式" value="{{.Mode}}">
-                  <mdui-menu-item value="sqlite">SQLite 独立库</mdui-menu-item>
-                  <mdui-menu-item value="merged">合并到主库</mdui-menu-item>
+                <mdui-select name="mode" label="{{T "Plugin database storage"}}" value="{{.Mode}}">
+                  <mdui-menu-item value="sqlite">{{T "Separate SQLite database"}}</mdui-menu-item>
+                  <mdui-menu-item value="merged">{{T "Merge into main database"}}</mdui-menu-item>
                 </mdui-select>
-                <mdui-button type="submit" variant="outlined">保存</mdui-button>
+                <mdui-button type="submit" variant="outlined">{{T "Save"}}</mdui-button>
               </form>
-              <span class="muted">{{if .Error}}{{.Error}}{{else if .Size}}{{.Size}}{{end}}</span>
+              <span class="muted">{{if .Error}}{{T .Error}}{{else if .Size}}{{.Size}}{{end}}</span>
             </div>
             {{end}}
           </div>
@@ -37,26 +37,26 @@
         </td>
         <td>{{.Version}}</td>
         <td>{{.Author}}</td>
-        <td>{{if .Active}}已启用{{else}}未启用{{end}}{{if not .Compatible}}<div class="muted">依赖不满足</div>{{end}}</td>
+        <td>{{if .Active}}{{T "Enabled"}}{{else}}{{T "Disabled"}}{{end}}{{if not .Compatible}}<div class="muted">{{T "Dependencies not satisfied"}}</div>{{end}}</td>
         <td>
           <div class="row-actions">
-            {{if .HasConfig}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/config">设置</mdui-button>{{end}}
-            {{if .HasPersonal}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/personal">个人设置</mdui-button>{{end}}
+            {{if .HasConfig}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/config">{{T "Settings"}}</mdui-button>{{end}}
+            {{if .HasPersonal}}<mdui-button variant="outlined" href="/admin/plugins/{{.Name}}/personal">{{T "Profile"}}</mdui-button>{{end}}
             {{range .Databases}}
-            <form method="post" action="/admin/plugins/{{$plugin.Name}}/database/{{.Name}}/clear" data-confirm-message="确定清除插件数据库？该操作会删除对应的数据库文件和所有表数据。">
-              <mdui-button type="submit" variant="outlined" class="danger-action">清除数据库</mdui-button>
+            <form method="post" action="/admin/plugins/{{$plugin.Name}}/database/{{.Name}}/clear" data-confirm-message="{{T "Clear plugin database? This will delete the database file and all table data."}}">
+              <mdui-button type="submit" variant="outlined" class="danger-action">{{T "Clear database"}}</mdui-button>
             </form>
             {{end}}
             {{if .Active}}
-            <form method="post" action="/admin/plugins/{{.Name}}/deactivate"><mdui-button type="submit" variant="outlined">停用</mdui-button></form>
+            <form method="post" action="/admin/plugins/{{.Name}}/deactivate"><mdui-button type="submit" variant="outlined">{{T "Deactivate"}}</mdui-button></form>
             {{else}}
-            <form method="post" action="/admin/plugins/{{.Name}}/activate"><mdui-button type="submit" {{if not .Compatible}}disabled{{end}}>启用</mdui-button></form>
+            <form method="post" action="/admin/plugins/{{.Name}}/activate"><mdui-button type="submit" {{if not .Compatible}}disabled{{end}}>{{T "Enable"}}</mdui-button></form>
             {{end}}
           </div>
         </td>
       </tr>
       {{else}}
-      <tr><td colspan="5" class="muted">暂无插件。</td></tr>
+      <tr><td colspan="5" class="muted">{{T "No plugins."}}</td></tr>
       {{end}}
     </tbody>
   </table>

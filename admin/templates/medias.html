@@ -1,46 +1,46 @@
 {{define "content"}}
-<div class="page-head"><div><h1>附件</h1><p class="muted">上传后的文件保存在运行时 uploads 目录，可在文章中用 Markdown 引用。</p></div></div>
-{{if .Saved}}<div class="notice">附件已上传。</div>{{end}}
+<div class="page-head"><div><h1>{{T "Media"}}</h1><p class="muted">{{T "Uploaded files are stored in the runtime uploads directory and can be referenced with Markdown."}}</p></div></div>
+{{if .Saved}}<div class="notice">{{T "Attachment uploaded."}}</div>{{end}}
 <form method="get" class="filter-bar">
-  <mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field>
-  <mdui-select name="kind" label="类型" value="{{.Kind}}">
-    <mdui-menu-item value="all">全部</mdui-menu-item>
-    <mdui-menu-item value="image">图片</mdui-menu-item>
-    <mdui-menu-item value="document">文档</mdui-menu-item>
-    <mdui-menu-item value="archive">压缩包</mdui-menu-item>
-    <mdui-menu-item value="file">文件</mdui-menu-item>
+  <mdui-text-field name="keywords" label="{{T "Keywords"}}" value="{{.Keywords}}"></mdui-text-field>
+  <mdui-select name="kind" label="{{T "Type"}}" value="{{.Kind}}">
+    <mdui-menu-item value="all">{{T "All"}}</mdui-menu-item>
+    <mdui-menu-item value="image">{{T "Image"}}</mdui-menu-item>
+    <mdui-menu-item value="document">{{T "Documents"}}</mdui-menu-item>
+    <mdui-menu-item value="archive">{{T "Archives"}}</mdui-menu-item>
+    <mdui-menu-item value="file">{{T "File"}}</mdui-menu-item>
   </mdui-select>
-  <mdui-select name="author" label="作者" value="{{.Author}}">
-    <mdui-menu-item value="all">全部</mdui-menu-item>
+  <mdui-select name="author" label="{{T "Author"}}" value="{{.Author}}">
+    <mdui-menu-item value="all">{{T "All"}}</mdui-menu-item>
     {{range .Users}}<mdui-menu-item value="{{.UID}}">{{if .ScreenName}}{{.ScreenName}}{{else}}{{.Name}}{{end}}</mdui-menu-item>{{end}}
   </mdui-select>
-  <mdui-button type="submit" variant="outlined">筛选</mdui-button>
+  <mdui-button type="submit" variant="outlined">{{T "Filter"}}</mdui-button>
 </form>
 <form method="post" enctype="multipart/form-data" class="form-panel media-upload-form">
   <input type="file" id="media-upload-file" name="file" class="native-file-input" data-auto-submit hidden>
-  <mdui-select name="cid" label="关联内容" value="0" class="media-upload-parent">
-    <mdui-menu-item value="0">不关联</mdui-menu-item>
-    {{range .Posts}}<mdui-menu-item value="{{.CID}}">文章：{{.Title}}</mdui-menu-item>{{end}}
-    {{range .Pages}}<mdui-menu-item value="{{.CID}}">页面：{{.Title}}</mdui-menu-item>{{end}}
+  <mdui-select name="cid" label="{{T "Linked content"}}" value="0" class="media-upload-parent">
+    <mdui-menu-item value="0">{{T "Unattached"}}</mdui-menu-item>
+    {{range .Posts}}<mdui-menu-item value="{{.CID}}">{{T "Posts"}}: {{.Title}}</mdui-menu-item>{{end}}
+    {{range .Pages}}<mdui-menu-item value="{{.CID}}">{{T "Pages"}}: {{.Title}}</mdui-menu-item>{{end}}
   </mdui-select>
-  <mdui-button type="button" class="file-select-button media-upload-button" data-file-target="media-upload-file"><mdui-icon slot="icon" name="upload"></mdui-icon><span class="button-label">上传附件</span></mdui-button>
+  <mdui-button type="button" class="file-select-button media-upload-button" data-file-target="media-upload-file"><mdui-icon slot="icon" name="upload"></mdui-icon><span class="button-label">{{T "Upload attachment"}}</span></mdui-button>
 </form>
 <div class="bulk-actions media-bulk-actions">
   <form id="media-batch-form" method="post" action="/admin/medias/batch">
-    <mdui-button type="submit" name="action" value="delete" variant="outlined"><mdui-icon slot="icon" name="delete"></mdui-icon>删除所选</mdui-button>
+    <mdui-button type="submit" name="action" value="delete" variant="outlined"><mdui-icon slot="icon" name="delete"></mdui-icon>{{T "Delete selected"}}</mdui-button>
   </form>
   <form method="post" action="/admin/medias/clear-unattached">
-    <mdui-button type="submit" variant="tonal"><mdui-icon slot="icon" name="cleaning_services"></mdui-icon>清理孤立附件</mdui-button>
+    <mdui-button type="submit" variant="tonal"><mdui-icon slot="icon" name="cleaning_services"></mdui-icon>{{T "Clean unattached files"}}</mdui-button>
   </form>
 </div>
 <section class="table-panel media-table-panel">
   <table class="media-table">
     <colgroup><col class="media-col-select"><col class="media-col-file"><col class="media-col-type"><col class="media-col-size"><col class="media-col-author"><col class="media-col-parent"><col class="media-col-time"><col class="media-col-actions"></colgroup>
-    <thead><tr><th aria-label="选择"></th><th>文件</th><th>类型</th><th>大小</th><th>作者</th><th>关联</th><th>时间</th><th aria-label="操作"></th></tr></thead>
+    <thead><tr><th aria-label="{{T "Select"}}"></th><th>{{T "File"}}</th><th>{{T "Type"}}</th><th>{{T "Size"}}</th><th>{{T "Author"}}</th><th>{{T "Linked"}}</th><th>{{T "Time"}}</th><th aria-label="{{T "Actions"}}"></th></tr></thead>
     <tbody>
     {{range .Medias}}
       <tr>
-        <td class="media-select-cell"><mdui-checkbox name="id" value="{{.CID}}" form="media-batch-form" aria-label="选择附件"></mdui-checkbox></td>
+        <td class="media-select-cell"><mdui-checkbox name="id" value="{{.CID}}" form="media-batch-form" aria-label="{{T "Select attachment"}}"></mdui-checkbox></td>
         <td class="media-file-cell">
           <div class="media-cell">
             {{if .Meta.IsImage}}
@@ -54,30 +54,30 @@
             </span>
           </div>
         </td>
-        <td data-label="类型"><span class="media-type-stack"><span class="media-kind">{{.Kind}}</span><span class="media-mime muted" title="{{.MIME}}">{{.MIME}}</span></span></td>
-        <td data-label="大小">{{.SizeLabel}}</td>
-        <td data-label="作者"><span class="cell-ellipsis" title="{{.AuthorName}}">{{.AuthorName}}</span></td>
-        <td data-label="关联">{{if .ParentTitle}}<span class="cell-ellipsis" title="{{.ParentTitle}}">{{.ParentTitle}}</span>{{else}}<span class="muted">未关联</span>{{end}}</td>
-        <td data-label="时间">{{date .Created}}</td>
+        <td data-label="{{T "Type"}}"><span class="media-type-stack"><span class="media-kind">{{.Kind}}</span><span class="media-mime muted" title="{{.MIME}}">{{.MIME}}</span></span></td>
+        <td data-label="{{T "Size"}}">{{.SizeLabel}}</td>
+        <td data-label="{{T "Author"}}"><span class="cell-ellipsis" title="{{.AuthorName}}">{{.AuthorName}}</span></td>
+        <td data-label="{{T "Linked"}}">{{if .ParentTitle}}<span class="cell-ellipsis" title="{{.ParentTitle}}">{{.ParentTitle}}</span>{{else}}<span class="muted">{{T "Unattached"}}</span>{{end}}</td>
+        <td data-label="{{T "Time"}}">{{date .Created}}</td>
         <td class="media-actions-cell"><div class="row-actions">
-          <mdui-button-icon type="button" class="copy-text media-copy-button" data-copy="{{.URL}}" title="复制 URL"><mdui-icon name="content_copy"></mdui-icon></mdui-button-icon>
-          <mdui-button-icon href="/admin/medias/{{.CID}}/edit" title="编辑附件"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+          <mdui-button-icon type="button" class="copy-text media-copy-button" data-copy="{{.URL}}" title="{{T "Copy URL"}}"><mdui-icon name="content_copy"></mdui-icon></mdui-button-icon>
+          <mdui-button-icon href="/admin/medias/{{.CID}}/edit" title="{{T "Edit attachment"}}"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
           <form method="post" enctype="multipart/form-data" action="/admin/medias/{{.CID}}/replace" class="inline-upload">
             <input type="file" id="media-replace-{{.CID}}" name="file" class="native-file-input" data-auto-submit hidden>
-            <mdui-button-icon type="button" class="file-select-button" data-file-target="media-replace-{{.CID}}" title="替换附件"><mdui-icon name="upload_file"></mdui-icon></mdui-button-icon>
+            <mdui-button-icon type="button" class="file-select-button" data-file-target="media-replace-{{.CID}}" title="{{T "Replace attachment"}}"><mdui-icon name="upload_file"></mdui-icon></mdui-button-icon>
           </form>
-          <form method="post" action="/admin/medias/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
+          <form method="post" action="/admin/medias/{{.CID}}/delete"><mdui-button-icon type="submit" title="{{T "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
         </div></td>
       </tr>
     {{else}}
-      <tr><td colspan="8" class="muted media-empty-cell">暂无附件。</td></tr>
+      <tr><td colspan="8" class="muted media-empty-cell">{{T "No attachments."}}</td></tr>
     {{end}}
     </tbody>
   </table>
 </section>
-<nav class="pagination" aria-label="附件分页">
-  {{if .Pagination.HasPrev}}<mdui-button href="{{.Pagination.PrevURL}}" variant="text"><mdui-icon slot="icon" name="chevron_left"></mdui-icon>上一页</mdui-button>{{end}}
-  <span class="muted">第 {{.Pagination.Page}} / {{.Pagination.TotalPages}} 页，共 {{.Pagination.Total}} 个</span>
-  {{if .Pagination.HasNext}}<mdui-button href="{{.Pagination.NextURL}}" variant="text">下一页<mdui-icon slot="end-icon" name="chevron_right"></mdui-icon></mdui-button>{{end}}
+<nav class="pagination" aria-label="{{T "Media pagination"}}">
+  {{if .Pagination.HasPrev}}<mdui-button href="{{.Pagination.PrevURL}}" variant="text"><mdui-icon slot="icon" name="chevron_left"></mdui-icon>{{T "Previous"}}</mdui-button>{{end}}
+  <span class="muted">{{T "Page"}} {{.Pagination.Page}} / {{.Pagination.TotalPages}} {{T "pages, total"}} {{.Pagination.Total}} {{T "items"}}</span>
+  {{if .Pagination.HasNext}}<mdui-button href="{{.Pagination.NextURL}}" variant="text">{{T "Next"}}<mdui-icon slot="end-icon" name="chevron_right"></mdui-icon></mdui-button>{{end}}
 </nav>
 {{end}}

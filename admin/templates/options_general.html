@@ -1,21 +1,21 @@
 {{define "content"}}
 <div class="page-head"><div><h1>{{T "General Settings"}}</h1></div></div>
 {{template "options_tabs" .}}
-{{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
-{{if .Error}}<div class="notice danger">{{.Error}}</div>{{end}}
+{{if .Saved}}<div class="notice">{{T "Settings saved."}}</div>{{end}}
+{{if .Error}}<div class="notice danger">{{T .Error}}</div>{{end}}
 <form method="post" class="form-panel field-stack">
   <fieldset class="fieldset">
-    <legend>站点信息</legend>
+    <legend>{{T "Site Information"}}</legend>
     <mdui-text-field name="site_title" label="{{T "Site title"}}" value="{{index .Options "site_title"}}" required></mdui-text-field>
     <mdui-text-field name="base_url" label="{{T "Site URL"}}" value="{{index .Options "base_url"}}" required></mdui-text-field>
     <mdui-text-field name="site_description" label="{{T "Site description"}}" value="{{index .Options "site_description"}}"></mdui-text-field>
     <mdui-text-field name="site_keywords" label="{{T "Keywords"}}" value="{{index .Options "site_keywords"}}"></mdui-text-field>
     <mdui-select name="site_language" label="{{T "Language"}}" value="{{index .Options "site_language"}}">
-      <mdui-menu-item value="zh-CN">简体中文</mdui-menu-item>
+      <mdui-menu-item value="zh-CN">{{T "Simplified Chinese"}}</mdui-menu-item>
       <mdui-menu-item value="en-US">English</mdui-menu-item>
     </mdui-select>
     <mdui-select name="site_timezone" label="{{T "Timezone"}}" value="{{index .Options "site_timezone"}}">
-      <mdui-menu-item value="Local">本机时区</mdui-menu-item>
+      <mdui-menu-item value="Local">{{T "Local timezone"}}</mdui-menu-item>
       <mdui-menu-item value="UTC">UTC</mdui-menu-item>
       <mdui-menu-item value="Asia/Shanghai">Asia/Shanghai</mdui-menu-item>
       <mdui-menu-item value="Asia/Tokyo">Asia/Tokyo</mdui-menu-item>
@@ -34,7 +34,7 @@
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>账户和会话</legend>
+    <legend>{{T "Account and Session"}}</legend>
     <mdui-select name="allow_register" label="{{T "Allow registration"}}" value="{{index .Options "allow_register"}}">
       <mdui-menu-item value="0">{{T "Disallow"}}</mdui-menu-item>
       <mdui-menu-item value="1">{{T "Allow"}}</mdui-menu-item>
@@ -56,17 +56,17 @@
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>写作体验</legend>
+    <legend>{{T "Writing Experience"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="content_autosave_enabled" value="1" {{if eq (index .Options "content_autosave_enabled") "1"}}checked{{end}}>启用文章和页面草稿自动保存</mdui-checkbox>
+      <mdui-checkbox name="content_autosave_enabled" value="1" {{if eq (index .Options "content_autosave_enabled") "1"}}checked{{end}}>{{T "Enable autosave for post and page drafts"}}</mdui-checkbox>
       <input type="hidden" name="content_autosave_enabled" value="0">
     </div>
-    <span class="muted full-span">关闭后不会在编辑过程中定时保存正文；上传附件前仍会按需创建当前内容草稿。</span>
+    <span class="muted full-span">{{T "When disabled, content is not saved periodically while editing; a draft can still be created before uploading attachments."}}</span>
   </fieldset>
 
   <fieldset class="fieldset upload-attachment-settings">
-    <legend>上传和附件</legend>
-    <mdui-text-field name="upload_max_size_mb" label="上传文件大小上限（MB）" type="number" min="1" max="2048" step="1" value="{{index .Options "upload_max_size_mb"}}"></mdui-text-field>
+    <legend>{{T "Uploads and Attachments"}}</legend>
+    <mdui-text-field name="upload_max_size_mb" label="{{T "Upload size limit (MB)"}}" type="number" min="1" max="2048" step="1" value="{{index .Options "upload_max_size_mb"}}"></mdui-text-field>
     <mdui-select name="upload_replace_same_ext_only" label="{{T "Replacement extension policy"}}" value="{{index .Options "upload_replace_same_ext_only"}}">
       <mdui-menu-item value="1">{{T "Same extension required"}}</mdui-menu-item>
       <mdui-menu-item value="0">{{T "Different extension allowed"}}</mdui-menu-item>
@@ -80,25 +80,25 @@
   </fieldset>
 
   <fieldset class="fieldset image-processing-options" data-image-processing-options>
-    <legend>图片处理</legend>
-    <mdui-select name="upload_image_processing" label="图片上传保存方式" value="{{index .Options "upload_image_processing"}}">
-      <mdui-menu-item value="original">不处理，保持原文件</mdui-menu-item>
-      <mdui-menu-item value="webp_lossless">转换为原图质量 WebP</mdui-menu-item>
-      <mdui-menu-item value="webp_quality">转换为 WebP 并自定义质量</mdui-menu-item>
+    <legend>{{T "Image Processing"}}</legend>
+    <mdui-select name="upload_image_processing" label="{{T "Image upload processing"}}" value="{{index .Options "upload_image_processing"}}">
+      <mdui-menu-item value="original">{{T "Keep original file"}}</mdui-menu-item>
+      <mdui-menu-item value="webp_lossless">{{T "Convert to lossless WebP"}}</mdui-menu-item>
+      <mdui-menu-item value="webp_quality">{{T "Convert to WebP with custom quality"}}</mdui-menu-item>
     </mdui-select>
     <div data-webp-quality {{if ne (index .Options "upload_image_processing") "webp_quality"}}hidden{{end}}>
-      <mdui-text-field name="upload_webp_quality" type="number" min="1" max="100" step="1" label="WebP 转换质量" value="{{index .Options "upload_webp_quality"}}" helper="1-100 的整数；数值越高，画质与文件体积越大"></mdui-text-field>
+      <mdui-text-field name="upload_webp_quality" type="number" min="1" max="100" step="1" label="{{T "WebP quality"}}" value="{{index .Options "upload_webp_quality"}}" helper="{{T "Integer from 1 to 100; higher values increase quality and file size"}}"></mdui-text-field>
     </div>
-    <mdui-text-field name="image_processing_memory_mb" type="number" min="64" max="32768" step="1" label="单次图片处理内存预算（MB）" value="{{index .Options "image_processing_memory_mb"}}" helper="按图片尺寸估算解码和编码峰值内存；最低 64 MB，默认 256 MB"></mdui-text-field>
-    <mdui-select name="thumbnail_format" label="后台缩略图格式" value="{{index .Options "thumbnail_format"}}">
-      <mdui-menu-item value="disabled">禁用，直接使用原图</mdui-menu-item>
+    <mdui-text-field name="image_processing_memory_mb" type="number" min="64" max="32768" step="1" label="{{T "Image processing memory budget (MB)"}}" value="{{index .Options "image_processing_memory_mb"}}" helper="{{T "Estimated peak memory for decoding and encoding; minimum 64 MB, default 256 MB"}}"></mdui-text-field>
+    <mdui-select name="thumbnail_format" label="{{T "Admin thumbnail format"}}" value="{{index .Options "thumbnail_format"}}">
+      <mdui-menu-item value="disabled">{{T "Disabled, use original image"}}</mdui-menu-item>
       <mdui-menu-item value="jpg">JPEG</mdui-menu-item>
       <mdui-menu-item value="webp">WebP</mdui-menu-item>
     </mdui-select>
     <div data-thumbnail-quality {{if eq (index .Options "thumbnail_format") "disabled"}}hidden{{end}}>
-      <mdui-text-field name="thumbnail_quality" type="number" min="1" max="100" step="1" label="后台缩略图质量" value="{{index .Options "thumbnail_quality"}}" helper="可留空，默认使用 82 的中高质量"></mdui-text-field>
+      <mdui-text-field name="thumbnail_quality" type="number" min="1" max="100" step="1" label="{{T "Admin thumbnail quality"}}" value="{{index .Options "thumbnail_quality"}}" helper="{{T "May be blank; defaults to medium-high quality 82"}}"></mdui-text-field>
     </div>
-    <span class="muted full-span">缩略图只用于后台预览，不会改变文章中引用的原图地址；SVG 保持矢量原文件。</span>
+    <span class="muted full-span">{{T "Thumbnails are only used for admin previews and do not change image URLs in posts; SVG remains unchanged."}}</span>
   </fieldset>
   <div class="form-actions"><mdui-button type="submit">{{T "Save settings"}}</mdui-button></div>
 </form>

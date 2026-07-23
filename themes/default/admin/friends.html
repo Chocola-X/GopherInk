@@ -3,23 +3,23 @@
   <input type="hidden" name="action" value="save-friends">
   <div class="theme-friend-manager-head">
     <div>
-      <h2>友链列表</h2>
-      <p class="muted">按照这里的顺序展示友链；邮箱用于生成头像和识别评论者身份，不会在前台公开。邮箱与图标 URL 至少填写一项。</p>
+      <h2>{{T .Lang "Friend Link List"}}</h2>
+      <p class="muted">{{T .Lang "Friend links are displayed in this order; email is used for avatars and commenter identity matching and is not exposed on the frontend. Email or icon URL is required."}}</p>
     </div>
-    <mdui-button type="button" variant="tonal" data-friend-add><mdui-icon slot="icon" name="add"></mdui-icon>增加友链</mdui-button>
+    <mdui-button type="button" variant="tonal" data-friend-add><mdui-icon slot="icon" name="add"></mdui-icon>{{T .Lang "Add Friend Link"}}</mdui-button>
   </div>
 
   <fieldset class="fieldset theme-friend-options">
-    <legend>页面与排序</legend>
+    <legend>{{T .Lang "Page and Ordering"}}</legend>
     <div class="theme-friend-page-field">
-      <mdui-text-field name="friend_page_target" label="目标独立页面 CID 或固定链接" value="{{.PageTarget}}" required></mdui-text-field>
-      <span class="muted">支持 CID、自定义 slug、/page/slug.html 或完整页面 URL；纯数字优先按 CID 解析。</span>
-      {{if .TargetTitle}}<a class="theme-friend-target" href="{{.TargetURL}}" target="_blank" rel="noopener noreferrer"><mdui-icon name="open_in_new"></mdui-icon>当前页面：{{.TargetTitle}}</a>{{end}}
+      <mdui-text-field name="friend_page_target" label="{{T .Lang "Target page CID or permalink"}}" value="{{.PageTarget}}" required></mdui-text-field>
+      <span class="muted">{{T .Lang "Supports CID, custom slug, /page/slug.html, or full page URL; numeric values are parsed as CID first."}}</span>
+      {{if .TargetTitle}}<a class="theme-friend-target" href="{{.TargetURL}}" target="_blank" rel="noopener noreferrer"><mdui-icon name="open_in_new"></mdui-icon>{{T .Lang "Current page"}}: {{.TargetTitle}}</a>{{end}}
       {{if .TargetNotice}}<span class="theme-friend-target-warning">{{.TargetNotice}}</span>{{end}}
     </div>
     <div class="schema-option-field theme-friend-shuffle-field">
-      <mdui-checkbox name="friend_links_shuffle" value="1" {{if .Shuffle}}checked{{end}}>乱序排列友链</mdui-checkbox>
-      <span class="muted">每次渲染页面时随机调整展示顺序，不改变下方保存的顺序。</span>
+      <mdui-checkbox name="friend_links_shuffle" value="1" {{if .Shuffle}}checked{{end}}>{{T .Lang "Shuffle friend links"}}</mdui-checkbox>
+      <span class="muted">{{T .Lang "Randomize display order on each render without changing the saved order below."}}</span>
     </div>
   </fieldset>
 
@@ -33,21 +33,21 @@
         <span class="theme-friend-order" data-friend-order></span>
       </div>
       <div class="theme-friend-fields">
-        <mdui-text-field name="friend_name" label="链接名称" value="{{.Name}}" maxlength="100" required></mdui-text-field>
-        <mdui-text-field type="email" name="friend_email" label="邮箱（与图标 URL 至少填写一项）" value="{{.Email}}" maxlength="254"></mdui-text-field>
+        <mdui-text-field name="friend_name" label="{{T $.Lang "Link name"}}" value="{{.Name}}" maxlength="100" required></mdui-text-field>
+        <mdui-text-field type="email" name="friend_email" label="{{T $.Lang "Email (required if icon URL is blank)"}}" value="{{.Email}}" maxlength="254"></mdui-text-field>
         <mdui-text-field class="theme-friend-field-wide" type="url" name="friend_url" label="URL" value="{{.URL}}" maxlength="2048" required></mdui-text-field>
-        <mdui-text-field class="theme-friend-field-wide" name="friend_icon_url" label="友链图标 URL（留空时使用邮箱头像）" value="{{.IconURL}}" maxlength="2048"></mdui-text-field>
-        <mdui-text-field class="theme-friend-field-wide" name="friend_description" label="链接描述" value="{{.Description}}" maxlength="250" required></mdui-text-field>
+        <mdui-text-field class="theme-friend-field-wide" name="friend_icon_url" label="{{T $.Lang "Friend icon URL (uses email avatar when blank)"}}" value="{{.IconURL}}" maxlength="2048"></mdui-text-field>
+        <mdui-text-field class="theme-friend-field-wide" name="friend_description" label="{{T $.Lang "Link description"}}" value="{{.Description}}" maxlength="250" required></mdui-text-field>
       </div>
       <div class="theme-friend-card-actions">
-        <mdui-button-icon type="button" data-friend-up title="上移" aria-label="上移"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon>
-        <mdui-button-icon type="button" data-friend-down title="下移" aria-label="下移"><mdui-icon name="arrow_downward"></mdui-icon></mdui-button-icon>
-        <mdui-button-icon type="button" data-friend-delete title="删除" aria-label="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-up title="{{T $.Lang "Move up"}}" aria-label="{{T $.Lang "Move up"}}"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-down title="{{T $.Lang "Move down"}}" aria-label="{{T $.Lang "Move down"}}"><mdui-icon name="arrow_downward"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-delete title="{{T $.Lang "Delete"}}" aria-label="{{T $.Lang "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
       </div>
     </article>
     {{end}}
   </div>
-  <div class="theme-friend-empty muted" data-friend-empty>暂无友链，点击右上角按钮开始添加。</div>
+  <div class="theme-friend-empty muted" data-friend-empty>{{T .Lang "No friend links yet. Use the top-right button to add one."}}</div>
 
   <template data-friend-template>
     <article class="theme-friend-card" data-friend-card>
@@ -56,21 +56,21 @@
         <span class="theme-friend-order" data-friend-order></span>
       </div>
       <div class="theme-friend-fields">
-        <mdui-text-field name="friend_name" label="链接名称" maxlength="100" required></mdui-text-field>
-        <mdui-text-field type="email" name="friend_email" label="邮箱（与图标 URL 至少填写一项）" maxlength="254"></mdui-text-field>
+        <mdui-text-field name="friend_name" label="{{T .Lang "Link name"}}" maxlength="100" required></mdui-text-field>
+        <mdui-text-field type="email" name="friend_email" label="{{T .Lang "Email (required if icon URL is blank)"}}" maxlength="254"></mdui-text-field>
         <mdui-text-field class="theme-friend-field-wide" type="url" name="friend_url" label="URL" maxlength="2048" required></mdui-text-field>
-        <mdui-text-field class="theme-friend-field-wide" name="friend_icon_url" label="友链图标 URL（留空时使用邮箱头像）" maxlength="2048"></mdui-text-field>
-        <mdui-text-field class="theme-friend-field-wide" name="friend_description" label="链接描述" maxlength="250" required></mdui-text-field>
+        <mdui-text-field class="theme-friend-field-wide" name="friend_icon_url" label="{{T .Lang "Friend icon URL (uses email avatar when blank)"}}" maxlength="2048"></mdui-text-field>
+        <mdui-text-field class="theme-friend-field-wide" name="friend_description" label="{{T .Lang "Link description"}}" maxlength="250" required></mdui-text-field>
       </div>
       <div class="theme-friend-card-actions">
-        <mdui-button-icon type="button" data-friend-up title="上移" aria-label="上移"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon>
-        <mdui-button-icon type="button" data-friend-down title="下移" aria-label="下移"><mdui-icon name="arrow_downward"></mdui-icon></mdui-button-icon>
-        <mdui-button-icon type="button" data-friend-delete title="删除" aria-label="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-up title="{{T .Lang "Move up"}}" aria-label="{{T .Lang "Move up"}}"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-down title="{{T .Lang "Move down"}}" aria-label="{{T .Lang "Move down"}}"><mdui-icon name="arrow_downward"></mdui-icon></mdui-button-icon>
+        <mdui-button-icon type="button" data-friend-delete title="{{T .Lang "Delete"}}" aria-label="{{T .Lang "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon>
       </div>
     </article>
   </template>
 
   <div class="form-actions theme-friend-save">
-    <mdui-button type="submit"><mdui-icon slot="icon" name="save"></mdui-icon>保存设置</mdui-button>
+    <mdui-button type="submit"><mdui-icon slot="icon" name="save"></mdui-icon>{{T .Lang "Save Settings"}}</mdui-button>
   </div>
 </form>

@@ -1,6 +1,6 @@
 {{define "base"}}
 <!doctype html>
-<html lang="zh-CN" class="mdui-theme-{{themeValue .ThemeConfig "theme_mode" "auto"}}">
+<html lang="{{.HTMLLang}}" class="mdui-theme-{{themeValue .ThemeConfig "theme_mode" "auto"}}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -49,21 +49,21 @@
 
   <header class="mdui-appbar appbar">
     <div class="mdui-toolbar">
-      <button class="mdui-btn mdui-btn-icon drawer-toggle" type="button" aria-label="菜单"><mdui-icon name="menu"></mdui-icon></button>
+      <button class="mdui-btn mdui-btn-icon drawer-toggle" type="button" aria-label="{{T "Menu"}}"><mdui-icon name="menu"></mdui-icon></button>
       <a href="/" class="mdui-typo-title appbar-title">{{index .Site "site_title"}}</a>
       <div class="mdui-toolbar-spacer"></div>
       <form class="appbar-search" action="/search" method="get" role="search">
-        <button class="appbar-search-icon" type="submit" aria-label="搜索" title="搜索"><mdui-icon name="search"></mdui-icon></button>
-        <input name="q" value="{{.Keywords}}" placeholder="搜索一下" autocomplete="off">
-        <button class="appbar-search-close" type="button" aria-label="关闭搜索" title="关闭搜索"><mdui-icon name="close"></mdui-icon></button>
+        <button class="appbar-search-icon" type="submit" aria-label="{{T "Search"}}" title="{{T "Search"}}"><mdui-icon name="search"></mdui-icon></button>
+        <input name="q" value="{{.Keywords}}" placeholder="{{T "Search"}}" autocomplete="off">
+        <button class="appbar-search-close" type="button" aria-label="{{T "Close search"}}" title="{{T "Close search"}}"><mdui-icon name="close"></mdui-icon></button>
       </form>
-      <button class="mdui-btn mdui-btn-icon brightness" type="button" aria-label="切换明暗模式" title="切换明暗模式"><mdui-icon name="brightness_5"></mdui-icon></button>
+      <button class="mdui-btn mdui-btn-icon brightness" type="button" aria-label="{{T "Toggle color mode"}}" title="{{T "Toggle color mode"}}"><mdui-icon name="brightness_5"></mdui-icon></button>
       <a class="mdui-btn mdui-btn-icon" href="/feed.xml" aria-label="Feed" title="Feed"><mdui-icon name="rss_feed"></mdui-icon></a>
     </div>
   </header>
 
   <div class="drawer-overlay" aria-hidden="true"></div>
-  <aside class="mdui-drawer drawer" aria-label="站点导航">
+  <aside class="mdui-drawer drawer" aria-label="{{T "Site navigation"}}">
     <div class="drawer-img"><img src="{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{emailAvatarURL (themeValue .ThemeConfig "profile_email" .ProfileEmail) 128}}{{end}}" alt=""></div>
     <div class="drawer-contact">
       <strong>{{themeValue .ThemeConfig "display_name" (index .Site "site_title")}}</strong>
@@ -71,26 +71,26 @@
     </div>
     <div class="drawer-divider"></div>
     <nav class="drawer-list">
-      <a href="/"><mdui-icon name="home"></mdui-icon><span>首页</span></a>
+      <a href="/"><mdui-icon name="home"></mdui-icon><span>{{T "Home"}}</span></a>
       <details class="drawer-collapse">
-        <summary><mdui-icon name="article"></mdui-icon><span>独立页面</span></summary>
+        <summary><mdui-icon name="article"></mdui-icon><span>{{T "Pages"}}</span></summary>
         <div>
-          {{range .Pages}}<a href="{{contentURL .}}"><span>{{.Title}}</span></a>{{else}}<span class="drawer-empty">暂无页面</span>{{end}}
+          {{range .Pages}}<a href="{{contentURL .}}"><span>{{.Title}}</span></a>{{else}}<span class="drawer-empty">{{T "No pages"}}</span>{{end}}
         </div>
       </details>
       <details class="drawer-collapse">
-        <summary><mdui-icon name="calendar_month"></mdui-icon><span>按时间归档</span></summary>
+        <summary><mdui-icon name="calendar_month"></mdui-icon><span>{{T "Archives by Date"}}</span></summary>
         <div>
-          {{range .Archives}}<a href="{{.URL}}"><span>{{.Title}}（{{.Count}}）</span></a>{{else}}<span class="drawer-empty">暂无归档</span>{{end}}
+          {{range .Archives}}<a href="{{.URL}}"><span>{{.Title}} ({{.Count}})</span></a>{{else}}<span class="drawer-empty">{{T "No archives"}}</span>{{end}}
         </div>
       </details>
       <details class="drawer-collapse">
-        <summary><mdui-icon name="category"></mdui-icon><span>分类归档</span></summary>
+        <summary><mdui-icon name="category"></mdui-icon><span>{{T "Categories"}}</span></summary>
         <div>
-          {{range .AllCategories}}<a href="{{metaURL .}}"><span>{{.Name}}（{{.Count}}）</span></a>{{else}}<span class="drawer-empty">暂无分类</span>{{end}}
+          {{range .AllCategories}}<a href="{{metaURL .}}"><span>{{.Name}} ({{.Count}})</span></a>{{else}}<span class="drawer-empty">{{T "No categories"}}</span>{{end}}
         </div>
       </details>
-      <a href="/feed.xml"><mdui-icon name="rss_feed"></mdui-icon><span>订阅</span></a>
+      <a href="/feed.xml"><mdui-icon name="rss_feed"></mdui-icon><span>{{T "Subscribe"}}</span></a>
     </nav>
     <div class="drawer-bottom">Powered by <a href="https://gopherink.nekopara.uk" target="_blank" rel="noopener noreferrer">GopherInk</a></div>
   </aside>
@@ -111,35 +111,35 @@
       </section>
       {{end}}
       <section class="mdui-card mdui-hoverable sidebar-module">
-        <h3 class="sidebar-module-title">页面</h3>
-        <div class="sidebar-list">{{range .Pages}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">暂无页面</span>{{end}}</div>
+        <h3 class="sidebar-module-title">{{T "Pages"}}</h3>
+        <div class="sidebar-list">{{range .Pages}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">{{T "No pages"}}</span>{{end}}</div>
       </section>
       <section class="mdui-card mdui-hoverable sidebar-module">
-        <h3 class="sidebar-module-title">最新文章</h3>
-        <div class="sidebar-list">{{range .RecentPosts}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">暂无文章</span>{{end}}</div>
+        <h3 class="sidebar-module-title">{{T "Latest Posts"}}</h3>
+        <div class="sidebar-list">{{range .RecentPosts}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">{{T "No posts yet"}}</span>{{end}}</div>
       </section>
       {{if eq (themeValue .ThemeConfig "show_recent_comments" "1") "1"}}
       <section class="mdui-card mdui-hoverable sidebar-module">
-        <h3 class="sidebar-module-title">最新回复</h3>
-        <div class="sidebar-list">{{range .RecentComments}}<a href="{{commentURL .}}">{{.Author}}：{{excerpt .Text 28}}</a>{{else}}<span class="muted">暂无回复</span>{{end}}</div>
+        <h3 class="sidebar-module-title">{{T "Recent Comments"}}</h3>
+        <div class="sidebar-list">{{range .RecentComments}}<a href="{{commentURL .}}">{{.Author}}: {{excerpt .Text 28}}</a>{{else}}<span class="muted">{{T "No replies"}}</span>{{end}}</div>
       </section>
       {{end}}
       {{if eq (themeValue .ThemeConfig "show_tag_cloud" "1") "1"}}
       <section class="mdui-card mdui-hoverable sidebar-module">
-        <h3 class="sidebar-module-title">标签云</h3>
-        <div class="sidebar-tag">{{range .Tags}}<a href="{{metaURL .}}"><span>{{.Name}}</span></a>{{else}}<span class="muted">暂无标签</span>{{end}}</div>
+        <h3 class="sidebar-module-title">{{T "Tag Cloud"}}</h3>
+        <div class="sidebar-tag">{{range .Tags}}<a href="{{metaURL .}}"><span>{{.Name}}</span></a>{{else}}<span class="muted">{{T "No tags"}}</span>{{end}}</div>
       </section>
       {{end}}
       {{if and .Post (eq (themeValue .ThemeConfig "enable_toc" "1") "1") (ne (fieldString .Fields "catalog") "0")}}
       <section class="mdui-card mdui-hoverable sidebar-module toc-card" id="toc">
-        <h3 class="sidebar-module-title">文章目录</h3>
+        <h3 class="sidebar-module-title">{{T "Table of Contents"}}</h3>
         <nav class="toc"></nav>
       </section>
       {{end}}
     </aside>
   </div>
 
-  <button class="top" type="button" aria-label="回到顶部"><mdui-icon name="arrow_upward"></mdui-icon></button>
+  <button class="top" type="button" aria-label="{{T "Back to top"}}"><mdui-icon name="arrow_upward"></mdui-icon></button>
   <footer>{{with themeValue .ThemeConfig "footer_html"}}{{safeHTML .}}{{else}}Powered by <a href="https://gopherink.nekopara.uk" target="_blank" rel="noopener noreferrer">GopherInk</a>{{end}}</footer>
   <script src="/theme/default/highlight.min.js"></script>
   <script src="/theme/default/tocbot.min.js"></script>

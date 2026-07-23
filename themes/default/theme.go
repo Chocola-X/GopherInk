@@ -24,48 +24,49 @@ func init() {
 	assetRandomSequence.Store(uint64(time.Now().UnixNano()))
 	static, _ := fs.Sub(themeFS, "static")
 	colorOptions := []plugin.FieldOption{
-		{Label: "玫红", Value: "#ff4081"},
-		{Label: "紫色", Value: "#6750a4"},
-		{Label: "粉色", Value: "#c2185b"},
-		{Label: "靛蓝", Value: "#3f51b5"},
-		{Label: "蓝色", Value: "#1976d2"},
-		{Label: "青色", Value: "#00838f"},
-		{Label: "绿色", Value: "#2e7d32"},
-		{Label: "琥珀", Value: "#ff8f00"},
-		{Label: "深橙", Value: "#e64a19"},
-		{Label: "灰蓝", Value: "#546e7a"},
+		{Label: "Rose", Value: "#ff4081"},
+		{Label: "Purple", Value: "#6750a4"},
+		{Label: "Pink", Value: "#c2185b"},
+		{Label: "Indigo", Value: "#3f51b5"},
+		{Label: "Blue", Value: "#1976d2"},
+		{Label: "Cyan", Value: "#00838f"},
+		{Label: "Green", Value: "#2e7d32"},
+		{Label: "Amber", Value: "#ff8f00"},
+		{Label: "Deep Orange", Value: "#e64a19"},
+		{Label: "Blue Grey", Value: "#546e7a"},
 	}
 	plugin.RegisterTheme(plugin.Theme{
 		Name:         "default",
 		DisplayName:  "Default Theme",
 		Version:      "0.5.0",
 		Author:       "GopherInk",
-		Description:  "GopherInk 默认主题，基于 MDUI 2 设计，支持动态主题配色、PJAX 导航与按需装饰图片。",
+		Description:  "GopherInk default theme built with MDUI 2, featuring dynamic colors, PJAX navigation, and optional decorative images.",
 		TemplateList: []string{"index.html", "post.html", "404.html"},
 		Templates:    themeFS,
 		Static:       static,
 		Embedded:     true,
+		Translate:    defaultThemeT,
 		Capabilities: plugin.ThemeCapabilities{CommentGuard: true},
 		AdminPages: []plugin.AdminPage{{
 			Name:        friendAdminPageName,
-			Label:       "友链",
+			Label:       "Friend Links",
 			Icon:        "link",
-			Title:       "友链设置",
-			Description: "管理友链信息并指定套用友链展示模板的独立页面。",
+			Title:       "Friend Link Settings",
+			Description: "Manage friend links and choose the standalone page that uses the friend-link template.",
 		}},
 		RenderAdminPage:       renderFriendAdminPage,
 		HandleAdminPageAction: handleFriendAdminPageAction,
-		EnrichComments:       friendEnrichComments,
+		EnrichComments:        friendEnrichComments,
 		AdjustData:            adjustDefaultThemeData,
 		Funcs: template.FuncMap{
-			"themeValue":   themeValue,
-			"themeInt":     themeInt,
-			"themeOpacity": themeOpacity,
-			"assetURL":     assetURL,
-			"safeHTML":     func(value string) template.HTML { return template.HTML(value) },
-			"readingTime":  readingTime,
-			"daysSince":    daysSince,
-			"staleDays":    staleDays,
+			"themeValue":      themeValue,
+			"themeInt":        themeInt,
+			"themeOpacity":    themeOpacity,
+			"assetURL":        assetURL,
+			"safeHTML":        func(value string) template.HTML { return template.HTML(value) },
+			"readingTimeI18n": readingTimeI18n,
+			"daysSince":       daysSince,
+			"staleDays":       staleDays,
 			"fieldString": func(fields map[string]any, name string) string {
 				if fields == nil {
 					return ""
@@ -78,62 +79,62 @@ func init() {
 			},
 		},
 		ConfigSchema: []plugin.FieldSchema{
-			{Name: "display_name", Label: "资料卡名称", Group: "资料卡", Type: plugin.FieldText, Default: "GopherInk", Description: "留空时使用站点标题"},
-			{Name: "profile_email", Label: "头像邮箱", Group: "资料卡", Type: plugin.FieldText, Description: "使用后台统一邮箱头像地址生成头像，不在前台明文展示"},
-			{Name: "profile_avatar", Label: "头像图片 URL", Group: "资料卡", Type: plugin.FieldImage, Description: "单独指定头像图片；留空时使用 CMS 的邮箱头像地址设置生成头像；支持 {random} 随机占位符"},
-			{Name: "bio", Label: "资料卡描述", Group: "资料卡", Type: plugin.FieldText, Description: "留空时使用站点描述", Wide: true},
-			{Name: "primary_preset", Label: "常用主题色", Group: "配色和透明度", Type: plugin.FieldSelect, Default: "#ff4081", Options: colorOptions},
-			{Name: "custom_primary", Label: "自定义主题色", Group: "配色和透明度", Type: plugin.FieldColor, Description: "填写 #RRGGBB 后优先于常用主题色", Options: colorOptions},
-			{Name: "theme_mode", Label: "明暗模式", Group: "配色和透明度", Type: plugin.FieldSelect, Default: "auto", Options: []plugin.FieldOption{{Label: "跟随系统", Value: "auto"}, {Label: "浅色", Value: "light"}, {Label: "深色", Value: "dark"}}},
-			{Name: "card_opacity", Label: "卡片背景透明度", Group: "配色和透明度", Type: plugin.FieldNumber, Default: "0.80", Description: "0 到 1；仅调整卡片背景透明度，不改变 MDUI 主题配色", Min: "0", Max: "1", Step: "0.01"},
-			{Name: "input_opacity", Label: "输入框背景透明度", Group: "配色和透明度", Type: plugin.FieldNumber, Default: "0.42", Description: "0 到 1；保留 MDUI 输入框背景色，仅调整透明度", Min: "0", Max: "1", Step: "0.01"},
-			{Name: "background_mask_opacity", Label: "背景遮罩透明度", Group: "配色和透明度", Type: plugin.FieldNumber, Default: "0.46", Description: "0 到 1；控制页面背景上方遮罩层透明度", Min: "0", Max: "1", Step: "0.01"},
-			{Name: "background_image", Label: "桌面背景图 URL", Group: "背景和装饰图片", Type: plugin.FieldImage, Description: "可输入 URL 或上传图片；留空时使用 MDUI 主题色背景；支持 {random} 随机占位符"},
-			{Name: "mobile_background_image", Label: "移动端背景图 URL", Group: "背景和装饰图片", Type: plugin.FieldImage, Description: "留空时沿用桌面背景图；支持 {random} 随机占位符"},
-			{Name: "sidebar_image", Label: "侧栏封面图 URL", Group: "背景和装饰图片", Type: plugin.FieldImage, Description: "资料卡顶部封面；留空时使用主题色；支持 {random} 随机占位符"},
-			{Name: "fallback_no_cover", Label: "启用文章未设置封面时回落为无封面", Group: "背景和装饰图片", Type: plugin.FieldCheckbox, Default: "1", Description: "仅影响“文章”类型且自身未设置封面的内容；明确选择“无封面”或“日常”的内容保持对应样式", Wide: true},
-			{Name: "default_cover", Label: "默认文章封面 URL", Group: "背景和装饰图片", Type: plugin.FieldImage, Description: "关闭上方回落后，用于未设置封面的“文章”类型内容；支持 {random}，例如 https://api.mikupara.com/h?id={random}", Required: true, ShowWhenField: "fallback_no_cover", ShowWhenValue: "0"},
-			{Name: "comment_bg_image", Label: "评论框装饰图 URL", Group: "背景和装饰图片", Type: plugin.FieldImage, Description: "显示在评论输入框右侧；留空时不显示；支持 {random} 随机占位符"},
-			{Name: "post_end_image", Label: "文章底部装饰图 URL", Group: "背景和装饰图片", Type: plugin.FieldImage, Description: "显示在文章内容底部右下角；留空时不显示；支持 {random} 随机占位符"},
-			{Name: "favicon", Label: "Favicon URL", Group: "背景和装饰图片", Type: plugin.FieldImage, Default: "/theme/default/favicon.svg", Description: "留空时使用 GopherInk 默认 Logo；支持 {random} 随机占位符"},
-			{Name: "show_profile", Label: "显示侧栏资料卡", Group: "侧栏和导航", Type: plugin.FieldCheckbox, Default: "1"},
-			{Name: "show_recent_comments", Label: "显示最新回复", Group: "侧栏和导航", Type: plugin.FieldCheckbox, Default: "1"},
-			{Name: "show_tag_cloud", Label: "显示标签云", Group: "侧栏和导航", Type: plugin.FieldCheckbox, Default: "1"},
-			{Name: "enable_pjax", Label: "启用 PJAX 导航", Group: "侧栏和导航", Type: plugin.FieldCheckbox, Default: "1"},
-			{Name: "enable_infinite_scroll", Label: "启用文章列表无限下拉", Group: "文章显示", Type: plugin.FieldCheckbox, Default: "0", Description: "滚动接近文章列表底部时自动加载下一页；关闭时保留常规分页和手动加载", Wide: true},
-			{Name: "enable_toc", Label: "文章页显示目录", Group: "侧栏和导航", Type: plugin.FieldCheckbox, Default: "1"},
-			{Name: "enable_back_to_top", Label: "显示回到顶部按钮", Group: "侧栏和导航", Type: plugin.FieldCheckbox, Default: "1"},
-			{Name: "show_stale_notice", Label: "显示文章过期提醒", Group: "文章显示", Type: plugin.FieldCheckbox, Default: "1", Description: "文章最后修改时间超过设定天数时显示提醒横幅", Wide: true},
-			{Name: "stale_notice_days", Label: "触发提醒的天数", Group: "文章显示", Type: plugin.FieldNumber, Default: "30", Description: "按文章最后修改时间计算", Min: "1", Max: "3650", Step: "1", Required: true, ShowWhenField: "show_stale_notice", ShowWhenValue: "1", Wide: true},
-			{Name: "footer_html", Label: "底部 HTML", Group: "页脚", Type: plugin.FieldTextarea, Description: "留空时显示 Powered by GopherInk", Wide: true},
+			{Name: "display_name", Label: "Profile name", Group: "Profile Card", Type: plugin.FieldText, Default: "GopherInk", Description: "Use site title when blank"},
+			{Name: "profile_email", Label: "Avatar email", Group: "Profile Card", Type: plugin.FieldText, Description: "Generate avatar with the unified admin avatar URL; email is not exposed on the frontend"},
+			{Name: "profile_avatar", Label: "Avatar image URL", Group: "Profile Card", Type: plugin.FieldImage, Description: "Specify avatar image; when blank, use CMS avatar URL settings; supports {random}"},
+			{Name: "bio", Label: "Profile description", Group: "Profile Card", Type: plugin.FieldText, Description: "Use site description when blank", Wide: true},
+			{Name: "primary_preset", Label: "Preset color", Group: "Colors and Opacity", Type: plugin.FieldSelect, Default: "#ff4081", Options: colorOptions},
+			{Name: "custom_primary", Label: "Custom color", Group: "Colors and Opacity", Type: plugin.FieldColor, Description: "Overrides preset color when #RRGGBB is set", Options: colorOptions},
+			{Name: "theme_mode", Label: "Color mode", Group: "Colors and Opacity", Type: plugin.FieldSelect, Default: "auto", Options: []plugin.FieldOption{{Label: "Follow system", Value: "auto"}, {Label: "Light", Value: "light"}, {Label: "Dark", Value: "dark"}}},
+			{Name: "card_opacity", Label: "Card background opacity", Group: "Colors and Opacity", Type: plugin.FieldNumber, Default: "0.80", Description: "0 to 1; only changes card background opacity, not MDUI theme colors", Min: "0", Max: "1", Step: "0.01"},
+			{Name: "input_opacity", Label: "Input background opacity", Group: "Colors and Opacity", Type: plugin.FieldNumber, Default: "0.42", Description: "0 to 1; keeps MDUI input color and only changes opacity", Min: "0", Max: "1", Step: "0.01"},
+			{Name: "background_mask_opacity", Label: "Background mask opacity", Group: "Colors and Opacity", Type: plugin.FieldNumber, Default: "0.46", Description: "0 to 1; controls the mask over page background", Min: "0", Max: "1", Step: "0.01"},
+			{Name: "background_image", Label: "Desktop background URL", Group: "Background and Decorative Images", Type: plugin.FieldImage, Description: "Enter URL or upload image; blank uses MDUI theme-color background; supports {random}"},
+			{Name: "mobile_background_image", Label: "Mobile background URL", Group: "Background and Decorative Images", Type: plugin.FieldImage, Description: "Blank uses desktop background; supports {random}"},
+			{Name: "sidebar_image", Label: "Sidebar cover URL", Group: "Background and Decorative Images", Type: plugin.FieldImage, Description: "Cover image for profile card; blank uses theme color; supports {random}"},
+			{Name: "fallback_no_cover", Label: "Fallback to no-cover style when post has no cover", Group: "Background and Decorative Images", Type: plugin.FieldCheckbox, Default: "1", Description: "Only affects article-style posts without their own cover; explicit no-cover or daily styles are preserved", Wide: true},
+			{Name: "default_cover", Label: "Default post cover URL", Group: "Background and Decorative Images", Type: plugin.FieldImage, Description: "Used for article-style posts without cover when fallback is disabled; supports {random}", Required: true, ShowWhenField: "fallback_no_cover", ShowWhenValue: "0"},
+			{Name: "comment_bg_image", Label: "Comment form decorative image URL", Group: "Background and Decorative Images", Type: plugin.FieldImage, Description: "Shown on the right side of comment form; blank hides it; supports {random}"},
+			{Name: "post_end_image", Label: "Post footer decorative image URL", Group: "Background and Decorative Images", Type: plugin.FieldImage, Description: "Shown at bottom-right of post content; blank hides it; supports {random}"},
+			{Name: "favicon", Label: "Favicon URL", Group: "Background and Decorative Images", Type: plugin.FieldImage, Default: "/theme/default/favicon.svg", Description: "Blank uses GopherInk default logo; supports {random}"},
+			{Name: "show_profile", Label: "Show sidebar profile card", Group: "Sidebar and Navigation", Type: plugin.FieldCheckbox, Default: "1"},
+			{Name: "show_recent_comments", Label: "Show recent comments", Group: "Sidebar and Navigation", Type: plugin.FieldCheckbox, Default: "1"},
+			{Name: "show_tag_cloud", Label: "Show tag cloud", Group: "Sidebar and Navigation", Type: plugin.FieldCheckbox, Default: "1"},
+			{Name: "enable_pjax", Label: "Enable PJAX navigation", Group: "Sidebar and Navigation", Type: plugin.FieldCheckbox, Default: "1"},
+			{Name: "enable_infinite_scroll", Label: "Enable infinite scroll for post list", Group: "Post Display", Type: plugin.FieldCheckbox, Default: "0", Description: "Load next page near list bottom; disabled keeps normal pagination and manual load", Wide: true},
+			{Name: "enable_toc", Label: "Show table of contents on post pages", Group: "Sidebar and Navigation", Type: plugin.FieldCheckbox, Default: "1"},
+			{Name: "enable_back_to_top", Label: "Show back-to-top button", Group: "Sidebar and Navigation", Type: plugin.FieldCheckbox, Default: "1"},
+			{Name: "show_stale_notice", Label: "Show stale post notice", Group: "Post Display", Type: plugin.FieldCheckbox, Default: "1", Description: "Show notice when post modified time exceeds configured days", Wide: true},
+			{Name: "stale_notice_days", Label: "Stale notice days", Group: "Post Display", Type: plugin.FieldNumber, Default: "30", Description: "Calculated from post modified time", Min: "1", Max: "3650", Step: "1", Required: true, ShowWhenField: "show_stale_notice", ShowWhenValue: "1", Wide: true},
+			{Name: "footer_html", Label: "Footer HTML", Group: "Footer", Type: plugin.FieldTextarea, Description: "Blank shows Powered by GopherInk", Wide: true},
 		},
 		ContentFields: []plugin.FieldSchema{
 			{
 				Name:    "articleType",
-				Label:   "文章类型",
-				Group:   "主题显示",
+				Label:   "Article type",
+				Group:   "Theme Display",
 				Type:    plugin.FieldSelect,
 				Default: "article",
 				Options: []plugin.FieldOption{
-					{Label: "文章", Value: "article"},
-					{Label: "无封面", Value: "normal"},
-					{Label: "日常", Value: "daily"},
+					{Label: "Posts", Value: "article"},
+					{Label: "No cover", Value: "normal"},
+					{Label: "Daily", Value: "daily"},
 				},
-				Description: "选择当前内容在默认主题中的展示类型",
+				Description: "Choose how this content is displayed in the default theme",
 				ForTypes:    []string{"post", "page"},
 			},
 			{
 				Name:        "catalog",
-				Label:       "文章目录",
-				Group:       "主题显示",
+				Label:       "Table of Contents",
+				Group:       "Theme Display",
 				Type:        plugin.FieldSelect,
 				Default:     "1",
-				Options:     []plugin.FieldOption{{Label: "显示", Value: "1"}, {Label: "隐藏", Value: "0"}},
-				Description: "配合主题设置中的目录总开关使用",
+				Options:     []plugin.FieldOption{{Label: "Show", Value: "1"}, {Label: "Hidden", Value: "0"}},
+				Description: "Used together with the theme-wide TOC switch",
 				ForTypes:    []string{"post", "page"},
 			},
-			{Name: "cover", Label: "文章/独立页面封面图", Group: "主题显示", Type: plugin.FieldImage, Description: "填写图片 URL；留空时按主题设置回落；支持 {random} 随机占位符", ForTypes: []string{"post", "page"}, Wide: true},
-			{Name: "remark", Label: "无封面卡片短句", Group: "主题显示", Type: plugin.FieldText, Description: "仅在无封面文章卡片中显示", ForTypes: []string{"post", "page"}, Wide: true},
+			{Name: "cover", Label: "Post/Page cover image", Group: "Theme Display", Type: plugin.FieldImage, Description: "Enter image URL; blank follows theme fallback; supports {random}", ForTypes: []string{"post", "page"}, Wide: true},
+			{Name: "remark", Label: "No-cover card note", Group: "Theme Display", Type: plugin.FieldText, Description: "Only shown in no-cover post cards", ForTypes: []string{"post", "page"}, Wide: true},
 		},
 	})
 }
@@ -197,16 +198,16 @@ func randomAssetToken() string {
 	return strconv.FormatUint(value, 10)
 }
 
-func readingTime(text string) string {
+func readingTimeI18n(lang, text string) string {
 	runes := utf8.RuneCountInString(stripHTMLLike(text))
-	if runes == 0 {
-		return "1 分钟"
-	}
 	minutes := (runes + 399) / 400
 	if minutes < 1 {
 		minutes = 1
 	}
-	return fmt.Sprintf("%d 分钟", minutes)
+	if minutes == 1 {
+		return fmt.Sprintf("1 %s", defaultThemeT(lang, "min"))
+	}
+	return fmt.Sprintf("%d %s", minutes, defaultThemeT(lang, "mins"))
 }
 
 func daysSince(ts int64) int {

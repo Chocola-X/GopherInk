@@ -1,11 +1,11 @@
 {{define "content"}}
-<div class="page-head"><div><h1>用户</h1><p class="muted">管理后台用户和用户组。</p></div><mdui-button href="/admin/users/new"><mdui-icon slot="icon" name="add"></mdui-icon>新增用户</mdui-button></div>
-<form method="get" class="filter-bar"><mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field><mdui-button type="submit" variant="outlined">筛选</mdui-button></form>
+<div class="page-head"><div><h1>{{T "Users"}}</h1><p class="muted">{{T "Manage admin users and roles."}}</p></div><mdui-button href="/admin/users/new"><mdui-icon slot="icon" name="add"></mdui-icon>{{T "Add User"}}</mdui-button></div>
+<form method="get" class="filter-bar"><mdui-text-field name="keywords" label="{{T "Keywords"}}" value="{{.Keywords}}"></mdui-text-field><mdui-button type="submit" variant="outlined">{{T "Filter"}}</mdui-button></form>
 <section class="table-panel"><table>
-  <thead><tr><th>用户名</th><th>昵称</th><th>邮箱</th><th>用户组</th><th>最后登录</th><th></th></tr></thead>
+  <thead><tr><th>{{T "Username"}}</th><th>{{T "Nickname"}}</th><th>{{T "Email"}}</th><th>{{T "Role"}}</th><th>{{T "Last login"}}</th><th></th></tr></thead>
   <tbody>{{range .Users}}<tr>
     <td><strong>{{.Name}}</strong></td><td>{{.ScreenName}}</td><td>{{.Mail}}</td><td>{{roleLabel .Role}}</td><td>{{date .Logged}}</td>
-    <td><div class="row-actions"><mdui-button-icon href="/admin/users/{{.UID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon><form method="post" action="/admin/users/{{.UID}}/revoke"><mdui-button-icon type="submit" title="吊销会话"><mdui-icon name="logout"></mdui-icon></mdui-button-icon></form>{{if ne .UID $.CurrentUser.UID}}<form method="post" action="/admin/users/{{.UID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>{{end}}</div></td>
-  </tr>{{else}}<tr><td colspan="6" class="muted">没有用户。</td></tr>{{end}}</tbody>
+    <td><div class="row-actions"><mdui-button-icon href="/admin/users/{{.UID}}/edit" title="{{T "Edit"}}"><mdui-icon name="edit"></mdui-icon></mdui-button-icon><form method="post" action="/admin/users/{{.UID}}/revoke"><mdui-button-icon type="submit" title="{{T "Revoke sessions"}}"><mdui-icon name="logout"></mdui-icon></mdui-button-icon></form>{{if ne .UID $.CurrentUser.UID}}<form method="post" action="/admin/users/{{.UID}}/delete"><mdui-button-icon type="submit" title="{{T "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>{{end}}</div></td>
+  </tr>{{else}}<tr><td colspan="6" class="muted">{{T "No users."}}</td></tr>{{end}}</tbody>
 </table></section>
 {{end}}

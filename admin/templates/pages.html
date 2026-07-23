@@ -1,61 +1,61 @@
 {{define "content"}}
 <div class="page-head">
   <div>
-    <h1>页面</h1>
-    <p class="muted">管理独立页面、父级页面和排序。</p>
+    <h1>{{T "Pages"}}</h1>
+    <p class="muted">{{T "Manage standalone pages, parent pages, and ordering."}}</p>
   </div>
-  <mdui-button href="/admin/pages/new"><mdui-icon slot="icon" name="add"></mdui-icon>写页面</mdui-button>
+  <mdui-button href="/admin/pages/new"><mdui-icon slot="icon" name="add"></mdui-icon>{{T "New Page"}}</mdui-button>
 </div>
 <form method="get" class="filter-bar">
-  <mdui-text-field name="keywords" label="关键字" value="{{.Keywords}}"></mdui-text-field>
-  <mdui-select name="status" label="状态" value="{{if .Status}}{{.Status}}{{else}}all{{end}}">
-    <mdui-menu-item value="all">全部状态</mdui-menu-item>
-    <mdui-menu-item value="publish">已发布</mdui-menu-item>
-    <mdui-menu-item value="draft">草稿</mdui-menu-item>
-    <mdui-menu-item value="hidden">隐藏</mdui-menu-item>
+  <mdui-text-field name="keywords" label="{{T "Keywords"}}" value="{{.Keywords}}"></mdui-text-field>
+  <mdui-select name="status" label="{{T "Status"}}" value="{{if .Status}}{{.Status}}{{else}}all{{end}}">
+    <mdui-menu-item value="all">{{T "All Statuses"}}</mdui-menu-item>
+    <mdui-menu-item value="publish">{{T "Published"}}</mdui-menu-item>
+    <mdui-menu-item value="draft">{{T "Drafts"}}</mdui-menu-item>
+    <mdui-menu-item value="hidden">{{T "Hidden"}}</mdui-menu-item>
   </mdui-select>
-  <mdui-button type="submit" variant="outlined">筛选</mdui-button>
+  <mdui-button type="submit" variant="outlined">{{T "Filter"}}</mdui-button>
 </form>
 <section class="table-panel">
   <table>
-    <thead><tr><th>标题</th><th>状态</th><th>排序</th><th>评论</th><th>日期</th><th></th></tr></thead>
+    <thead><tr><th>{{T "Title"}}</th><th>{{T "Status"}}</th><th>{{T "Order"}}</th><th>{{T "Comments"}}</th><th>{{T "Date"}}</th><th></th></tr></thead>
     <tbody>
     {{range .Pages}}
       <tr>
         <td><strong>{{.Title}}</strong><br><span class="muted">{{contentPublicURL .}}</span></td>
         <td>
           {{contentStatus .}}
-          {{if and (eq .Status "publish") (index $.DraftMap .CID)}}<span class="draft-badge">有编辑草稿</span>{{end}}
+          {{if and (eq .Status "publish") (index $.DraftMap .CID)}}<span class="draft-badge">{{T "Has editing draft"}}</span>{{end}}
           <br><span class="muted">{{date .Created}}</span>
         </td>
         <td>{{.SortOrder}}</td>
         <td><a href="/admin/comments?cid={{.CID}}">{{.CommentsNum}}</a></td>
         <td>{{date .Modified}}</td>
         <td><div class="row-actions">
-          {{if eq .Status "publish"}}<mdui-button-icon href="{{contentPublicURL .}}" title="查看"><mdui-icon name="rss_feed"></mdui-icon></mdui-button-icon>{{end}}
+          {{if eq .Status "publish"}}<mdui-button-icon href="{{contentPublicURL .}}" title="{{T "View"}}"><mdui-icon name="rss_feed"></mdui-icon></mdui-button-icon>{{end}}
           {{if eq .Status "draft"}}
-          <mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+          <mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="{{T "Edit"}}"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
           <form method="post" action="/admin/pages/{{.CID}}/mark">
             <input type="hidden" name="status" value="publish">
-            <mdui-button-icon type="submit" title="发布"><mdui-icon name="publish"></mdui-icon></mdui-button-icon>
+            <mdui-button-icon type="submit" title="{{T "Publish"}}"><mdui-icon name="publish"></mdui-icon></mdui-button-icon>
           </form>
-          <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除草稿"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
+          <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="{{T "Delete Draft"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
           {{else if eq .Status "publish"}}
-          <mdui-button-icon href="/admin/pages/{{.CID}}/edit?source=published" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
-          {{if index $.DraftMap .CID}}<mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="编辑草稿"><mdui-icon name="edit_note"></mdui-icon></mdui-button-icon>{{end}}
+          <mdui-button-icon href="/admin/pages/{{.CID}}/edit?source=published" title="{{T "Edit"}}"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+          {{if index $.DraftMap .CID}}<mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="{{T "Edit Draft"}}"><mdui-icon name="edit_note"></mdui-icon></mdui-button-icon>{{end}}
           <form method="post" action="/admin/pages/{{.CID}}/mark">
             <input type="hidden" name="status" value="hidden">
-            <mdui-button-icon type="submit" title="隐藏"><mdui-icon name="visibility_off"></mdui-icon></mdui-button-icon>
+            <mdui-button-icon type="submit" title="{{T "Hidden"}}"><mdui-icon name="visibility_off"></mdui-icon></mdui-button-icon>
           </form>
-          <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
+          <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="{{T "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
           {{else}}
-          <mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
-          <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
+          <mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="{{T "Edit"}}"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+          <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="{{T "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
           {{end}}
         </div></td>
       </tr>
     {{else}}
-      <tr><td colspan="6" class="muted">还没有页面。</td></tr>
+      <tr><td colspan="6" class="muted">{{T "No pages yet."}}</td></tr>
     {{end}}
     </tbody>
   </table>

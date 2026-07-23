@@ -1,21 +1,21 @@
 {{define "content"}}
-<div class="page-head"><div><h1>{{.Title}}</h1></div><mdui-button variant="outlined" href="/admin/comments">返回</mdui-button></div>
+<div class="page-head"><div><h1>{{.Title}}</h1></div><mdui-button variant="outlined" href="/admin/comments">{{T "Back"}}</mdui-button></div>
 <form method="post" action="{{.Action}}" class="form-panel field-stack">
   {{if .Reply}}
-  <mdui-text-field label="回复身份" value="{{.ReplyAuthor}}" readonly></mdui-text-field>
+  <mdui-text-field label="{{T "Reply identity"}}" value="{{.ReplyAuthor}}" readonly></mdui-text-field>
   {{else}}
-  <mdui-text-field name="author" label="作者" value="{{.Comment.Author}}" {{if fieldError .Errors "author"}}helper="{{fieldError .Errors "author"}}"{{end}} required></mdui-text-field>
-  <mdui-text-field name="mail" label="邮箱" value="{{.Comment.Mail}}" {{if fieldError .Errors "mail"}}helper="{{fieldError .Errors "mail"}}"{{end}}></mdui-text-field>
-  <mdui-text-field name="url" label="网址" value="{{.Comment.URL}}" {{if fieldError .Errors "url"}}helper="{{fieldError .Errors "url"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="author" label="{{T "Author"}}" value="{{.Comment.Author}}" {{if fieldError .Errors "author"}}helper="{{fieldError .Errors "author"}}"{{end}} required></mdui-text-field>
+  <mdui-text-field name="mail" label="{{T "Email"}}" value="{{.Comment.Mail}}" {{if fieldError .Errors "mail"}}helper="{{fieldError .Errors "mail"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="url" label="{{T "Website"}}" value="{{.Comment.URL}}" {{if fieldError .Errors "url"}}helper="{{fieldError .Errors "url"}}"{{end}}></mdui-text-field>
   <mdui-text-field name="ip" label="IP" value="{{.Comment.IP}}"></mdui-text-field>
   {{end}}
-  <mdui-select name="status" label="状态" value="{{if .Reply}}approved{{else}}{{.Comment.Status}}{{end}}">
-    <mdui-menu-item value="approved">已通过</mdui-menu-item>
-    <mdui-menu-item value="waiting">待审核</mdui-menu-item>
-    <mdui-menu-item value="spam">垃圾</mdui-menu-item>
+  <mdui-select name="status" label="{{T "Status"}}" value="{{if .Reply}}approved{{else}}{{.Comment.Status}}{{end}}">
+    <mdui-menu-item value="approved">{{T "Approved"}}</mdui-menu-item>
+    <mdui-menu-item value="waiting">{{T "Pending"}}</mdui-menu-item>
+    <mdui-menu-item value="spam">{{T "Spam"}}</mdui-menu-item>
   </mdui-select>
   {{if fieldError .Errors "status"}}<div class="notice danger">{{fieldError .Errors "status"}}</div>{{end}}
-  <mdui-text-field name="text" label="内容" rows="8" autosize {{if fieldError .Errors "text"}}helper="{{fieldError .Errors "text"}}"{{end}}>{{.Comment.Text}}</mdui-text-field>
-  <div class="form-actions"><mdui-button type="submit">保存</mdui-button></div>
+  <mdui-text-field name="text" label="{{T "Content"}}" rows="8" autosize {{if fieldError .Errors "text"}}helper="{{fieldError .Errors "text"}}"{{end}}>{{.Comment.Text}}</mdui-text-field>
+  <div class="form-actions"><mdui-button type="submit">{{T "Save"}}</mdui-button></div>
 </form>
 {{end}}

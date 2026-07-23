@@ -1,31 +1,31 @@
 {{define "content"}}
-<div class="page-head"><div><h1>分类</h1><p class="muted">管理文章分类层级和默认分类。</p></div><mdui-button href="/admin/categories/new{{if .ParentSet}}?parent={{.ParentID}}{{end}}"><mdui-icon slot="icon" name="add"></mdui-icon>新增分类</mdui-button></div>
+<div class="page-head"><div><h1>{{T "Categories"}}</h1><p class="muted">{{T "Manage category hierarchy and default category."}}</p></div><mdui-button href="/admin/categories/new{{if .ParentSet}}?parent={{.ParentID}}{{end}}"><mdui-icon slot="icon" name="add"></mdui-icon>{{T "Add Category"}}</mdui-button></div>
 <div class="subnav">
-  <mdui-button variant="{{if not .ParentSet}}tonal{{else}}text{{end}}" href="/admin/categories">所有层级</mdui-button>
-  {{if .ParentSet}}<mdui-button variant="tonal" href="{{if .Parent.Parent}}/admin/categories?parent={{.Parent.Parent}}{{else}}/admin/categories?parent=0{{end}}"><mdui-icon slot="icon" name="arrow_upward"></mdui-icon>返回上级</mdui-button>{{end}}
+  <mdui-button variant="{{if not .ParentSet}}tonal{{else}}text{{end}}" href="/admin/categories">{{T "All levels"}}</mdui-button>
+  {{if .ParentSet}}<mdui-button variant="tonal" href="{{if .Parent.Parent}}/admin/categories?parent={{.Parent.Parent}}{{else}}/admin/categories?parent=0{{end}}"><mdui-icon slot="icon" name="arrow_upward"></mdui-icon>{{T "Back to parent"}}</mdui-button>{{end}}
 </div>
 <form id="category-batch" method="post" action="/admin/categories/batch" class="bulk-actions meta-bulk-actions">
-  <mdui-select name="target" label="合并到" value="" class="meta-merge-target">
-    <mdui-menu-item value="">选择目标分类</mdui-menu-item>
+  <mdui-select name="target" label="{{T "Merge into"}}" value="" class="meta-merge-target">
+    <mdui-menu-item value="">{{T "Choose target category"}}</mdui-menu-item>
     {{range .AllItems}}<mdui-menu-item value="{{.MID}}">{{.Name}}</mdui-menu-item>{{end}}
   </mdui-select>
-  <mdui-button type="submit" name="action" value="merge" variant="tonal">合并所选</mdui-button>
-  <mdui-button type="submit" name="action" value="refresh" variant="text">刷新计数</mdui-button>
-  <mdui-button type="submit" name="action" value="delete" variant="outlined">删除所选</mdui-button>
+  <mdui-button type="submit" name="action" value="merge" variant="tonal">{{T "Merge selected"}}</mdui-button>
+  <mdui-button type="submit" name="action" value="refresh" variant="text">{{T "Refresh counts"}}</mdui-button>
+  <mdui-button type="submit" name="action" value="delete" variant="outlined">{{T "Delete selected"}}</mdui-button>
 </form>
 <section class="table-panel"><table>
-  <thead><tr><th></th><th>名称</th><th>缩略名</th><th>父级</th><th>文章数</th><th></th></tr></thead>
+  <thead><tr><th></th><th>{{T "Name"}}</th><th>{{T "Slug"}}</th><th>{{T "Parent"}}</th><th>{{T "Posts"}}</th><th></th></tr></thead>
   <tbody>{{range .Items}}<tr>
-    <td><mdui-checkbox name="id" value="{{.MID}}" form="category-batch" aria-label="选择分类"></mdui-checkbox></td>
-    <td><div class="meta-tree-name" style="--meta-depth: {{.Depth}}"><strong>{{.Name}}</strong>{{if eq (index $.Options "default_category") (printf "%d" .MID)}} <span class="muted">默认</span>{{end}}{{if .HasChildren}} <a href="/admin/categories?parent={{.MID}}" class="meta-children-link">查看子分类</a>{{end}}</div></td>
-    <td>{{.Slug}}</td><td>{{if .ParentName}}{{.ParentName}}{{else}}<span class="muted">顶级</span>{{end}}</td><td>{{.Count}}</td>
+    <td><mdui-checkbox name="id" value="{{.MID}}" form="category-batch" aria-label="{{T "Select category"}}"></mdui-checkbox></td>
+    <td><div class="meta-tree-name" style="--meta-depth: {{.Depth}}"><strong>{{.Name}}</strong>{{if eq (index $.Options "default_category") (printf "%d" .MID)}} <span class="muted">{{T "Default"}}</span>{{end}}{{if .HasChildren}} <a href="/admin/categories?parent={{.MID}}" class="meta-children-link">{{T "View children"}}</a>{{end}}</div></td>
+    <td>{{.Slug}}</td><td>{{if .ParentName}}{{.ParentName}}{{else}}<span class="muted">{{T "Top level"}}</span>{{end}}</td><td>{{.Count}}</td>
     <td><div class="row-actions">
-      <form method="post" action="/admin/categories/{{.MID}}/move"><input type="hidden" name="direction" value="up"><mdui-button-icon type="submit" title="上移"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon></form>
-      <form method="post" action="/admin/categories/{{.MID}}/move"><input type="hidden" name="direction" value="down"><mdui-button-icon type="submit" title="下移"><mdui-icon name="arrow_downward"></mdui-icon></mdui-button-icon></form>
-      <form method="post" action="/admin/categories/{{.MID}}/default"><mdui-button type="submit" variant="text">设为默认</mdui-button></form>
-      <mdui-button-icon href="/admin/categories/{{.MID}}/edit" title="编辑"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
-      <form method="post" action="/admin/categories/{{.MID}}/delete"><mdui-button-icon type="submit" title="删除"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
+      <form method="post" action="/admin/categories/{{.MID}}/move"><input type="hidden" name="direction" value="up"><mdui-button-icon type="submit" title="{{T "Move up"}}"><mdui-icon name="arrow_upward"></mdui-icon></mdui-button-icon></form>
+      <form method="post" action="/admin/categories/{{.MID}}/move"><input type="hidden" name="direction" value="down"><mdui-button-icon type="submit" title="{{T "Move down"}}"><mdui-icon name="arrow_downward"></mdui-icon></mdui-button-icon></form>
+      <form method="post" action="/admin/categories/{{.MID}}/default"><mdui-button type="submit" variant="text">{{T "Set default"}}</mdui-button></form>
+      <mdui-button-icon href="/admin/categories/{{.MID}}/edit" title="{{T "Edit"}}"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+      <form method="post" action="/admin/categories/{{.MID}}/delete"><mdui-button-icon type="submit" title="{{T "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
     </div></td>
-  </tr>{{else}}<tr><td colspan="6" class="muted">没有任何分类。</td></tr>{{end}}</tbody>
+  </tr>{{else}}<tr><td colspan="6" class="muted">{{T "No categories."}}</td></tr>{{end}}</tbody>
 </table></section>
 {{end}}

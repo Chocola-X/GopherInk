@@ -169,7 +169,7 @@ func (a *App) Handler() http.Handler {
 		"/admin/ajax/preferences":        a.adminAjaxPreferences,
 		"/admin/ajax/remote-callback":    a.adminAjaxRemoteCallback,
 		"/admin/schema/upload":           a.adminSchemaUpload,
-		"/admin/theme-editor":            a.adminPlaceholder("主题编辑器", "对应 Typecho 的 theme-editor.php。直接编辑文件需要额外权限和审计，当前先保留入口。"),
+		"/admin/theme-editor":            a.adminPlaceholder("Theme editor", "Equivalent to Typecho theme-editor.php. Direct file editing requires additional permission and auditing, so this entry is currently reserved."),
 	}
 	for route, handler := range adminRoutes {
 		mux.HandleFunc(route, a.requireAdmin(handler))
@@ -349,7 +349,7 @@ func requestPathIsStatic(pathValue string) bool {
 func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		a.renderAdmin(w, r, "login.html", map[string]any{"Title": "登录", "Next": safeNext(r.URL.Query().Get("next"))})
+		a.renderAdmin(w, r, "login.html", map[string]any{"Title": "Login", "Next": safeNext(r.URL.Query().Get("next"))})
 	case http.MethodPost:
 		if !a.validCSRFFor(r, "login") {
 			http.Error(w, "invalid csrf token", http.StatusForbidden)
@@ -363,7 +363,7 @@ func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 		next := safeNext(r.FormValue("next"))
 		loginPayload := plugin.UserLoginPayload{Name: name, IP: a.clientIP(r), UserAgent: r.UserAgent(), Next: next}
 		if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookUserLoginBefore, loginPayload); err != nil {
-			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "登录", "Error": err.Error(), "Name": name, "Next": next})
+			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "Login", "Error": err.Error(), "Name": name, "Next": next})
 			return
 		} else if nextPayload, ok := out.(plugin.UserLoginPayload); ok {
 			loginPayload = nextPayload
@@ -372,20 +372,20 @@ func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 			if loginPayload.Blocked {
 				message := strings.TrimSpace(loginPayload.Message)
 				if message == "" {
-					message = "登录被插件策略拒绝。"
+					message = "Login was rejected by a plugin policy."
 				}
-				a.renderAdmin(w, r, "login.html", map[string]any{"Title": "登录", "Error": message, "Name": name, "Next": next})
+				a.renderAdmin(w, r, "login.html", map[string]any{"Title": "Login", "Error": message, "Name": name, "Next": next})
 				return
 			}
 		}
 		if !a.loginAllowed(a.clientIP(r), name) {
-			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "登录", "Error": "尝试过于频繁，请稍后再试", "Name": name, "Next": next})
+			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "Login", "Error": "Too many attempts. Please try again later.", "Name": name, "Next": next})
 			return
 		}
 		v := validate.New()
 		v.Required("name", name).Required("password", r.FormValue("password"))
 		if !v.Errors.Empty() {
-			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "登录", "Errors": v.Errors, "Name": name, "Next": next})
+			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "Login", "Errors": v.Errors, "Name": name, "Next": next})
 			return
 		}
 		user, err := a.authenticateUserWithHooks(r.Context(), name, r.FormValue("password"))
@@ -394,13 +394,13 @@ func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 			loginPayload.Success = false
 			loginPayload.Error = err.Error()
 			_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookUserLoginFail, loginPayload)
-			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "登录", "Error": "用户名或密码不正确", "Name": name, "Next": next})
+			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "Login", "Error": "Username or password is incorrect.", "Name": name, "Next": next})
 			return
 		}
 		loginPayload.User = publicUserForPlugin(user)
 		loginPayload.Success = true
 		if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookUserLoginAuthenticated, loginPayload); err != nil {
-			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "登录", "Error": err.Error(), "Name": name, "Next": next})
+			a.renderAdmin(w, r, "login.html", map[string]any{"Title": "Login", "Error": err.Error(), "Name": name, "Next": next})
 			return
 		} else if nextPayload, ok := out.(plugin.UserLoginPayload); ok {
 			loginPayload = nextPayload
@@ -408,9 +408,9 @@ func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 			if loginPayload.Blocked {
 				message := strings.TrimSpace(loginPayload.Message)
 				if message == "" {
-					message = "登录被插件策略拒绝。"
+					message = "Login was rejected by a plugin policy."
 				}
-				a.renderAdmin(w, r, "login.html", map[string]any{"Title": "登录", "Error": message, "Name": name, "Next": next})
+				a.renderAdmin(w, r, "login.html", map[string]any{"Title": "Login", "Error": message, "Name": name, "Next": next})
 				return
 			}
 		}
@@ -421,7 +421,7 @@ func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 		if next == "" {
 			next = "/admin"
 		}
-		a.flashRedirect(w, r, next, http.StatusSeeOther, flashNotice{Type: "success", Message: "登录成功。"})
+		a.flashRedirect(w, r, next, http.StatusSeeOther, flashNotice{Type: "success", Message: "Login successful."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -464,7 +464,7 @@ func (a *App) adminRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		a.renderAdmin(w, r, "register.html", map[string]any{"Title": "注册"})
+		a.renderAdmin(w, r, "register.html", map[string]any{"Title": "Register"})
 	case http.MethodPost:
 		if !a.validCSRFFor(r, "register") {
 			http.Error(w, "invalid csrf token", http.StatusForbidden)
@@ -489,11 +489,11 @@ func (a *App) adminRegister(w http.ResponseWriter, r *http.Request) {
 		errs := validateUserInput(input, true)
 		validatePasswordConfirmation(&errs, input.Password, r.FormValue("confirm"), true)
 		if strings.TrimSpace(input.Mail) == "" {
-			errs.Add("mail", "不能为空")
+			errs.Add("mail", "Required")
 		}
 		a.addUserUniqueErrors(r.Context(), &errs, input.Name, input.Mail, 0)
 		if !errs.Empty() {
-			a.renderAdmin(w, r, "register.html", map[string]any{"Title": "注册", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Errors": errs})
+			a.renderAdmin(w, r, "register.html", map[string]any{"Title": "Register", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Errors": errs})
 			return
 		}
 		registerPayload := plugin.UserRegisterPayload{
@@ -506,7 +506,7 @@ func (a *App) adminRegister(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 		if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookUserRegisterBefore, registerPayload); err != nil {
-			a.renderAdmin(w, r, "register.html", map[string]any{"Title": "注册", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Error": err.Error()})
+			a.renderAdmin(w, r, "register.html", map[string]any{"Title": "Register", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Error": err.Error()})
 			return
 		} else if nextPayload, ok := out.(plugin.UserRegisterPayload); ok {
 			registerPayload = nextPayload
@@ -516,25 +516,25 @@ func (a *App) adminRegister(w http.ResponseWriter, r *http.Request) {
 			if registerPayload.Blocked {
 				message := strings.TrimSpace(registerPayload.Message)
 				if message == "" {
-					message = "注册被插件策略拒绝。"
+					message = "Registration was rejected by a plugin policy."
 				}
-				a.renderAdmin(w, r, "register.html", map[string]any{"Title": "注册", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Error": message})
+				a.renderAdmin(w, r, "register.html", map[string]any{"Title": "Register", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Error": message})
 				return
 			}
 		}
 		errs = validateUserInput(input, true)
 		validatePasswordConfirmation(&errs, input.Password, r.FormValue("confirm"), true)
 		if strings.TrimSpace(input.Mail) == "" {
-			errs.Add("mail", "不能为空")
+			errs.Add("mail", "Required")
 		}
 		a.addUserUniqueErrors(r.Context(), &errs, input.Name, input.Mail, 0)
 		if !errs.Empty() {
-			a.renderAdmin(w, r, "register.html", map[string]any{"Title": "注册", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Errors": errs})
+			a.renderAdmin(w, r, "register.html", map[string]any{"Title": "Register", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Errors": errs})
 			return
 		}
 		uid, err := a.Users.Save(r.Context(), input, 0)
 		if err != nil {
-			a.renderAdmin(w, r, "register.html", map[string]any{"Title": "注册", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Error": err.Error()})
+			a.renderAdmin(w, r, "register.html", map[string]any{"Title": "Register", "User": models.User{Name: input.Name, Mail: input.Mail, URL: input.URL, ScreenName: input.ScreenName}, "Error": err.Error()})
 			return
 		}
 		if user, err := a.Users.ByID(r.Context(), uid); err == nil {
@@ -543,7 +543,7 @@ func (a *App) adminRegister(w http.ResponseWriter, r *http.Request) {
 			registerPayload.User.UID = uid
 		}
 		_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookUserRegisterAfter, registerPayload)
-		a.flashRedirect(w, r, "/admin/login", http.StatusSeeOther, flashNotice{Type: "success", Message: "注册成功，请登录。"})
+		a.flashRedirect(w, r, "/admin/login", http.StatusSeeOther, flashNotice{Type: "success", Message: "Registration complete. Please sign in."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -556,7 +556,7 @@ func (a *App) installWizard(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		a.renderAdmin(w, r, "install.html", map[string]any{"Title": "安装"})
+		a.renderAdmin(w, r, "install.html", map[string]any{"Title": "Install"})
 	case http.MethodPost:
 		if !a.validCSRFFor(r, "install") {
 			http.Error(w, "invalid csrf token", http.StatusForbidden)
@@ -580,7 +580,7 @@ func (a *App) installWizard(w http.ResponseWriter, r *http.Request) {
 		errs := validateUserInput(input, true)
 		validatePasswordConfirmation(&errs, input.Password, r.FormValue("confirm"), true)
 		if !errs.Empty() {
-			a.renderAdmin(w, r, "install.html", map[string]any{"Title": "安装", "User": models.User{Name: input.Name, Mail: input.Mail, ScreenName: input.ScreenName}, "SiteTitle": siteTitle, "Errors": errs})
+			a.renderAdmin(w, r, "install.html", map[string]any{"Title": "Install", "User": models.User{Name: input.Name, Mail: input.Mail, ScreenName: input.ScreenName}, "SiteTitle": siteTitle, "Errors": errs})
 			return
 		}
 		if err := a.Options.Set(r.Context(), "site_title", siteTitle); err != nil {
@@ -591,10 +591,10 @@ func (a *App) installWizard(w http.ResponseWriter, r *http.Request) {
 			_ = a.Options.Set(r.Context(), "base_url", baseURL)
 		}
 		if _, err := a.Users.Save(r.Context(), input, 0); err != nil {
-			a.renderAdmin(w, r, "install.html", map[string]any{"Title": "安装", "Error": err.Error(), "SiteTitle": siteTitle})
+			a.renderAdmin(w, r, "install.html", map[string]any{"Title": "Install", "Error": err.Error(), "SiteTitle": siteTitle})
 			return
 		}
-		a.flashRedirect(w, r, "/admin/login", http.StatusSeeOther, flashNotice{Type: "success", Message: "安装完成，请登录。"})
+		a.flashRedirect(w, r, "/admin/login", http.StatusSeeOther, flashNotice{Type: "success", Message: "Installation complete. Please sign in."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -626,7 +626,7 @@ func (a *App) adminLogout(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	auth.ClearSessionWithOptions(w, a.cookieOptions(r.Context()))
-	a.flashRedirect(w, r, "/admin/login", http.StatusSeeOther, flashNotice{Type: "success", Message: "已退出。"})
+	a.flashRedirect(w, r, "/admin/login", http.StatusSeeOther, flashNotice{Type: "success", Message: "Signed out."})
 }
 
 func (a *App) adminDashboard(w http.ResponseWriter, r *http.Request) {
@@ -678,7 +678,7 @@ func (a *App) adminDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.renderAdmin(w, r, "dashboard.html", map[string]any{
-		"Title":        "控制台",
+		"Title":        "Dashboard",
 		"Stats":        stats,
 		"PostStats":    postStats,
 		"PageStats":    pageStats,
@@ -720,6 +720,39 @@ func themeDisplayName(theme plugin.Theme) string {
 		return name
 	}
 	return theme.Name
+}
+
+func themeText(theme plugin.Theme, lang, key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	if theme.Translate != nil {
+		if translated := strings.TrimSpace(theme.Translate(lang, key)); translated != "" {
+			return translated
+		}
+	}
+	return key
+}
+
+func themeDisplayNameLang(theme plugin.Theme, lang string) string {
+	if name := strings.TrimSpace(theme.DisplayName); name != "" {
+		return themeText(theme, lang, name)
+	}
+	return theme.Name
+}
+
+func pluginText(p plugin.Plugin, lang, key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	if translator, ok := p.(plugin.Translator); ok {
+		if translated := strings.TrimSpace(translator.Translate(lang, key)); translated != "" {
+			return translated
+		}
+	}
+	return key
 }
 
 func (a *App) dashboardContentStats(ctx context.Context, typ string) (dashboardContentStats, error) {
@@ -771,7 +804,7 @@ func (a *App) adminPosts(w http.ResponseWriter, r *http.Request) {
 	if roleRank(user.Role) < roleRank("editor") {
 		query.AuthorID = user.UID
 	}
-	posts, _, err := a.listContentsWithListHook(r.Context(), "admin.posts", "文章", query)
+	posts, _, err := a.listContentsWithListHook(r.Context(), "admin.posts", "Posts", query)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -788,7 +821,7 @@ func (a *App) adminPosts(w http.ResponseWriter, r *http.Request) {
 		draftMap = map[int64]bool{}
 	}
 	categories, _ := a.Metas.List(r.Context(), "category")
-	a.renderAdmin(w, r, "posts.html", map[string]any{"Title": "文章", "Posts": posts, "Categories": categories, "Status": r.URL.Query().Get("status"), "Keywords": r.URL.Query().Get("keywords"), "Category": category, "DraftMap": draftMap})
+	a.renderAdmin(w, r, "posts.html", map[string]any{"Title": "Posts", "Posts": posts, "Categories": categories, "Status": r.URL.Query().Get("status"), "Keywords": r.URL.Query().Get("keywords"), "Category": category, "DraftMap": draftMap})
 }
 
 func (a *App) adminPostRoutes(w http.ResponseWriter, r *http.Request) {
@@ -807,7 +840,7 @@ func (a *App) adminPages(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	pages, _, err := a.listContentsWithListHook(r.Context(), "admin.pages", "页面", services.ContentQuery{Type: models.ContentTypePage, Status: r.URL.Query().Get("status"), Keywords: r.URL.Query().Get("keywords"), Limit: 200})
+	pages, _, err := a.listContentsWithListHook(r.Context(), "admin.pages", "Pages", services.ContentQuery{Type: models.ContentTypePage, Status: r.URL.Query().Get("status"), Keywords: r.URL.Query().Get("keywords"), Limit: 200})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -822,7 +855,7 @@ func (a *App) adminPages(w http.ResponseWriter, r *http.Request) {
 	if draftMap == nil {
 		draftMap = map[int64]bool{}
 	}
-	a.renderAdmin(w, r, "pages.html", map[string]any{"Title": "页面", "Pages": pages, "Keywords": r.URL.Query().Get("keywords"), "Status": r.URL.Query().Get("status"), "DraftMap": draftMap})
+	a.renderAdmin(w, r, "pages.html", map[string]any{"Title": "Pages", "Pages": pages, "Keywords": r.URL.Query().Get("keywords"), "Status": r.URL.Query().Get("status"), "DraftMap": draftMap})
 }
 
 func (a *App) adminPageRoutes(w http.ResponseWriter, r *http.Request) {
@@ -871,7 +904,7 @@ func (a *App) contentRoutes(w http.ResponseWriter, r *http.Request, prefix, typ 
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			a.flashRedirect(w, r, contentRevisionsURL(typ, id), http.StatusSeeOther, flashNotice{Type: "success", Message: "修订版本已删除。"})
+			a.flashRedirect(w, r, contentRevisionsURL(typ, id), http.StatusSeeOther, flashNotice{Type: "success", Message: "Revision deleted."})
 			return
 		}
 		if r.Method != http.MethodGet {
@@ -902,7 +935,7 @@ func (a *App) contentRoutes(w http.ResponseWriter, r *http.Request, prefix, typ 
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, contentActionURL(typ, id), http.StatusSeeOther, flashNotice{Type: "success", Message: "修订版本已恢复。"})
+		a.flashRedirect(w, r, contentActionURL(typ, id), http.StatusSeeOther, flashNotice{Type: "success", Message: "Revision restored."})
 	case "delete":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -915,7 +948,7 @@ func (a *App) contentRoutes(w http.ResponseWriter, r *http.Request, prefix, typ 
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "内容已删除。"})
+		a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "Content deleted."})
 	case "mark":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -972,7 +1005,7 @@ func (a *App) contentRoutes(w http.ResponseWriter, r *http.Request, prefix, typ 
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "已创建编辑草稿。"})
+			a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "Editing draft created."})
 			return
 		}
 		// If marking a draft (with DraftOf) as published, publish the draft
@@ -985,7 +1018,7 @@ func (a *App) contentRoutes(w http.ResponseWriter, r *http.Request, prefix, typ 
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "内容已发布。"})
+			a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "Content published."})
 			return
 		}
 		if err := a.Contents.MarkStatus(r.Context(), id, newStatus); err != nil {
@@ -996,7 +1029,7 @@ func (a *App) contentRoutes(w http.ResponseWriter, r *http.Request, prefix, typ 
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "状态已更新。"})
+		a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "Status updated."})
 	case "discard":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -1012,7 +1045,7 @@ func (a *App) contentRoutes(w http.ResponseWriter, r *http.Request, prefix, typ 
 				return
 			}
 		}
-		a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "草稿已丢弃。"})
+		a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "Draft discarded."})
 	default:
 		http.NotFound(w, r)
 	}
@@ -1191,16 +1224,16 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 		savedID := savePayload.ID
 		if publishedID > 0 {
 			if input.Status == models.ContentStatusPost {
-				a.flashRedirect(w, r, contentActionURL(typ, publishedID), http.StatusSeeOther, flashNotice{Type: "success", Message: "内容已发布。"})
+				a.flashRedirect(w, r, contentActionURL(typ, publishedID), http.StatusSeeOther, flashNotice{Type: "success", Message: "Content published."})
 			} else {
-				a.flashRedirect(w, r, contentActionURL(typ, publishedID), http.StatusSeeOther, flashNotice{Type: "success", Message: "草稿已保存。"})
+				a.flashRedirect(w, r, contentActionURL(typ, publishedID), http.StatusSeeOther, flashNotice{Type: "success", Message: "Draft saved."})
 			}
 			return
 		}
 		if savedID <= 0 {
 			savedID = id
 		}
-		a.flashRedirect(w, r, contentActionURL(typ, savedID), http.StatusSeeOther, flashNotice{Type: "success", Message: "内容已保存。"})
+		a.flashRedirect(w, r, contentActionURL(typ, savedID), http.StatusSeeOther, flashNotice{Type: "success", Message: "Content saved."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -1208,7 +1241,7 @@ func (a *App) contentForm(w http.ResponseWriter, r *http.Request, typ string, id
 
 func (a *App) saveContentSnapshotFromForm(w http.ResponseWriter, r *http.Request, typ string, id int64, input services.SaveContentInput, authorID int64) {
 	if !optionBool(a.option(r.Context(), "revision_enabled", "1")) {
-		http.Error(w, "快照功能已关闭", http.StatusBadRequest)
+		http.Error(w, "Snapshot feature is disabled.", http.StatusBadRequest)
 		return
 	}
 	targetID := id
@@ -1216,7 +1249,7 @@ func (a *App) saveContentSnapshotFromForm(w http.ResponseWriter, r *http.Request
 		targetID, _ = strconv.ParseInt(r.FormValue("cid"), 10, 64)
 	}
 	if targetID <= 0 {
-		http.Error(w, "请先保存草稿后再创建快照", http.StatusBadRequest)
+		http.Error(w, "Save the draft before creating a snapshot.", http.StatusBadRequest)
 		return
 	}
 	if !a.canEditContent(w, r, targetID, typ) {
@@ -1246,7 +1279,7 @@ func (a *App) saveContentSnapshotFromForm(w http.ResponseWriter, r *http.Request
 		return
 	} else if next, ok := out.(plugin.RevisionPayload); ok {
 		if next.Handled {
-			a.flashRedirect(w, r, contentActionURL(typ, revisionCID), http.StatusSeeOther, flashNotice{Type: "success", Message: "快照已保存。"})
+			a.flashRedirect(w, r, contentActionURL(typ, revisionCID), http.StatusSeeOther, flashNotice{Type: "success", Message: "Snapshot saved."})
 			return
 		}
 		if typed, ok := next.Revision.(models.Content); ok {
@@ -1259,7 +1292,7 @@ func (a *App) saveContentSnapshotFromForm(w http.ResponseWriter, r *http.Request
 	}
 	revisionPayload.Revision = revision
 	_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookRevisionAfterSave, revisionPayload)
-	a.flashRedirect(w, r, contentActionURL(typ, revisionCID), http.StatusSeeOther, flashNotice{Type: "success", Message: "快照已保存。"})
+	a.flashRedirect(w, r, contentActionURL(typ, revisionCID), http.StatusSeeOther, flashNotice{Type: "success", Message: "Snapshot saved."})
 }
 
 func contentRevisionFromInput(cid int64, base models.Content, input services.SaveContentInput, authorID int64) models.Content {
@@ -1291,7 +1324,7 @@ func (a *App) discardContentDraftFromForm(w http.ResponseWriter, r *http.Request
 		targetID, _ = strconv.ParseInt(r.FormValue("cid"), 10, 64)
 	}
 	if targetID <= 0 {
-		a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "草稿已丢弃。"})
+		a.flashRedirect(w, r, contentListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "Draft discarded."})
 		return
 	}
 	if !a.canEditContent(w, r, targetID, typ) {
@@ -1327,7 +1360,7 @@ func (a *App) discardContentDraftFromForm(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.flashRedirect(w, r, redirectTo, http.StatusSeeOther, flashNotice{Type: "success", Message: "草稿已丢弃。"})
+	a.flashRedirect(w, r, redirectTo, http.StatusSeeOther, flashNotice{Type: "success", Message: "Draft discarded."})
 }
 
 func (a *App) runContentAfterSave(ctx context.Context, payload plugin.ContentSavePayload, id int64) error {
@@ -1399,7 +1432,7 @@ func (a *App) contentRevisions(w http.ResponseWriter, r *http.Request, typ strin
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.renderAdmin(w, r, "revisions.html", map[string]any{"Title": "修订版本", "Content": item, "Type": typ, "Revisions": revisions})
+	a.renderAdmin(w, r, "revisions.html", map[string]any{"Title": "Revisions", "Content": item, "Type": typ, "Revisions": revisions})
 }
 
 func (a *App) renderContentForm(w http.ResponseWriter, r *http.Request, typ string, id int64, item models.Content, selectedCategories, selectedTags []models.Meta, fields []models.Field, errs validate.Errors) {
@@ -1467,7 +1500,7 @@ func (a *App) adminCategories(w http.ResponseWriter, r *http.Request) {
 	if !a.requireRole(w, r, "administrator") {
 		return
 	}
-	a.metaList(w, r, "category", "分类", "categories.html")
+	a.metaList(w, r, "category", "Categories", "categories.html")
 }
 
 func (a *App) adminCategoryRoutes(w http.ResponseWriter, r *http.Request) {
@@ -1481,7 +1514,7 @@ func (a *App) adminTags(w http.ResponseWriter, r *http.Request) {
 	if !a.requireRole(w, r, "administrator") {
 		return
 	}
-	a.metaList(w, r, "tag", "标签", "tags.html")
+	a.metaList(w, r, "tag", "Tags", "tags.html")
 }
 
 func (a *App) adminTagRoutes(w http.ResponseWriter, r *http.Request) {
@@ -1558,14 +1591,14 @@ func (a *App) metaRoutes(w http.ResponseWriter, r *http.Request, prefix, typ str
 			return
 		}
 		if typ == "category" && a.option(r.Context(), "default_category", "0") == strconv.FormatInt(id, 10) {
-			http.Error(w, "默认分类不能删除", http.StatusBadRequest)
+			http.Error(w, "The default category cannot be deleted.", http.StatusBadRequest)
 			return
 		}
 		if err := a.Metas.Delete(r.Context(), id); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, metaListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "已删除。"})
+		a.flashRedirect(w, r, metaListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "Deleted."})
 	case "move":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -1575,7 +1608,7 @@ func (a *App) metaRoutes(w http.ResponseWriter, r *http.Request, prefix, typ str
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, metaListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "排序已更新。"})
+		a.flashRedirect(w, r, metaListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "Order updated."})
 	case "default":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -1656,7 +1689,7 @@ func (a *App) metaBatch(w http.ResponseWriter, r *http.Request, typ string) {
 	case "merge":
 		target, _ := strconv.ParseInt(r.FormValue("target"), 10, 64)
 		if target <= 0 || len(ids) == 0 {
-			http.Error(w, "请选择合并目标和来源", http.StatusBadRequest)
+			http.Error(w, "Choose the merge target and source.", http.StatusBadRequest)
 			return
 		}
 		if err := a.Metas.Merge(r.Context(), target, ids, typ); err != nil {
@@ -1693,7 +1726,7 @@ func (a *App) metaBatch(w http.ResponseWriter, r *http.Request, typ string) {
 		http.Error(w, "unsupported meta action", http.StatusBadRequest)
 		return
 	}
-	a.flashRedirect(w, r, metaListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "批量操作已完成。"})
+	a.flashRedirect(w, r, metaListURL(typ), http.StatusSeeOther, flashNotice{Type: "success", Message: "Bulk action completed."})
 }
 
 func (a *App) cleanTags(w http.ResponseWriter, r *http.Request) {
@@ -1706,7 +1739,7 @@ func (a *App) cleanTags(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.flashRedirect(w, r, "/admin/tags", http.StatusSeeOther, flashNotice{Type: "success", Message: fmt.Sprintf("已清理 %d 个孤立标签。", count)})
+	a.flashRedirect(w, r, "/admin/tags", http.StatusSeeOther, flashNotice{Type: "success", Message: fmt.Sprintf(i18n.T(a.language(r.Context()), "Cleaned %d orphaned tags."), count)})
 }
 
 func (a *App) metaForm(w http.ResponseWriter, r *http.Request, typ string, id int64) {
@@ -1812,7 +1845,7 @@ func (a *App) adminComments(w http.ResponseWriter, r *http.Request) {
 	pager := pagination{Page: page, PageSize: pageSize, Total: total, TotalPages: totalPages, PrevURL: pageURL(r, page-1), NextURL: pageURL(r, page+1), HasPrev: page > 1, HasNext: page < totalPages}
 	editID, _ := strconv.ParseInt(r.URL.Query().Get("edit"), 10, 64)
 	replyID, _ := strconv.ParseInt(r.URL.Query().Get("reply"), 10, 64)
-	a.renderAdmin(w, r, "comments.html", map[string]any{"Title": "评论", "Comments": views, "Status": status, "Keywords": r.URL.Query().Get("keywords"), "CID": cid, "Type": typ, "Pagination": pager, "EditID": editID, "ReplyID": replyID})
+	a.renderAdmin(w, r, "comments.html", map[string]any{"Title": "Comments", "Comments": views, "Status": status, "Keywords": r.URL.Query().Get("keywords"), "CID": cid, "Type": typ, "Pagination": pager, "EditID": editID, "ReplyID": replyID})
 }
 
 func (a *App) adminCommentRoutes(w http.ResponseWriter, r *http.Request) {
@@ -1852,7 +1885,7 @@ func (a *App) adminCommentRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "评论状态已更新。"})
+		a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "Comment status updated."})
 	case "delete":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -1862,7 +1895,7 @@ func (a *App) adminCommentRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "评论已删除。"})
+		a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "Comment deleted."})
 	default:
 		http.NotFound(w, r)
 	}
@@ -1879,7 +1912,7 @@ func (a *App) adminCommentsBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	ids := parseInt64Values(r.Form["id"])
 	if len(ids) == 0 {
-		a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "评论已保存。"})
+		a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "Comment saved."})
 		return
 	}
 	switch r.FormValue("action") {
@@ -1901,7 +1934,7 @@ func (a *App) adminCommentsBatch(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unsupported comment action", http.StatusBadRequest)
 		return
 	}
-	a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "评论已批量处理。"})
+	a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "Comments processed."})
 }
 
 func (a *App) adminCommentsClearSpam(w http.ResponseWriter, r *http.Request) {
@@ -1920,7 +1953,7 @@ func (a *App) adminCommentsClearSpam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.flashRedirect(w, r, "/admin/comments?status=spam", http.StatusSeeOther, flashNotice{Type: "success", Message: "垃圾评论已清空。"})
+	a.flashRedirect(w, r, "/admin/comments?status=spam", http.StatusSeeOther, flashNotice{Type: "success", Message: "Spam comments cleared."})
 }
 
 func (a *App) commentForm(w http.ResponseWriter, r *http.Request, id int64, reply bool) {
@@ -1981,10 +2014,10 @@ func (a *App) commentForm(w http.ResponseWriter, r *http.Request, id int64, repl
 			comment.URL = input.URL
 			comment.Text = input.Text
 			comment.Status = input.Status
-			title := "编辑评论"
+			title := "Edit comment"
 			replyAuthor := ""
 			if reply {
-				title = "回复评论"
+				title = "Reply to comment"
 				replyAuthor = input.Author
 			}
 			a.renderAdmin(w, r, "comment_form.html", map[string]any{"Title": title, "Comment": comment, "Reply": reply, "ReplyAuthor": replyAuthor, "Action": r.URL.Path, "Errors": errs})
@@ -2001,7 +2034,7 @@ func (a *App) commentForm(w http.ResponseWriter, r *http.Request, id int64, repl
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "评论已保存。"})
+		a.flashRedirect(w, r, "/admin/comments", http.StatusSeeOther, flashNotice{Type: "success", Message: "Comment saved."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -2059,7 +2092,7 @@ func (a *App) adminUsers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.renderAdmin(w, r, "users.html", map[string]any{"Title": "用户", "Users": users, "Keywords": r.URL.Query().Get("keywords")})
+	a.renderAdmin(w, r, "users.html", map[string]any{"Title": "Users", "Users": users, "Keywords": r.URL.Query().Get("keywords")})
 }
 
 func (a *App) adminUserRoutes(w http.ResponseWriter, r *http.Request) {
@@ -2091,14 +2124,14 @@ func (a *App) adminUserRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		currentID, _ := a.currentUserID(r)
 		if id == currentID {
-			http.Error(w, "不能删除当前登录用户", http.StatusBadRequest)
+			http.Error(w, "The current signed-in user cannot be deleted.", http.StatusBadRequest)
 			return
 		}
 		if err := a.Users.Delete(r.Context(), id); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, "/admin/users", http.StatusSeeOther, flashNotice{Type: "success", Message: "用户已删除。"})
+		a.flashRedirect(w, r, "/admin/users", http.StatusSeeOther, flashNotice{Type: "success", Message: "User deleted."})
 	case "revoke":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -2114,7 +2147,7 @@ func (a *App) adminUserRoutes(w http.ResponseWriter, r *http.Request) {
 				a.setUserSession(w, r.Context(), user)
 			}
 		}
-		a.flashRedirect(w, r, "/admin/users", http.StatusSeeOther, flashNotice{Type: "success", Message: "该用户的旧会话已吊销。"})
+		a.flashRedirect(w, r, "/admin/users", http.StatusSeeOther, flashNotice{Type: "success", Message: "Old sessions for this user have been revoked."})
 	default:
 		http.NotFound(w, r)
 	}
@@ -2160,7 +2193,7 @@ func (a *App) userForm(w http.ResponseWriter, r *http.Request, id int64) {
 				}
 			}
 		}
-		a.flashRedirect(w, r, "/admin/users", http.StatusSeeOther, flashNotice{Type: "success", Message: "用户已保存。"})
+		a.flashRedirect(w, r, "/admin/users", http.StatusSeeOther, flashNotice{Type: "success", Message: "User saved."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -2175,7 +2208,7 @@ func (a *App) adminProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		a.renderAdmin(w, r, "profile.html", map[string]any{"Title": "个人设置", "User": user, "Saved": r.URL.Query().Get("saved") == "1", "PersonalPlugins": a.personalPluginViews(r.Context())})
+		a.renderAdmin(w, r, "profile.html", map[string]any{"Title": "Profile", "User": user, "Saved": r.URL.Query().Get("saved") == "1", "PersonalPlugins": a.personalPluginViews(r.Context())})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -2185,14 +2218,14 @@ func (a *App) adminProfile(w http.ResponseWriter, r *http.Request) {
 		errs := validateUserInput(input, false)
 		a.addUserUniqueErrors(r.Context(), &errs, input.Name, input.Mail, uid)
 		if password := r.FormValue("password"); password != "" && len([]rune(password)) < 6 {
-			errs.Add("password", "长度不能少于 6 个字符")
+			errs.Add("password", "Must be at least 6 characters")
 		}
 		validatePasswordConfirmation(&errs, r.FormValue("password"), r.FormValue("confirm"), false)
 		if !errs.Empty() {
 			user.Mail = input.Mail
 			user.URL = input.URL
 			user.ScreenName = input.ScreenName
-			a.renderAdmin(w, r, "profile.html", map[string]any{"Title": "个人设置", "User": user, "Errors": errs, "PersonalPlugins": a.personalPluginViews(r.Context())})
+			a.renderAdmin(w, r, "profile.html", map[string]any{"Title": "Profile", "User": user, "Errors": errs, "PersonalPlugins": a.personalPluginViews(r.Context())})
 			return
 		}
 		if _, err := a.Users.Save(r.Context(), input, uid); err != nil {
@@ -2209,7 +2242,7 @@ func (a *App) adminProfile(w http.ResponseWriter, r *http.Request) {
 				a.setUserSession(w, r.Context(), updated)
 			}
 		}
-		a.flashRedirect(w, r, "/admin/profile", http.StatusSeeOther, flashNotice{Type: "success", Message: "个人资料已保存。"})
+		a.flashRedirect(w, r, "/admin/profile", http.StatusSeeOther, flashNotice{Type: "success", Message: "Profile saved."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -2231,7 +2264,7 @@ func (a *App) adminProfileRevokeSessions(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	a.setUserSession(w, r.Context(), user)
-	a.flashRedirect(w, r, "/admin/profile", http.StatusSeeOther, flashNotice{Type: "success", Message: "其他设备上的会话已吊销。"})
+	a.flashRedirect(w, r, "/admin/profile", http.StatusSeeOther, flashNotice{Type: "success", Message: "Sessions on other devices have been revoked."})
 }
 
 type personalPluginView struct {
@@ -2277,8 +2310,9 @@ func (a *App) adminProfilePluginRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid, _ := a.currentUserID(r)
+	lang := a.language(r.Context())
 	a.schemaForm(w, r, schemaFormConfig{
-		Title:     "插件个人设置：" + name,
+		Title:     i18n.T(lang, "Plugin personal settings") + ": " + name,
 		Template:  "schema_form.html",
 		BackURL:   "/admin/profile",
 		OptionKey: pluginPersonalOptionKey(name),
@@ -2354,7 +2388,7 @@ func normalizeGeneralOptionsForm(r *http.Request) error {
 	}
 	mb, err := strconv.Atoi(rawMB)
 	if err != nil || mb < 1 || mb > 2048 {
-		return fmt.Errorf("上传文件大小上限必须是 1 到 2048 MB 的整数")
+		return fmt.Errorf("upload size limit must be an integer from 1 to 2048 MB")
 	}
 	r.Form.Set("upload_max_size", strconv.FormatInt(int64(mb)*1024*1024, 10))
 	return nil
@@ -2389,24 +2423,24 @@ func validateImageProcessingOptions(r *http.Request) error {
 	switch mode {
 	case imageproc.UploadOriginal, imageproc.UploadWebPLossless, imageproc.UploadWebPQuality:
 	default:
-		return fmt.Errorf("请选择有效的图片保存方式")
+		return fmt.Errorf("choose a valid image save mode")
 	}
 	if mode == imageproc.UploadWebPQuality {
 		if _, err := requiredQuality(r.FormValue("upload_webp_quality")); err != nil {
-			return fmt.Errorf("WebP 质量必须是 1 到 100 的整数")
+			return fmt.Errorf("WebP quality must be an integer from 1 to 100")
 		}
 	}
 	memoryMB, err := strconv.Atoi(strings.TrimSpace(r.FormValue("image_processing_memory_mb")))
 	if err != nil || memoryMB < 64 || memoryMB > 32768 {
-		return fmt.Errorf("图片处理内存预算必须是 64 到 32768 MB 的整数")
+		return fmt.Errorf("image processing memory budget must be an integer from 64 to 32768 MB")
 	}
 	format := strings.TrimSpace(r.FormValue("thumbnail_format"))
 	if format != imageproc.ThumbnailDisabled && format != imageproc.ThumbnailJPEG && format != imageproc.ThumbnailWebP {
-		return fmt.Errorf("请选择有效的缩略图格式")
+		return fmt.Errorf("choose a valid thumbnail format")
 	}
 	if quality := strings.TrimSpace(r.FormValue("thumbnail_quality")); format != imageproc.ThumbnailDisabled && quality != "" {
 		if _, err := requiredQuality(quality); err != nil {
-			return fmt.Errorf("缩略图质量必须是 1 到 100 的整数，或留空使用默认值")
+			return fmt.Errorf("thumbnail quality must be an integer from 1 to 100, or left blank to use the default")
 		}
 	}
 	return nil
@@ -2431,12 +2465,12 @@ func (a *App) adminOptionsReading(w http.ResponseWriter, r *http.Request) {
 		}
 		limit := optionInt(r.FormValue("revision_limit"), 20)
 		if limit < 0 || limit > 10000 {
-			http.Error(w, "修订版本数必须是 0 到 10000 的整数，0 表示无限制", http.StatusBadRequest)
+			http.Error(w, "Revision limit must be an integer from 0 to 10000; 0 means unlimited.", http.StatusBadRequest)
 			return
 		}
 		a.Contents.SetRevisionConfig(optionBool(formBoolValue(r.Form["revision_enabled"])), limit)
 	}
-	a.optionsForm(w, r, "阅读设置", "options_reading.html", []string{"post_date_format", "page_size", "posts_list_size", "content_render_mode", "feed_full_text", "front_page_type", "front_page_cid", "posts_index_path", "revision_enabled", "revision_limit"})
+	a.optionsForm(w, r, "Reading Settings", "options_reading.html", []string{"post_date_format", "page_size", "posts_list_size", "content_render_mode", "feed_full_text", "front_page_type", "front_page_cid", "posts_index_path", "revision_enabled", "revision_limit"})
 }
 
 func (a *App) adminOptionsDiscussion(w http.ResponseWriter, r *http.Request) {
@@ -2459,7 +2493,7 @@ func (a *App) adminOptionsDiscussion(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		options["comments_moderation_mode"] = a.commentModerationMode(r.Context())
-		a.renderAdmin(w, r, "options_discussion.html", map[string]any{"Title": "评论设置", "Options": options})
+		a.renderAdmin(w, r, "options_discussion.html", map[string]any{"Title": "Discussion Settings", "Options": options})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -2488,7 +2522,7 @@ func (a *App) adminOptionsDiscussion(w http.ResponseWriter, r *http.Request) {
 			for _, key := range keys {
 				options[key] = r.FormValue(key)
 			}
-			a.renderAdmin(w, r, "options_discussion.html", map[string]any{"Title": "评论设置", "Options": options, "Error": err.Error()})
+			a.renderAdmin(w, r, "options_discussion.html", map[string]any{"Title": "Discussion Settings", "Options": options, "Error": err.Error()})
 			return
 		}
 		for _, key := range keys {
@@ -2497,7 +2531,7 @@ func (a *App) adminOptionsDiscussion(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		a.flashRedirect(w, r, r.URL.Path, http.StatusSeeOther, flashNotice{Type: "success", Message: "设置已保存。"})
+		a.flashRedirect(w, r, r.URL.Path, http.StatusSeeOther, flashNotice{Type: "success", Message: "Settings saved."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -2571,12 +2605,12 @@ func validateDiscussionOptions(r *http.Request) error {
 	switch strings.TrimSpace(r.FormValue("comments_moderation_mode")) {
 	case "open", "all", "approved_author":
 	default:
-		return fmt.Errorf("请选择有效的评论处理方式")
+		return fmt.Errorf("choose a valid comment moderation mode")
 	}
 	if optionBool(r.FormValue("comments_post_interval_enable")) {
 		interval, err := strconv.Atoi(strings.TrimSpace(r.FormValue("comments_post_interval")))
 		if err != nil || interval < 1 || interval > 86400 {
-			return fmt.Errorf("同一内容、同一 IP 的评论间隔必须是 1 到 86400 秒的整数")
+			return fmt.Errorf("comment interval for the same content and IP must be an integer from 1 to 86400 seconds")
 		}
 	}
 	for _, field := range []struct {
@@ -2584,27 +2618,27 @@ func validateDiscussionOptions(r *http.Request) error {
 		label string
 		max   int
 	}{
-		{name: "comments_list_size", label: "后台每页评论数", max: 100},
-		{name: "comments_page_size", label: "前台每页评论数", max: 1000},
+		{name: "comments_list_size", label: "Admin comments per page", max: 100},
+		{name: "comments_page_size", label: "Frontend comments per page", max: 1000},
 	} {
 		value, err := strconv.Atoi(strings.TrimSpace(r.FormValue(field.name)))
 		if err != nil || value < 1 || value > field.max {
-			return fmt.Errorf("%s必须是 1 到 %d 的整数", field.label, field.max)
+			return fmt.Errorf("%s must be an integer from 1 to %d", field.label, field.max)
 		}
 	}
 	maxNesting, err := strconv.Atoi(strings.TrimSpace(r.FormValue("comments_max_nesting_levels")))
 	if err != nil || maxNesting < 2 || maxNesting > 7 {
-		return fmt.Errorf("最大嵌套层级必须是 2 到 7 的整数")
+		return fmt.Errorf("maximum nesting depth must be an integer from 2 to 7")
 	}
 	templateURL := strings.TrimSpace(r.FormValue("avatar_url_template"))
 	if templateURL != "" {
 		if !strings.Contains(templateURL, "{hash}") {
-			return fmt.Errorf("自定义头像地址必须包含 {hash} 占位符")
+			return fmt.Errorf("custom avatar URL must include the {hash} placeholder")
 		}
 		candidate := strings.NewReplacer("{hash}", strings.Repeat("0", 32), "{size}", "48").Replace(templateURL)
 		parsed, err := neturl.Parse(candidate)
 		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-			return fmt.Errorf("自定义头像地址必须是有效的 HTTP 或 HTTPS URL")
+			return fmt.Errorf("custom avatar URL must be a valid HTTP or HTTPS URL")
 		}
 	}
 	return nil
@@ -2624,11 +2658,11 @@ func (a *App) adminOptionsPermalink(w http.ResponseWriter, r *http.Request) {
 			for _, key := range []string{"permalink_post", "permalink_page", "permalink_category"} {
 				options[key] = r.FormValue(key)
 			}
-			a.renderAdmin(w, r, "options_permalink.html", map[string]any{"Title": "永久链接", "Options": options, "Error": err.Error()})
+			a.renderAdmin(w, r, "options_permalink.html", map[string]any{"Title": "Permalink", "Options": options, "Error": err.Error()})
 			return
 		}
 	}
-	a.optionsForm(w, r, "永久链接", "options_permalink.html", []string{"permalink_post", "permalink_page", "permalink_category"})
+	a.optionsForm(w, r, "Permalink", "options_permalink.html", []string{"permalink_post", "permalink_page", "permalink_category"})
 }
 
 func (a *App) adminOptionsWAF(w http.ResponseWriter, r *http.Request) {
@@ -2661,7 +2695,7 @@ func (a *App) adminOptionsWAF(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			a.flashRedirect(w, r, r.URL.Path+"?tab=logs", http.StatusSeeOther, flashNotice{Type: "success", Message: "WAF 日志已清理。"})
+			a.flashRedirect(w, r, r.URL.Path+"?tab=logs", http.StatusSeeOther, flashNotice{Type: "success", Message: "WAF logs cleared."})
 			return
 		}
 		if err := validateWAFOptions(r); err != nil {
@@ -2681,7 +2715,7 @@ func (a *App) adminOptionsWAF(w http.ResponseWriter, r *http.Request) {
 		if a.WAF != nil {
 			a.WAF.resetRuntimeState()
 		}
-		a.flashRedirect(w, r, r.URL.Path, http.StatusSeeOther, flashNotice{Type: "success", Message: "设置已保存。"})
+		a.flashRedirect(w, r, r.URL.Path, http.StatusSeeOther, flashNotice{Type: "success", Message: "Settings saved."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -2718,14 +2752,14 @@ func validateWAFOptions(r *http.Request) error {
 	}
 	for _, key := range boolKeys {
 		if value := wafFormValue(r, key); value != "0" && value != "1" {
-			return fmt.Errorf("WAF 开关参数无效")
+			return fmt.Errorf("WAF switch value is invalid")
 		}
 	}
 	if mode := strings.TrimSpace(r.FormValue("waf_trust_proxy_mode")); mode != "allowlist" && mode != "denylist" {
-		return fmt.Errorf("代理 IP 信任模式无效")
+		return fmt.Errorf("proxy IP trust mode is invalid")
 	}
 	if err := validateIPRuleLines(r.FormValue("waf_trust_proxy_ips")); err != nil {
-		return fmt.Errorf("代理 IP 地址组无效：%w", err)
+		return fmt.Errorf("proxy IP address list is invalid: %w", err)
 	}
 	ranges := []struct {
 		key   string
@@ -2733,36 +2767,36 @@ func validateWAFOptions(r *http.Request) error {
 		min   int
 		max   int
 	}{
-		{"waf_url_index_ttl", "URL 索引刷新秒数", 1, 86400},
-		{"waf_index_max_items", "URL 索引最大条目数", 100, 1000000},
-		{"waf_state_max_entries", "WAF 状态表最大条目数", 1000, 1000000},
-		{"waf_log_max_entries", "WAF 日志最大记录条目数", 1, 100000},
-		{"waf_cache_ttl", "公开页缓存 TTL", 1, 86400},
-		{"waf_cache_max_entries", "公开页缓存最大条目数", 1, 100000},
-		{"waf_dynamic_rate_window", "动态请求限流窗口", 1, 86400},
-		{"waf_dynamic_rate_limit", "动态请求限流次数", 1, 100000},
-		{"waf_static_rate_window", "静态资源限流窗口", 1, 86400},
-		{"waf_static_rate_limit", "静态资源限流次数", 1, 100000},
-		{"waf_upload_rate_window", "附件资源限流窗口", 1, 86400},
-		{"waf_upload_rate_limit", "附件资源限流次数", 1, 100000},
-		{"waf_attachment_ban_window", "附件下载封禁统计窗口", 1, 86400},
-		{"waf_attachment_ban_limit", "附件下载封禁允许次数", 1, 100000},
-		{"waf_attachment_ban_seconds", "附件下载封禁秒数", 1, 604800},
-		{"waf_invalid_path_window", "非法路径统计窗口", 1, 86400},
-		{"waf_invalid_path_limit", "非法路径允许次数", 1, 100000},
-		{"waf_invalid_path_ban_seconds", "非法路径封禁秒数", 1, 604800},
-		{"waf_search_rate_window", "搜索限流窗口", 1, 86400},
-		{"waf_search_rate_limit", "搜索限流次数", 1, 100000},
-		{"waf_xmlrpc_rate_window", "XML-RPC 限流窗口", 1, 86400},
-		{"waf_xmlrpc_rate_limit", "XML-RPC 限流次数", 1, 100000},
-		{"waf_login_window", "登录试错窗口", 1, 86400},
-		{"waf_login_failures", "登录试错次数", 1, 100000},
-		{"waf_login_ban_seconds", "登录封禁秒数", 1, 604800},
+		{"waf_url_index_ttl", "URL index refresh seconds", 1, 86400},
+		{"waf_index_max_items", "URL index maximum items", 100, 1000000},
+		{"waf_state_max_entries", "WAF state maximum entries", 1000, 1000000},
+		{"waf_log_max_entries", "Maximum WAF log entries", 1, 100000},
+		{"waf_cache_ttl", "Public page cache TTL", 1, 86400},
+		{"waf_cache_max_entries", "Public page cache maximum entries", 1, 100000},
+		{"waf_dynamic_rate_window", "Dynamic request rate-limit window", 1, 86400},
+		{"waf_dynamic_rate_limit", "Dynamic request rate-limit count", 1, 100000},
+		{"waf_static_rate_window", "Static resource rate-limit window", 1, 86400},
+		{"waf_static_rate_limit", "Static resource rate-limit count", 1, 100000},
+		{"waf_upload_rate_window", "Attachment resource rate-limit window", 1, 86400},
+		{"waf_upload_rate_limit", "Attachment resource rate-limit count", 1, 100000},
+		{"waf_attachment_ban_window", "Attachment download ban window", 1, 86400},
+		{"waf_attachment_ban_limit", "Attachment download allowed count", 1, 100000},
+		{"waf_attachment_ban_seconds", "Attachment download ban seconds", 1, 604800},
+		{"waf_invalid_path_window", "Invalid path statistics window", 1, 86400},
+		{"waf_invalid_path_limit", "Invalid path allowed count", 1, 100000},
+		{"waf_invalid_path_ban_seconds", "Invalid path ban seconds", 1, 604800},
+		{"waf_search_rate_window", "Search rate-limit window", 1, 86400},
+		{"waf_search_rate_limit", "Search rate-limit count", 1, 100000},
+		{"waf_xmlrpc_rate_window", "XML-RPC rate-limit window", 1, 86400},
+		{"waf_xmlrpc_rate_limit", "XML-RPC rate-limit count", 1, 100000},
+		{"waf_login_window", "Login failure window", 1, 86400},
+		{"waf_login_failures", "Login failure count", 1, 100000},
+		{"waf_login_ban_seconds", "Login ban seconds", 1, 604800},
 	}
 	for _, item := range ranges {
 		value, err := strconv.Atoi(strings.TrimSpace(r.FormValue(item.key)))
 		if err != nil || value < item.min || value > item.max {
-			return fmt.Errorf("%s必须是 %d 到 %d 的整数", item.label, item.min, item.max)
+			return fmt.Errorf("%s must be an integer from %d to %d", item.label, item.min, item.max)
 		}
 	}
 	return nil
@@ -2818,7 +2852,7 @@ func (a *App) optionsForm(w http.ResponseWriter, r *http.Request, title, tmpl st
 				return
 			}
 		}
-		a.flashRedirect(w, r, r.URL.Path, http.StatusSeeOther, flashNotice{Type: "success", Message: "设置已保存。"})
+		a.flashRedirect(w, r, r.URL.Path, http.StatusSeeOther, flashNotice{Type: "success", Message: "Settings saved."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -2851,11 +2885,47 @@ func (a *App) adminThemes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, "/admin/themes", http.StatusSeeOther, flashNotice{Type: "success", Message: "主题已切换。"})
+		a.flashRedirect(w, r, "/admin/themes", http.StatusSeeOther, flashNotice{Type: "success", Message: "Theme switched."})
 		return
 	}
 	active, _ := a.Options.Get(r.Context(), "active_theme")
-	a.renderAdmin(w, r, "themes.html", map[string]any{"Title": "主题", "Themes": a.Plugins.Themes(), "ActiveTheme": active, "Saved": r.URL.Query().Get("saved") == "1"})
+	a.renderAdmin(w, r, "themes.html", map[string]any{"Title": "Themes", "Themes": a.themeViews(r.Context()), "ActiveTheme": active, "Saved": r.URL.Query().Get("saved") == "1"})
+}
+
+type adminThemeView struct {
+	Name         string
+	DisplayName  string
+	Version      string
+	Author       string
+	Description  string
+	Homepage     string
+	Screenshot   string
+	ConfigSchema []plugin.FieldSchema
+	AdminPages   []plugin.AdminPage
+	EditableDir  string
+	Embedded     bool
+}
+
+func (a *App) themeViews(ctx context.Context) []adminThemeView {
+	lang := a.language(ctx)
+	themes := a.Plugins.Themes()
+	out := make([]adminThemeView, 0, len(themes))
+	for _, theme := range themes {
+		out = append(out, adminThemeView{
+			Name:         theme.Name,
+			DisplayName:  themeDisplayNameLang(theme, lang),
+			Version:      theme.Version,
+			Author:       theme.Author,
+			Description:  themeText(theme, lang, theme.Description),
+			Homepage:     theme.Homepage,
+			Screenshot:   theme.Screenshot,
+			ConfigSchema: theme.ConfigSchema,
+			AdminPages:   theme.AdminPages,
+			EditableDir:  theme.EditableDir,
+			Embedded:     theme.Embedded,
+		})
+	}
+	return out
 }
 
 func (a *App) adminThemeRoutes(w http.ResponseWriter, r *http.Request) {
@@ -2887,7 +2957,7 @@ func (a *App) adminPlugins(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.syncActivePlugins(r.Context())
-	a.renderAdmin(w, r, "plugins.html", map[string]any{"Title": "插件", "Plugins": a.pluginViews(r.Context()), "Saved": r.URL.Query().Get("saved") == "1"})
+	a.renderAdmin(w, r, "plugins.html", map[string]any{"Title": "Plugins", "Plugins": a.pluginViews(r.Context()), "Saved": r.URL.Query().Get("saved") == "1"})
 }
 
 func (a *App) adminPluginRoutes(w http.ResponseWriter, r *http.Request) {
@@ -2968,11 +3038,15 @@ func (a *App) adminPluginAction(w http.ResponseWriter, r *http.Request, name, ac
 	}
 
 	notice, err := provider.HandleAdminAction(r.Context(), a.pluginRuntime().WithOwner(name), actionName)
+	lang := a.language(r.Context())
+	extensionT := func(key string) string { return pluginText(p, lang, key) }
 	if err != nil {
-		notice = plugin.AdminNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()}
-	}
-	if strings.TrimSpace(notice.Message) == "" {
-		notice = plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "操作已完成。"}
+		notice = plugin.AdminNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: extensionT(err.Error()), SkipCoreI18n: true}
+	} else if strings.TrimSpace(notice.Message) == "" {
+		notice = plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "Action completed."}
+	} else {
+		notice.Message = extensionT(notice.Message)
+		notice.SkipCoreI18n = true
 	}
 	a.flashRedirect(w, r, "/admin/plugins/"+neturl.PathEscape(name)+"/config", http.StatusSeeOther, notice)
 }
@@ -3001,6 +3075,7 @@ type pluginDatabaseView struct {
 }
 
 func (a *App) pluginViews(ctx context.Context) []pluginView {
+	lang := a.language(ctx)
 	active := a.activePluginSet(ctx)
 	plugins := a.Plugins.Plugins()
 	out := make([]pluginView, 0, len(plugins))
@@ -3010,7 +3085,7 @@ func (a *App) pluginViews(ctx context.Context) []pluginView {
 			Name:             info.Name,
 			Version:          info.Version,
 			Author:           info.Author,
-			Description:      info.Description,
+			Description:      pluginText(p, lang, info.Description),
 			Homepage:         info.Homepage,
 			RequireGopherInk: info.RequireGopherInk,
 			Active:           active[info.Name],
@@ -3089,7 +3164,7 @@ func (a *App) adminPluginDatabaseClear(w http.ResponseWriter, r *http.Request, n
 		}
 	}
 	_ = a.Options.Set(r.Context(), "plugin_db_version_"+name, "0")
-	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "插件数据库已清除。"})
+	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "Plugin database cleared."})
 }
 
 func (a *App) adminPluginDatabaseMode(w http.ResponseWriter, r *http.Request, name, dbName string) {
@@ -3118,7 +3193,7 @@ func (a *App) adminPluginDatabaseMode(w http.ResponseWriter, r *http.Request, na
 		}
 	}
 	_ = dbName
-	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "插件数据库存储形式已保存。"})
+	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "Plugin database storage mode saved."})
 }
 
 func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name string, enable bool) {
@@ -3129,14 +3204,14 @@ func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name str
 	}
 	info := a.Plugins.PluginInfo(p)
 	if enable && !plugin.Compatible(info.RequireGopherInk, plugin.GopherInkVersion) {
-		http.Error(w, "插件要求更高版本的 GopherInk", http.StatusBadRequest)
+		http.Error(w, "This plugin requires a newer GopherInk version.", http.StatusBadRequest)
 		return
 	}
 	active := a.activePluginSet(r.Context())
 	runtime := a.pluginRuntime().WithOwner(name)
 	if enable {
 		if err := a.initializePluginDatabase(r.Context(), name, p); err != nil {
-			http.Error(w, "初始化插件数据库失败："+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Failed to initialize plugin database: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if activator, ok := p.(plugin.Activator); ok {
@@ -3160,7 +3235,7 @@ func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name str
 		return
 	}
 	a.syncActivePlugins(r.Context())
-	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: "success", Message: "插件状态已保存。"})
+	a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: "success", Message: "Plugin status saved."})
 }
 
 func (a *App) initializePluginDatabase(ctx context.Context, name string, p plugin.Plugin) error {
@@ -3223,7 +3298,9 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 		}
 	}
 	var schema []plugin.FieldSchema
-	title := "插件设置：" + name
+	lang := a.language(r.Context())
+	extensionT := func(key string) string { return pluginText(p, lang, key) }
+	title := i18n.T(lang, "Plugin settings") + ": " + name
 	userID := int64(0)
 	if personal {
 		provider, ok := p.(plugin.PersonalConfigProvider)
@@ -3232,7 +3309,7 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 			return
 		}
 		schema = provider.PersonalConfigSchema()
-		title = "插件个人设置：" + name
+		title = i18n.T(lang, "Plugin personal settings") + ": " + name
 		userID, _ = a.currentUserID(r)
 	} else {
 		provider, ok := p.(plugin.ConfigProvider)
@@ -3269,6 +3346,7 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 		Saved:        r.URL.Query().Get("saved") == "1",
 		Notices:      noticeProvider,
 		AdminActions: adminActions,
+		ExtensionT:   extensionT,
 		PluginName:   name,
 		PluginPages:  adminPages,
 		Validator: func(values map[string]string) map[string]string {
@@ -3302,6 +3380,8 @@ func (a *App) adminPluginPage(w http.ResponseWriter, r *http.Request, name strin
 	}
 	pageURL := "/admin/plugins/" + neturl.PathEscape(name) + "/config?tab=" + neturl.QueryEscape(page.Name)
 	runtime := a.pluginRuntime().WithOwner(name)
+	lang := a.language(r.Context())
+	extensionT := func(key string) string { return pluginText(p, lang, key) }
 
 	if r.Method == http.MethodPost {
 		actionProvider, ok := p.(plugin.AdminPageActionProvider)
@@ -3315,7 +3395,7 @@ func (a *App) adminPluginPage(w http.ResponseWriter, r *http.Request, name strin
 		}
 		result, err := actionProvider.HandleAdminPageAction(r.Context(), runtime, page.Name, copyFormValues(r.Form))
 		if err != nil {
-			a.flashRedirect(w, r, pageURL, http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
+			a.flashRedirect(w, r, pageURL, http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: extensionT(err.Error()), SkipCoreI18n: true})
 			return
 		}
 		if result.ConfigPatch != nil {
@@ -3336,7 +3416,10 @@ func (a *App) adminPluginPage(w http.ResponseWriter, r *http.Request, name strin
 		}
 		notice := result.Notice
 		if strings.TrimSpace(notice.Message) == "" {
-			notice = plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "设置已保存。"}
+			notice = plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "Settings saved."}
+		} else {
+			notice.Message = extensionT(notice.Message)
+			notice.SkipCoreI18n = true
 		}
 		a.flashRedirect(w, r, pageURL, http.StatusSeeOther, notice)
 		return
@@ -3364,8 +3447,8 @@ func (a *App) adminPluginPage(w http.ResponseWriter, r *http.Request, name strin
 		title = page.Label
 	}
 	a.renderAdmin(w, r, "plugin_page.html", map[string]any{
-		"Title": title, "Description": page.Description, "BackURL": "/admin/plugins",
-		"PluginName": name, "PluginPages": pages, "PluginPage": page, "PluginPageHTML": content,
+		"Title": extensionT(title), "Description": extensionT(page.Description), "BackURL": "/admin/plugins",
+		"PluginName": name, "PluginPages": pages, "PluginPage": page, "PluginPageHTML": content, "ExtensionT": extensionT,
 	})
 }
 
@@ -3389,16 +3472,18 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 	if name == "default" {
 		uploadURL = "/admin/themes/" + name + "/upload"
 		assets = a.settingsAssetManager(r.Context(), settingsAssetManagerConfig{
-			Title:       "默认主题素材",
-			Description: "管理默认主题设置中上传到 /uploads/theme-settings/ 的图片素材。",
+			Title:       "Default theme assets",
+			Description: "Manage image assets uploaded to /uploads/theme-settings/ by default theme settings.",
 			Bucket:      themeSettingsUploadBucket,
 			OptionKey:   themeOptionKey(name),
 			DeleteURL:   "/admin/themes/" + name + "/assets/delete",
 			CleanURL:    "/admin/themes/" + name + "/assets/clean",
 		})
 	}
+	lang := a.language(r.Context())
+	extensionT := func(key string) string { return themeText(theme, lang, key) }
 	a.schemaForm(w, r, schemaFormConfig{
-		Title:        "主题设置：" + themeDisplayName(theme),
+		Title:        i18n.T(lang, "Theme settings") + ": " + themeDisplayNameLang(theme, lang),
 		Template:     "schema_form.html",
 		BackURL:      "/admin/themes",
 		OptionKey:    themeOptionKey(name),
@@ -3415,6 +3500,7 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 		},
 		ThemeName:  name,
 		ThemePages: adminPages,
+		ExtensionT: extensionT,
 		Validator: func(values map[string]string) map[string]string {
 			if theme.ConfigValidator != nil {
 				return theme.ConfigValidator(copyStringMap(values))
@@ -3446,6 +3532,8 @@ func (a *App) adminThemePage(w http.ResponseWriter, r *http.Request, name string
 	}
 	pageURL := "/admin/themes/" + neturl.PathEscape(name) + "/config?tab=" + neturl.QueryEscape(page.Name)
 	runtime := a.pluginRuntime().WithComponent("theme", name)
+	lang := a.language(r.Context())
+	extensionT := func(key string) string { return themeText(theme, lang, key) }
 
 	if r.Method == http.MethodPost {
 		if theme.HandleAdminPageAction == nil {
@@ -3458,7 +3546,7 @@ func (a *App) adminThemePage(w http.ResponseWriter, r *http.Request, name string
 		}
 		result, err := theme.HandleAdminPageAction(r.Context(), runtime, page.Name, copyFormValues(r.Form))
 		if err != nil {
-			a.flashRedirect(w, r, pageURL, http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
+			a.flashRedirect(w, r, pageURL, http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: extensionT(err.Error()), SkipCoreI18n: true})
 			return
 		}
 		if result.ConfigPatch != nil {
@@ -3479,7 +3567,10 @@ func (a *App) adminThemePage(w http.ResponseWriter, r *http.Request, name string
 		}
 		notice := result.Notice
 		if strings.TrimSpace(notice.Message) == "" {
-			notice = plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "设置已保存。"}
+			notice = plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "Settings saved."}
+		} else {
+			notice.Message = extensionT(notice.Message)
+			notice.SkipCoreI18n = true
 		}
 		a.flashRedirect(w, r, pageURL, http.StatusSeeOther, notice)
 		return
@@ -3507,8 +3598,8 @@ func (a *App) adminThemePage(w http.ResponseWriter, r *http.Request, name string
 		title = page.Label
 	}
 	a.renderAdmin(w, r, "theme_page.html", map[string]any{
-		"Title": title, "Description": page.Description, "BackURL": "/admin/themes",
-		"ThemeName": name, "ThemePages": pages, "ThemePage": page, "ThemePageHTML": content,
+		"Title": extensionT(title), "Description": extensionT(page.Description), "BackURL": "/admin/themes",
+		"ThemeName": name, "ThemePages": pages, "ThemePage": page, "ThemePageHTML": content, "ExtensionT": extensionT,
 	})
 }
 
@@ -3523,8 +3614,8 @@ func (a *App) adminManagement(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.schemaForm(w, r, schemaFormConfig{
-		Title:       "后台个性化",
-		Description: "调整管理后台的配色、透明度、背景与界面素材。",
+		Title:       "Admin Appearance",
+		Description: "Customize admin colors, opacity, background, and interface assets.",
 		Template:    "schema_form.html",
 		BackURL:     "/admin",
 		OptionKey:   adminAppearanceOptionKey,
@@ -3533,8 +3624,8 @@ func (a *App) adminManagement(w http.ResponseWriter, r *http.Request) {
 		Saved:       r.URL.Query().Get("saved") == "1",
 		UploadURL:   "/admin/management/upload",
 		AssetManager: a.settingsAssetManager(r.Context(), settingsAssetManagerConfig{
-			Title:       "后台个性化素材",
-			Description: "管理后台设置中上传到 /uploads/admin-settings/ 的图片素材。",
+			Title:       "Admin appearance assets",
+			Description: "Manage image assets uploaded to /uploads/admin-settings/ by admin appearance settings.",
 			Bucket:      adminSettingsUploadBucket,
 			OptionKey:   adminAppearanceOptionKey,
 			DeleteURL:   "/admin/management/assets/delete",
@@ -3548,96 +3639,96 @@ func adminAppearanceSchema() []plugin.FieldSchema {
 	return []plugin.FieldSchema{
 		{
 			Name:        "admin_bg_image",
-			Label:       "电脑端后台背景图 URL",
-			Group:       "背景图设置",
+			Label:       "Desktop admin background URL",
+			Group:       "Background Images",
 			Type:        plugin.FieldImage,
-			Description: "用于桌面端后台背景。上传文件会保存到后台设置专用目录。",
+			Description: "Used for desktop admin background. Uploaded files are saved to the admin settings directory.",
 		},
 		{
 			Name:        "admin_mobile_bg_image",
-			Label:       "手机端后台背景图 URL",
-			Group:       "背景图设置",
+			Label:       "Mobile admin background URL",
+			Group:       "Background Images",
 			Type:        plugin.FieldImage,
-			Description: "用于窄屏和手机端后台背景；留空时沿用电脑端背景。",
+			Description: "Used for narrow-screen and mobile admin background; blank uses desktop background.",
 		},
 		{
 			Name:        "admin_favicon",
-			Label:       "后台 Favicon URL",
-			Group:       "背景图设置",
+			Label:       "Admin favicon URL",
+			Group:       "Background Images",
 			Type:        plugin.FieldImage,
 			Default:     "/admin/assets/favicon.svg",
-			Description: "用于登录、安装和管理页面；留空时使用 GopherInk 默认 Logo。",
+			Description: "Used for login, install, and admin pages; blank uses the default GopherInk logo.",
 		},
 		{
 			Name:        "admin_card_opacity",
-			Label:       "后台卡片背景透明度",
-			Group:       "透明度设置",
+			Label:       "Admin card background opacity",
+			Group:       "Opacity Settings",
 			Type:        plugin.FieldNumber,
 			Default:     "0.84",
-			Description: "取值 0 到 1，仅影响后台卡片背景透明度。",
+			Description: "0 to 1; only affects admin card background opacity.",
 			Min:         "0",
 			Max:         "1",
 			Step:        "0.01",
 		},
 		{
 			Name:        "admin_sidebar_opacity",
-			Label:       "后台侧边栏背景透明度",
-			Group:       "透明度设置",
+			Label:       "Admin sidebar background opacity",
+			Group:       "Opacity Settings",
 			Type:        plugin.FieldNumber,
 			Default:     "0.90",
-			Description: "取值 0 到 1，仅影响后台侧边栏背景透明度。",
+			Description: "0 to 1; only affects admin sidebar background opacity.",
 			Min:         "0",
 			Max:         "1",
 			Step:        "0.01",
 		},
 		{
 			Name:        "admin_topbar_opacity",
-			Label:       "后台顶栏背景透明度",
-			Group:       "透明度设置",
+			Label:       "Admin top bar opacity",
+			Group:       "Opacity Settings",
 			Type:        plugin.FieldNumber,
 			Default:     "0.92",
-			Description: "取值 0 到 1，仅影响后台顶栏主题色背景透明度。",
+			Description: "0 to 1; only affects admin top bar theme-color opacity.",
 			Min:         "0",
 			Max:         "1",
 			Step:        "0.01",
 		},
 		{
 			Name:        "admin_input_opacity",
-			Label:       "后台输入框背景透明度",
-			Group:       "透明度设置",
+			Label:       "Admin input background opacity",
+			Group:       "Opacity Settings",
 			Type:        plugin.FieldNumber,
 			Default:     "0.62",
-			Description: "取值 0 到 1，仅影响后台输入框和选择框背景透明度。",
+			Description: "0 to 1; only affects admin input and select background opacity.",
 			Min:         "0",
 			Max:         "1",
 			Step:        "0.01",
 		},
 		{
 			Name:        "admin_bg_mask_opacity",
-			Label:       "后台背景蒙版透明度",
-			Group:       "透明度设置",
+			Label:       "Admin background mask opacity",
+			Group:       "Opacity Settings",
 			Type:        plugin.FieldNumber,
 			Default:     "0.54",
-			Description: "取值 0 到 1，控制背景图片上方的 MDUI 背景色蒙版。",
+			Description: "0 to 1; controls the MDUI background-color mask above the background image.",
 			Min:         "0",
 			Max:         "1",
 			Step:        "0.01",
 		},
 		{
 			Name:        "admin_primary_preset",
-			Label:       "后台常用主题色",
-			Group:       "颜色设置",
+			Label:       "Admin preset color",
+			Group:       "Color Settings",
 			Type:        plugin.FieldSelect,
 			Default:     "#6750a4",
-			Description: "用于 MDUI2 生成后台配色方案。",
+			Description: "Used by MDUI 2 to generate the admin color scheme.",
 			Options:     colorOptions,
 		},
 		{
 			Name:        "admin_custom_primary",
-			Label:       "后台自定义主题色",
-			Group:       "颜色设置",
+			Label:       "Admin custom color",
+			Group:       "Color Settings",
 			Type:        plugin.FieldColor,
-			Description: "填写 #RRGGBB 后会覆盖上方预设色。",
+			Description: "Overrides the preset color when #RRGGBB is set.",
 			Options:     colorOptions,
 		},
 	}
@@ -3645,14 +3736,14 @@ func adminAppearanceSchema() []plugin.FieldSchema {
 
 func adminAppearanceColorOptions() []plugin.FieldOption {
 	return []plugin.FieldOption{
-		{Label: "MDUI 紫", Value: "#6750a4"},
-		{Label: "玫红", Value: "#ff4081"},
-		{Label: "蓝色", Value: "#1976d2"},
-		{Label: "青色", Value: "#00838f"},
-		{Label: "绿色", Value: "#2e7d32"},
-		{Label: "琥珀", Value: "#ff8f00"},
-		{Label: "橙红", Value: "#e64a19"},
-		{Label: "蓝灰", Value: "#546e7a"},
+		{Label: "MDUI Purple", Value: "#6750a4"},
+		{Label: "Rose", Value: "#ff4081"},
+		{Label: "Blue", Value: "#1976d2"},
+		{Label: "Cyan", Value: "#00838f"},
+		{Label: "Green", Value: "#2e7d32"},
+		{Label: "Amber", Value: "#ff8f00"},
+		{Label: "Orange Red", Value: "#e64a19"},
+		{Label: "Blue Grey", Value: "#546e7a"},
 	}
 }
 
@@ -3663,7 +3754,7 @@ func (a *App) adminThemeFiles(w http.ResponseWriter, r *http.Request, name strin
 		return
 	}
 	if theme.EditableDir == "" || theme.Embedded {
-		a.renderAdmin(w, r, "theme_files.html", map[string]any{"Title": "主题文件", "Theme": theme, "ReadOnly": true})
+		a.renderAdmin(w, r, "theme_files.html", map[string]any{"Title": "Theme files", "Theme": theme, "ReadOnly": true})
 		return
 	}
 	rel := strings.TrimSpace(r.URL.Query().Get("file"))
@@ -3683,7 +3774,7 @@ func (a *App) adminThemeFiles(w http.ResponseWriter, r *http.Request, name strin
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.renderAdmin(w, r, "theme_files.html", map[string]any{"Title": "主题文件", "Theme": theme, "Files": files, "File": rel, "Body": string(body), "Saved": r.URL.Query().Get("saved") == "1"})
+		a.renderAdmin(w, r, "theme_files.html", map[string]any{"Title": "Theme files", "Theme": theme, "Files": files, "File": rel, "Body": string(body), "Saved": r.URL.Query().Get("saved") == "1"})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -3697,7 +3788,7 @@ func (a *App) adminThemeFiles(w http.ResponseWriter, r *http.Request, name strin
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, r.URL.Path+"?file="+neturl.QueryEscape(rel), http.StatusSeeOther, flashNotice{Type: "success", Message: "主题文件已保存。"})
+		a.flashRedirect(w, r, r.URL.Path+"?file="+neturl.QueryEscape(rel), http.StatusSeeOther, flashNotice{Type: "success", Message: "Theme file saved."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -3721,20 +3812,23 @@ type schemaFormConfig struct {
 	PluginPages  []plugin.AdminPage
 	ThemeName    string
 	ThemePages   []plugin.AdminPage
+	ExtensionT   func(string) string
 	Validator    func(map[string]string) map[string]string
 	Handler      func(context.Context, map[string]string, bool) error
 }
 
 type schemaFieldView struct {
-	Field   plugin.FieldSchema
-	Values  map[string]string
-	Visible bool
+	Field     plugin.FieldSchema
+	Values    map[string]string
+	Visible   bool
+	Translate func(string) string
 }
 
 type schemaFieldGroup struct {
-	Title  string
-	Class  string
-	Fields []schemaFieldView
+	Title     string
+	Class     string
+	Fields    []schemaFieldView
+	Translate func(string) string
 }
 
 type contentFieldView struct {
@@ -3770,13 +3864,18 @@ func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormC
 			return
 		}
 		values := valuesFromSchema(r, cfg.Schema)
-		if err := validateSchemaValues(cfg.Schema, values); err != nil {
+		lang := a.language(r.Context())
+		extensionT := cfg.ExtensionT
+		if extensionT == nil {
+			extensionT = func(key string) string { return i18n.T(lang, key) }
+		}
+		if err := validateSchemaValues(cfg.Schema, values, extensionT, lang); err != nil {
 			a.renderSchemaForm(w, r, cfg, values, err.Error())
 			return
 		}
 		if cfg.Validator != nil {
 			if errs := cfg.Validator(values); len(errs) > 0 {
-				a.renderSchemaForm(w, r, cfg, values, strings.Join(schemaValidationMessages(errs), "；"))
+				a.renderSchemaForm(w, r, cfg, values, strings.Join(schemaValidationMessages(errs), "; "))
 				return
 			}
 		}
@@ -3799,7 +3898,7 @@ func (a *App) schemaForm(w http.ResponseWriter, r *http.Request, cfg schemaFormC
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, cfg.SavedURL, http.StatusSeeOther, flashNotice{Type: "success", Message: "设置已保存。"})
+		a.flashRedirect(w, r, cfg.SavedURL, http.StatusSeeOther, flashNotice{Type: "success", Message: "Settings saved."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -3810,19 +3909,30 @@ func (a *App) renderSchemaForm(w http.ResponseWriter, r *http.Request, cfg schem
 	if uploadURL == "" {
 		uploadURL = "/admin/schema/upload"
 	}
+	lang := a.language(r.Context())
+	extensionT := cfg.ExtensionT
+	if extensionT == nil {
+		extensionT = func(key string) string { return i18n.T(lang, key) }
+	}
 	description := cfg.Description
 	if description == "" {
-		description = "在此调整当前功能的配置选项。"
+		description = i18n.T(lang, "Adjust settings for this feature.")
+	} else {
+		description = extensionT(description)
 	}
 	var notices []plugin.AdminNotice
 	if cfg.Notices != nil {
-		notices = normalizeAdminNotices(cfg.Notices(r.Context(), copyStringMap(values)))
+		notices = translateAdminNotices(normalizeAdminNotices(cfg.Notices(r.Context(), copyStringMap(values))), extensionT)
+	}
+	if errorMessage != "" {
+		errorMessage = extensionT(errorMessage)
 	}
 	a.renderAdmin(w, r, cfg.Template, map[string]any{
 		"Title": cfg.Title, "Description": description, "BackURL": cfg.BackURL,
-		"Schema": cfg.Schema, "SchemaGroups": schemaGroups(cfg.Schema, values), "Values": values,
+		"Schema": cfg.Schema, "SchemaGroups": schemaGroups(cfg.Schema, values, extensionT), "Values": values,
 		"Saved": cfg.Saved, "Error": errorMessage, "UploadURL": uploadURL, "AssetManager": cfg.AssetManager,
 		"AdminNotices": notices,
+		"ExtensionT":   extensionT,
 		"AdminActions": cfg.AdminActions, "PluginName": cfg.PluginName, "PluginPages": cfg.PluginPages,
 		"ThemeName": cfg.ThemeName, "ThemePages": cfg.ThemePages,
 	})
@@ -3866,7 +3976,7 @@ func (a *App) adminAutosave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(input.Title) == "" {
-		input.Title = "自动保存草稿"
+		input.Title = "Autosaved draft"
 	}
 	input.Status = models.ContentStatusDraft
 	input.Fields, err = a.preserveReadOnlyFields(r.Context(), id, typ, input.Fields)
@@ -4034,7 +4144,7 @@ func (a *App) adminSchemaUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "请选择要上传的文件", http.StatusBadRequest)
+		http.Error(w, "Choose a file to upload.", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
@@ -4068,7 +4178,7 @@ func (a *App) adminManagementUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "请选择要上传的文件", http.StatusBadRequest)
+		http.Error(w, "Choose a file to upload.", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
@@ -4099,7 +4209,7 @@ func (a *App) adminThemeUpload(w http.ResponseWriter, r *http.Request, name stri
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "请选择要上传的文件", http.StatusBadRequest)
+		http.Error(w, "Choose a file to upload.", http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
@@ -4158,14 +4268,14 @@ func (a *App) handleSettingsAssets(w http.ResponseWriter, r *http.Request, cfg s
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		a.flashRedirect(w, r, cfg.RedirectURL, http.StatusSeeOther, flashNotice{Type: "success", Message: "素材已删除。"})
+		a.flashRedirect(w, r, cfg.RedirectURL, http.StatusSeeOther, flashNotice{Type: "success", Message: "Asset deleted."})
 	case "clean":
 		used := a.usedSettingsAssetURLs(r.Context(), cfg.OptionKey, cfg.Bucket)
 		if _, err := a.cleanUnusedSettingsAssets(cfg.Bucket, used); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, cfg.RedirectURL, http.StatusSeeOther, flashNotice{Type: "success", Message: "未使用素材已清理。"})
+		a.flashRedirect(w, r, cfg.RedirectURL, http.StatusSeeOther, flashNotice{Type: "success", Message: "Unused assets cleaned."})
 	default:
 		http.NotFound(w, r)
 	}
@@ -4327,7 +4437,7 @@ func (a *App) adminMedias(w http.ResponseWriter, r *http.Request) {
 		users, _ := a.Users.List(r.Context(), "")
 		views := a.mediaViews(r.Context(), medias, posts, pages, users)
 		pager := pagination{Page: page, PageSize: pageSize, Total: total, TotalPages: totalPages, PrevURL: pageURL(r, page-1), NextURL: pageURL(r, page+1), HasPrev: page > 1, HasNext: page < totalPages}
-		a.renderAdmin(w, r, "medias.html", map[string]any{"Title": "附件", "Medias": views, "Posts": posts, "Pages": pages, "Saved": r.URL.Query().Get("saved") == "1", "Kind": kind, "Author": author, "Keywords": r.URL.Query().Get("keywords"), "Users": users, "Pagination": pager})
+		a.renderAdmin(w, r, "medias.html", map[string]any{"Title": "Media", "Medias": views, "Posts": posts, "Pages": pages, "Saved": r.URL.Query().Get("saved") == "1", "Kind": kind, "Author": author, "Keywords": r.URL.Query().Get("keywords"), "Users": users, "Pagination": pager})
 	case http.MethodPost:
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -4339,7 +4449,7 @@ func (a *App) adminMedias(w http.ResponseWriter, r *http.Request) {
 		}
 		file, header, err := r.FormFile("file")
 		if err != nil {
-			http.Error(w, "请选择要上传的文件", http.StatusBadRequest)
+			http.Error(w, "Choose a file to upload.", http.StatusBadRequest)
 			return
 		}
 		defer file.Close()
@@ -4363,7 +4473,7 @@ func (a *App) adminMedias(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "cid": id, "url": meta.URL, "markdown": attachmentMarkdown(meta), "warning": saved.Warning})
 			return
 		}
-		message := "附件已上传。"
+		message := "Attachment uploaded."
 		if saved.Warning != "" {
 			message = saved.Warning
 		}
@@ -4418,7 +4528,7 @@ func (a *App) adminMediaRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, "/admin/medias", http.StatusSeeOther, flashNotice{Type: "success", Message: "附件已删除。"})
+		a.flashRedirect(w, r, "/admin/medias", http.StatusSeeOther, flashNotice{Type: "success", Message: "Attachment deleted."})
 	case "replace":
 		if r.Method != http.MethodPost {
 			methodNotAllowed(w, http.MethodPost)
@@ -4430,7 +4540,7 @@ func (a *App) adminMediaRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		file, header, err := r.FormFile("file")
 		if err != nil {
-			http.Error(w, "请选择要替换的文件", http.StatusBadRequest)
+			http.Error(w, "Choose a file to replace with.", http.StatusBadRequest)
 			return
 		}
 		defer file.Close()
@@ -4445,7 +4555,7 @@ func (a *App) adminMediaRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		message := "附件已替换。"
+		message := "Attachment replaced."
 		if saved.Warning != "" {
 			message = saved.Warning
 		}
@@ -4504,7 +4614,7 @@ func (a *App) adminMediaEdit(w http.ResponseWriter, r *http.Request, item models
 	meta := parseAttachmentMeta(item)
 	switch r.Method {
 	case http.MethodGet:
-		a.renderAdmin(w, r, "media_form.html", map[string]any{"Title": "编辑附件", "Media": item, "Meta": meta, "Action": r.URL.Path})
+		a.renderAdmin(w, r, "media_form.html", map[string]any{"Title": "Edit attachment", "Media": item, "Meta": meta, "Action": r.URL.Path})
 	case http.MethodPost:
 		if err := r.ParseForm(); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -4513,7 +4623,7 @@ func (a *App) adminMediaEdit(w http.ResponseWriter, r *http.Request, item models
 		title := strings.TrimSpace(r.FormValue("title"))
 		description := strings.TrimSpace(r.FormValue("description"))
 		if title == "" {
-			a.renderAdmin(w, r, "media_form.html", map[string]any{"Title": "编辑附件", "Media": item, "Meta": meta, "Action": r.URL.Path, "Error": "附件标题不能为空。"})
+			a.renderAdmin(w, r, "media_form.html", map[string]any{"Title": "Edit attachment", "Media": item, "Meta": meta, "Action": r.URL.Path, "Error": "Attachment title cannot be empty."})
 			return
 		}
 		payload := plugin.AttachmentEditPayload{Content: item, Title: title, Description: description, Meta: meta}
@@ -4529,7 +4639,7 @@ func (a *App) adminMediaEdit(w http.ResponseWriter, r *http.Request, item models
 			}
 		}
 		if title == "" {
-			http.Error(w, "附件标题不能为空", http.StatusBadRequest)
+			http.Error(w, "Attachment title cannot be empty.", http.StatusBadRequest)
 			return
 		}
 		meta.Description = description
@@ -4551,7 +4661,7 @@ func (a *App) adminMediaEdit(w http.ResponseWriter, r *http.Request, item models
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.flashRedirect(w, r, "/admin/medias", http.StatusSeeOther, flashNotice{Type: "success", Message: "附件信息已更新。"})
+		a.flashRedirect(w, r, "/admin/medias", http.StatusSeeOther, flashNotice{Type: "success", Message: "Attachment details updated."})
 	default:
 		methodNotAllowed(w, http.MethodGet+", "+http.MethodPost)
 	}
@@ -4585,7 +4695,7 @@ func (a *App) adminMediaBatch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.flashRedirect(w, r, "/admin/medias", http.StatusSeeOther, flashNotice{Type: "success", Message: "附件已批量删除。"})
+	a.flashRedirect(w, r, "/admin/medias", http.StatusSeeOther, flashNotice{Type: "success", Message: "Attachments deleted."})
 }
 
 func (a *App) adminMediaClearUnattached(w http.ResponseWriter, r *http.Request) {
@@ -4622,7 +4732,7 @@ func (a *App) adminMediaClearUnattached(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	message := fmt.Sprintf("已清理 %d 个孤立附件。", len(unattached))
+	message := fmt.Sprintf(i18n.T(a.language(r.Context()), "Cleaned %d orphaned attachments."), len(unattached))
 	a.flashRedirect(w, r, "/admin/medias", http.StatusSeeOther, flashNotice{Type: "success", Message: message})
 }
 
@@ -4888,7 +4998,7 @@ func (a *App) adminBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		a.renderAdmin(w, r, "backup.html", map[string]any{"Title": "备份", "Imported": r.URL.Query().Get("imported") == "1"})
+		a.renderAdmin(w, r, "backup.html", map[string]any{"Title": "Backup", "Imported": r.URL.Query().Get("imported") == "1"})
 	case http.MethodPost:
 		switch r.FormValue("action") {
 		case "export":
@@ -4915,13 +5025,13 @@ func (a *App) adminBackup(w http.ResponseWriter, r *http.Request) {
 			}
 			file, _, err := r.FormFile("backup")
 			if err != nil {
-				http.Error(w, "请选择备份文件", http.StatusBadRequest)
+				http.Error(w, "Choose a backup file.", http.StatusBadRequest)
 				return
 			}
 			defer file.Close()
 			var payload backupData
 			if err := json.NewDecoder(io.LimitReader(file, 64<<20)).Decode(&payload); err != nil {
-				http.Error(w, "备份 JSON 格式不正确", http.StatusBadRequest)
+				http.Error(w, "Backup JSON format is invalid.", http.StatusBadRequest)
 				return
 			}
 			if r.FormValue("dry_run") == "1" {
@@ -4930,7 +5040,7 @@ func (a *App) adminBackup(w http.ResponseWriter, r *http.Request) {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
 					return
 				}
-				a.renderAdmin(w, r, "backup.html", map[string]any{"Title": "备份", "ImportPlan": plan})
+				a.renderAdmin(w, r, "backup.html", map[string]any{"Title": "Backup", "ImportPlan": plan})
 				return
 			}
 			if out, hookErr := a.Plugins.ApplyActive(r.Context(), plugin.HookBackupImport, plugin.BackupPayload{Data: payload}); hookErr != nil {
@@ -4945,7 +5055,7 @@ func (a *App) adminBackup(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			a.flashRedirect(w, r, "/admin/backup", http.StatusSeeOther, flashNotice{Type: "success", Message: "备份已导入。"})
+			a.flashRedirect(w, r, "/admin/backup", http.StatusSeeOther, flashNotice{Type: "success", Message: "Backup imported."})
 		default:
 			http.Error(w, "unsupported backup action", http.StatusBadRequest)
 		}
@@ -5221,7 +5331,7 @@ func (a *App) frontCategory(w http.ResponseWriter, r *http.Request) {
 	if a.redirectCanonical(w, r, canonical) {
 		return
 	}
-	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Category: meta.MID}, "分类："+meta.Name, map[string]any{"ArchiveMeta": meta, "CanonicalPath": canonical, "FeedPath": canonical + "/feed.xml"})
+	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Category: meta.MID}, i18n.T(a.language(r.Context()), "Category")+": "+meta.Name, map[string]any{"ArchiveMeta": meta, "CanonicalPath": canonical, "FeedPath": canonical + "/feed.xml"})
 }
 
 func (a *App) frontTag(w http.ResponseWriter, r *http.Request) {
@@ -5238,7 +5348,7 @@ func (a *App) frontTag(w http.ResponseWriter, r *http.Request) {
 	if a.redirectCanonical(w, r, canonical) {
 		return
 	}
-	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Tag: meta.MID}, "标签："+meta.Name, map[string]any{"ArchiveMeta": meta, "CanonicalPath": canonical, "FeedPath": canonical + "/feed.xml"})
+	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Tag: meta.MID}, i18n.T(a.language(r.Context()), "Tag")+": "+meta.Name, map[string]any{"ArchiveMeta": meta, "CanonicalPath": canonical, "FeedPath": canonical + "/feed.xml"})
 }
 
 func (a *App) frontAuthor(w http.ResponseWriter, r *http.Request) {
@@ -5260,7 +5370,7 @@ func (a *App) frontAuthor(w http.ResponseWriter, r *http.Request) {
 	if a.redirectCanonical(w, r, canonical) {
 		return
 	}
-	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, AuthorID: id}, "作者："+name, map[string]any{"CanonicalPath": canonical})
+	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, AuthorID: id}, i18n.T(a.language(r.Context()), "Author")+": "+name, map[string]any{"CanonicalPath": canonical})
 }
 
 func (a *App) frontSearch(w http.ResponseWriter, r *http.Request) {
@@ -5278,8 +5388,8 @@ func (a *App) frontSearch(w http.ResponseWriter, r *http.Request) {
 		if next, ok := out.(plugin.ArchivePayload); ok && next.Handled {
 			results := next.Results
 			data := map[string]any{
-				"Title":        "搜索：" + keywords,
-				"ArchiveTitle": "搜索：" + keywords,
+				"Title":        i18n.T(a.language(r.Context()), "Search") + ": " + keywords,
+				"ArchiveTitle": i18n.T(a.language(r.Context()), "Search") + ": " + keywords,
 				"Posts":        results,
 				"PostFields":   map[int64]map[string]string{},
 				"Keywords":     keywords,
@@ -5293,7 +5403,7 @@ func (a *App) frontSearch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Keywords: keywords}, "搜索："+keywords, map[string]any{"Keywords": keywords, "ArchiveType": "search", "CanonicalPath": searchPath(keywords)})
+	a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Keywords: keywords}, i18n.T(a.language(r.Context()), "Search")+": "+keywords, map[string]any{"Keywords": keywords, "ArchiveType": "search", "CanonicalPath": searchPath(keywords)})
 }
 
 func (a *App) frontArchive(w http.ResponseWriter, r *http.Request) {
@@ -5308,14 +5418,14 @@ func (a *App) frontArchive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	query := services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Year: year}
-	title := fmt.Sprintf("归档：%04d", year)
+	title := fmt.Sprintf("%s: %04d", i18n.T(a.language(r.Context()), "Archive"), year)
 	if len(parts) > 1 {
 		query.Month, _ = strconv.Atoi(parts[1])
-		title = fmt.Sprintf("归档：%04d-%02d", year, query.Month)
+		title = fmt.Sprintf("%s: %04d-%02d", i18n.T(a.language(r.Context()), "Archive"), year, query.Month)
 	}
 	if len(parts) > 2 {
 		query.Day, _ = strconv.Atoi(parts[2])
-		title = fmt.Sprintf("归档：%04d-%02d-%02d", year, query.Month, query.Day)
+		title = fmt.Sprintf("%s: %04d-%02d-%02d", i18n.T(a.language(r.Context()), "Archive"), year, query.Month, query.Day)
 	}
 	a.renderPostListWithData(w, r, query, title, map[string]any{"CanonicalPath": archivePath(query.Year, query.Month, query.Day)})
 }
@@ -5466,27 +5576,27 @@ func (a *App) frontComment(w http.ResponseWriter, r *http.Request) {
 func commentErrorMessage(code string) string {
 	switch code {
 	case "referer":
-		return "评论来源页与当前内容不一致。"
+		return "The comment source page does not match this content."
 	case "closed":
-		return "此内容的评论已关闭。"
+		return "Comments are closed for this content."
 	case "blocked":
-		return "评论被安全策略拒绝。"
+		return "The comment was rejected by the security policy."
 	case "frequent":
-		return "评论过于频繁，请稍后再试。"
+		return "You are commenting too frequently. Please try again later."
 	case "spam":
-		return "评论未通过反垃圾检查。"
+		return "The comment did not pass the anti-spam check."
 	case "reserved":
-		return "该称呼属于站内用户，请登录后评论。"
+		return "This name belongs to a site user. Please sign in before commenting."
 	case "parent":
-		return "要回复的评论不存在。"
+		return "The comment you are replying to does not exist."
 	case "depth":
-		return "该回复已超过允许的嵌套层级。"
+		return "This reply exceeds the allowed nesting depth."
 	case "required":
-		return "请填写评论必填项。"
+		return "Fill in the required comment fields."
 	case "invalid":
-		return "评论内容或身份信息格式不正确。"
+		return "The comment content or identity information is invalid."
 	default:
-		return "评论提交失败，请稍后重试。"
+		return "Comment submission failed. Please try again later."
 	}
 }
 
@@ -5595,7 +5705,7 @@ func (a *App) frontCommentRSS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.writeRSS(w, r, nil, comments, a.option(r.Context(), "site_title", "GopherInk")+" 评论", a.option(r.Context(), "site_description", ""), "/comments/feed.xml")
+	a.writeRSS(w, r, nil, comments, a.option(r.Context(), "site_title", "GopherInk")+" "+i18n.T(a.language(r.Context()), "Comments"), a.option(r.Context(), "site_description", ""), "/comments/feed.xml")
 }
 
 func (a *App) writeRSS(w http.ResponseWriter, r *http.Request, posts []models.Content, comments []models.Comment, title, description, feedPath string) {
@@ -5621,7 +5731,7 @@ func (a *App) writeRSS(w http.ResponseWriter, r *http.Request, posts []models.Co
 		if content, err := a.Contents.ByID(r.Context(), comment.CID); err == nil && (content.Type == models.ContentTypePost || content.Type == models.ContentTypePage) {
 			link = baseURL + a.contentURL(r.Context(), content) + "#comment-" + strconv.FormatInt(comment.COID, 10)
 		}
-		item := rssItem{Title: comment.Author + " 的评论", Link: link, GUID: link, PubDate: time.Unix(comment.Created, 0).Format(time.RFC1123Z), Description: render.Excerpt(comment.Text, 240)}
+		item := rssItem{Title: fmt.Sprintf(i18n.T(a.language(r.Context()), "%s's comment"), comment.Author), Link: link, GUID: link, PubDate: time.Unix(comment.Created, 0).Format(time.RFC1123Z), Description: render.Excerpt(comment.Text, 240)}
 		payload := plugin.FeedItemPayload{Kind: "rss_comment", Comment: a.commentToPublic(comment), Item: item}
 		if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookFeedCommentItem, payload); err == nil {
 			if next, ok := out.(plugin.FeedItemPayload); ok {
@@ -6150,8 +6260,8 @@ func (a *App) editorMediaLibrary(r *http.Request) ([]mediaView, error) {
 func (a *App) editorMediaSources(r *http.Request) []editorMediaSource {
 	user, _ := a.currentUser(r)
 	sources := []editorMediaSource{
-		{Value: "__none", Label: "不选择"},
-		{Value: "__unattached", Label: "孤立附件"},
+		{Value: "__none", Label: "None"},
+		{Value: "__unattached", Label: "Unattached attachments"},
 	}
 	postQuery := services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Limit: 200}
 	if roleRank(user.Role) < roleRank("editor") {
@@ -6164,7 +6274,7 @@ func (a *App) editorMediaSources(r *http.Request) []editorMediaSource {
 		}
 		sources = append(sources, editorMediaSource{
 			Value: "content:" + strconv.FormatInt(post.CID, 10),
-			Label: fmt.Sprintf("文章 #%d：%s", post.CID, post.Title),
+			Label: fmt.Sprintf("%s #%d: %s", i18n.T(a.language(r.Context()), "Post"), post.CID, post.Title),
 		})
 	}
 	if roleRank(user.Role) >= roleRank("editor") {
@@ -6175,7 +6285,7 @@ func (a *App) editorMediaSources(r *http.Request) []editorMediaSource {
 			}
 			sources = append(sources, editorMediaSource{
 				Value: "content:" + strconv.FormatInt(page.CID, 10),
-				Label: fmt.Sprintf("页面 #%d：%s", page.CID, page.Title),
+				Label: fmt.Sprintf("%s #%d: %s", i18n.T(a.language(r.Context()), "Page"), page.CID, page.Title),
 			})
 		}
 	}
@@ -6462,7 +6572,7 @@ func topLevelComments(comments []models.Comment) []models.Comment {
 	return roots
 }
 
-const imageProcessingFallbackWarning = "图片处理失败，已保留原图。"
+const imageProcessingFallbackWarning = "Image processing failed; the original file was kept."
 
 type savedUpload struct {
 	Meta    models.AttachmentMeta
@@ -6500,7 +6610,7 @@ func stageUpload(src io.Reader, maxSize int64) (stagedUpload, error) {
 	}
 	if written > maxSize {
 		_ = os.Remove(tmpPath)
-		return stagedUpload{}, fmt.Errorf("文件超过大小限制")
+		return stagedUpload{}, fmt.Errorf("file exceeds the size limit")
 	}
 	return stagedUpload{path: tmpPath, size: written}, nil
 }
@@ -6569,7 +6679,7 @@ func (a *App) saveUpload(ctx context.Context, src io.Reader, original string, pa
 		parent = next.ParentID
 	}
 	if dangerousUpload(name) || !allowedUploadExt(name, a.option(ctx, "upload_allowed_exts", "")) {
-		return result, fmt.Errorf("不允许上传该文件类型")
+		return result, fmt.Errorf("this file type is not allowed")
 	}
 	staged, err := stageUpload(src, maxSize)
 	if err != nil {
@@ -6582,7 +6692,7 @@ func (a *App) saveUpload(ctx context.Context, src io.Reader, original string, pa
 	}
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
 	if !mimeAllowedForExt(ext, mimeType) {
-		return result, fmt.Errorf("文件内容与扩展名不匹配")
+		return result, fmt.Errorf("file content does not match the extension")
 	}
 	if imageExt(ext) {
 		data, err := os.ReadFile(staged.path)
@@ -6666,7 +6776,7 @@ func (a *App) saveUpload(ctx context.Context, src io.Reader, original string, pa
 	}
 	if handled {
 		if strings.TrimSpace(meta.URL) == "" {
-			return result, fmt.Errorf("上传处理钩子未返回附件 URL")
+			return result, fmt.Errorf("upload hook did not return an attachment URL")
 		}
 		if meta.Name == "" {
 			meta.Name = name
@@ -6750,22 +6860,22 @@ func (a *App) saveSettingsUpload(ctx context.Context, bucket string, src io.Read
 		return result, err
 	}
 	if int64(len(data)) > maxSize {
-		return result, fmt.Errorf("文件超过大小限制")
+		return result, fmt.Errorf("file exceeds the size limit")
 	}
 	name := sanitizeFilename(original)
 	if name == "" {
 		name = "setting-image"
 	}
 	if dangerousUpload(name) || !allowedUploadExt(name, a.option(ctx, "upload_allowed_exts", "")) {
-		return result, fmt.Errorf("不允许上传该文件类型")
+		return result, fmt.Errorf("this file type is not allowed")
 	}
 	mimeType := http.DetectContentType(data)
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(name), "."))
 	if !adminSettingImageExt(ext) {
-		return result, fmt.Errorf("后台设置仅支持图片文件")
+		return result, fmt.Errorf("admin settings only support image files")
 	}
 	if !mimeAllowedForExt(ext, mimeType) {
-		return result, fmt.Errorf("文件内容与扩展名不匹配")
+		return result, fmt.Errorf("file content does not match the extension")
 	}
 	handledByPlugin := false
 	if out, hookErr := a.Plugins.ApplyActive(ctx, plugin.HookImageProcess, plugin.ImageProcessPayload{Name: name, Data: data, MIME: mimeType}); hookErr != nil {
@@ -6850,7 +6960,7 @@ func (a *App) replaceUpload(ctx context.Context, src io.Reader, original string,
 	if payload.Handled {
 		meta, ok := payload.Meta.(models.AttachmentMeta)
 		if !ok || strings.TrimSpace(meta.URL) == "" {
-			return savedUpload{}, fmt.Errorf("替换处理钩子未返回附件元数据")
+			return savedUpload{}, fmt.Errorf("replace hook did not return attachment metadata")
 		}
 		result := savedUpload{Meta: meta, Warning: payload.Warning}
 		payload.Meta = result.Meta
@@ -6871,7 +6981,7 @@ func (a *App) replaceUpload(ctx context.Context, src io.Reader, original string,
 			newExt = "webp"
 		}
 		if newExt != "" && !sameUploadExtension(newExt, old.Type) {
-			return savedUpload{}, fmt.Errorf("替换文件必须保持相同扩展名")
+			return savedUpload{}, fmt.Errorf("replacement file must keep the same extension")
 		}
 	}
 	stagedSource, err := staged.Open()
@@ -6885,7 +6995,7 @@ func (a *App) replaceUpload(ctx context.Context, src io.Reader, original string,
 	}
 	if optionBool(a.option(ctx, "upload_replace_same_ext_only", "1")) && old.Type != "" && !sameUploadExtension(result.Meta.Type, old.Type) {
 		a.removeAttachmentFile(result.Meta)
-		return savedUpload{}, fmt.Errorf("替换文件必须保持相同扩展名")
+		return savedUpload{}, fmt.Errorf("replacement file must keep the same extension")
 	}
 	if old.Path != "" && result.Meta.Path != "" && sameUploadExtension(result.Meta.Type, old.Type) {
 		if err := a.moveReplacementIntoOriginalPath(old, &result.Meta); err != nil {
@@ -7153,7 +7263,7 @@ func (a *App) backupPlan(ctx context.Context, payload backupData, sections impor
 
 func (a *App) importBackupPayload(ctx context.Context, payload backupData, sections importSectionSet) error {
 	if payload.Version > 1 {
-		return fmt.Errorf("不支持的备份版本")
+		return fmt.Errorf("unsupported backup version")
 	}
 	tx, err := a.Contents.DB().BeginTx(ctx, nil)
 	if err != nil {
@@ -7205,7 +7315,7 @@ func (a *App) importBackupPayload(ctx context.Context, payload backupData, secti
 				continue
 			}
 			if strings.TrimSpace(content.Type) == "" {
-				return fmt.Errorf("备份内容 %d 缺少 type", content.CID)
+				return fmt.Errorf("backup content %d is missing type", content.CID)
 			}
 			if content.Type == models.ContentTypeAttach && !sections.Media {
 				continue
@@ -7951,21 +8061,22 @@ func (a *App) validPreviewToken(r *http.Request, c models.Content) bool {
 }
 
 func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
-	lang := a.option(r.Context(), "site_language", "zh-CN")
+	lang := a.language(r.Context())
 	funcs := template.FuncMap{
 		"date":                   func(ts int64) string { return a.formatDate(r.Context(), ts, "post_date_format") },
 		"datetime":               formatDate,
 		"T":                      func(key string) string { return i18n.T(lang, key) },
-		"statusLabel":            statusLabel,
-		"commentStatusLabel":     commentStatusLabel,
-		"contentStatus":          contentStatusLabel,
-		"roleLabel":              roleLabel,
+		"t":                      func(key string) string { return i18n.T(lang, key) },
+		"statusLabel":            func(status string) string { return i18n.T(lang, statusLabel(status)) },
+		"commentStatusLabel":     func(status string) string { return i18n.T(lang, commentStatusLabel(status)) },
+		"contentStatus":          func(c models.Content) string { return i18n.T(lang, contentStatusLabel(c)) },
+		"roleLabel":              func(role string) string { return i18n.T(lang, roleLabel(role)) },
 		"excerpt":                render.Excerpt,
 		"containsMeta":           containsMeta,
 		"joinMetaNames":          joinMetaNames,
 		"checked":                checked,
 		"contentPublicURL":       contentPublicURL,
-		"fieldError":             fieldError,
+		"fieldError":             func(errors any, field string) string { return i18n.T(lang, fieldError(errors, field)) },
 		"fieldValue":             fieldValue,
 		"schemaValue":            schemaValue,
 		"schemaChecked":          schemaChecked,
@@ -7985,6 +8096,9 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 	if notices := a.consumeFlash(w, r); len(notices) > 0 {
 		data["Notices"] = notices
 	}
+	if title, ok := data["Title"].(string); ok {
+		data["Title"] = i18n.T(lang, title)
+	}
 	adminMenu := a.pluginAdminMenuItems(r.Context())
 	if out, err := a.Plugins.ApplyActive(r.Context(), plugin.HookAdminMenu, adminMenu); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -7994,6 +8108,9 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 			data["AdminMenu"] = normalizeAdminMenuItems(items)
 		}
 	}
+	data["Lang"] = lang
+	data["HTMLLang"] = i18n.HTMLLang(lang)
+	data["AuthPage"] = page == "login.html" || page == "register.html" || page == "install.html"
 	data["CSRF"] = a.csrfToken(r)
 	if user, ok := a.currentUser(r); ok {
 		data["CurrentUser"] = user
@@ -8189,7 +8306,7 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 		http.Error(w, "active theme not found", http.StatusInternalServerError)
 		return
 	}
-	lang := a.option(r.Context(), "site_language", "zh-CN")
+	lang := a.language(r.Context())
 	pluginRuntime := a.pluginRuntime().WithComponent("theme", theme.Name)
 	if theme.InitRuntime != nil {
 		if err := theme.InitRuntime(plugin.ContextWithRuntime(r.Context(), pluginRuntime), pluginRuntime); err != nil {
@@ -8199,7 +8316,8 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	}
 	funcs := template.FuncMap{
 		"date": func(ts int64) string { return a.formatDate(r.Context(), ts, "post_date_format") },
-		"T":    func(key string) string { return i18n.T(lang, key) },
+		"T":    func(key string) string { return themeText(theme, lang, key) },
+		"t":    func(key string) string { return themeText(theme, lang, key) },
 		"excerpt": func(text string, limit int) string {
 			return a.excerpt(r.Context(), text, limit)
 		},
@@ -8273,6 +8391,8 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 		}
 	}
 	data["CSRF"] = a.csrfToken(r)
+	data["Lang"] = lang
+	data["HTMLLang"] = i18n.HTMLLang(lang)
 	data["CommentCSRF"] = a.csrfTokenFor(r, "comment")
 	data["CommentGuardEnabled"] = theme.Capabilities.CommentGuard
 	data["CommentGuardEndpoint"] = "/comment/guard"
@@ -8541,14 +8661,14 @@ func validateContentInput(input services.SaveContentInput) validate.Errors {
 			In("field_type", field.Type, "str", "int", "float", "json").
 			SafeText("field_value", field.StrValue)
 		if !contentFieldNamePattern.MatchString(field.Name) {
-			v.Errors.Add("field_name", "字段名只能以字母或下划线开头，并且只能包含字母、数字和下划线")
+			v.Errors.Add("field_name", "Field names must start with a letter or underscore and may only contain letters, numbers, and underscores")
 		}
 		if fieldNames[field.Name] {
-			v.Errors.Add("field_name", "字段名不能重复")
+			v.Errors.Add("field_name", "Field names cannot be duplicated")
 		}
 		fieldNames[field.Name] = true
 		if field.Type == "json" && strings.TrimSpace(field.StrValue) != "" && !json.Valid([]byte(field.StrValue)) {
-			v.Errors.Add("field_value", "JSON 格式不正确")
+			v.Errors.Add("field_value", "JSON format is invalid")
 		}
 	}
 	return v.Errors
@@ -8592,11 +8712,11 @@ func validateUserInput(input services.SaveUserInput, requirePassword bool) valid
 
 func validatePasswordConfirmation(errs *validate.Errors, password, confirmation string, required bool) {
 	if required && confirmation == "" {
-		errs.Add("confirm", "请再次输入密码")
+		errs.Add("confirm", "Enter the password again")
 		return
 	}
 	if password != confirmation {
-		errs.Add("confirm", "两次输入的密码不一致")
+		errs.Add("confirm", "The two passwords do not match")
 	}
 }
 
@@ -8722,32 +8842,32 @@ func formatDate(ts int64) string {
 func statusLabel(status string) string {
 	switch status {
 	case models.ContentStatusDraft:
-		return "草稿"
+		return "Drafts"
 	case "hidden":
-		return "隐藏"
+		return "Hidden"
 	case "waiting":
-		return "待审核"
+		return "Pending"
 	case "private":
-		return "私密"
+		return "Private"
 	default:
-		return "已发布"
+		return "Published"
 	}
 }
 
 func commentStatusLabel(status string) string {
 	switch status {
 	case "waiting":
-		return "待审核"
+		return "Pending"
 	case "spam":
-		return "垃圾"
+		return "Spam"
 	default:
-		return "已发布"
+		return "Published"
 	}
 }
 
 func contentStatusLabel(c models.Content) string {
 	if c.Status == models.ContentStatusPost && c.Created > time.Now().Unix() {
-		return "定时发布"
+		return "Scheduled"
 	}
 	return statusLabel(c.Status)
 }
@@ -8755,15 +8875,15 @@ func contentStatusLabel(c models.Content) string {
 func roleLabel(role string) string {
 	switch role {
 	case "administrator":
-		return "管理员"
+		return "Administrator"
 	case "editor":
-		return "编辑"
+		return "Editor"
 	case "contributor":
-		return "贡献者"
+		return "Contributor"
 	case "subscriber":
-		return "关注者"
+		return "Subscriber"
 	default:
-		return "访问者"
+		return "Visitor"
 	}
 }
 
@@ -9091,7 +9211,7 @@ func (a *App) tryDynamicPermalink(w http.ResponseWriter, r *http.Request) bool {
 			if a.redirectCanonical(w, r, a.metaURL(ctx, meta)) {
 				return true
 			}
-			a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Category: meta.MID}, "分类："+meta.Name, map[string]any{"ArchiveMeta": meta, "CanonicalPath": a.metaURL(ctx, meta), "FeedPath": a.metaURL(ctx, meta) + "/feed.xml"})
+			a.renderPostListWithData(w, r, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Category: meta.MID}, i18n.T(a.language(ctx), "Category")+": "+meta.Name, map[string]any{"ArchiveMeta": meta, "CanonicalPath": a.metaURL(ctx, meta), "FeedPath": a.metaURL(ctx, meta) + "/feed.xml"})
 			return true
 		}
 	}
@@ -9129,14 +9249,14 @@ func (a *App) tryPrettyArchive(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	query := services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Year: year}
-	title := fmt.Sprintf("归档：%04d", year)
+	title := fmt.Sprintf("%s: %04d", i18n.T(a.language(r.Context()), "Archive"), year)
 	if len(parts) > 1 {
 		query.Month, _ = strconv.Atoi(parts[1])
-		title = fmt.Sprintf("归档：%04d-%02d", year, query.Month)
+		title = fmt.Sprintf("%s: %04d-%02d", i18n.T(a.language(r.Context()), "Archive"), year, query.Month)
 	}
 	if len(parts) > 2 {
 		query.Day, _ = strconv.Atoi(parts[2])
-		title = fmt.Sprintf("归档：%04d-%02d-%02d", year, query.Month, query.Day)
+		title = fmt.Sprintf("%s: %04d-%02d-%02d", i18n.T(a.language(r.Context()), "Archive"), year, query.Month, query.Day)
 	}
 	a.renderPostListWithData(w, r, query, title, map[string]any{"CanonicalPath": archivePath(query.Year, query.Month, query.Day)})
 	return true
@@ -9275,14 +9395,14 @@ func contentRevisionsURL(typ string, id int64) string {
 func contentFormTitle(typ string, id int64) string {
 	if typ == models.ContentTypePage {
 		if id == 0 {
-			return "写页面"
+			return "New Page"
 		}
-		return "编辑页面"
+		return "Edit Page"
 	}
 	if id == 0 {
-		return "写文章"
+		return "New Post"
 	}
-	return "编辑文章"
+	return "Edit Post"
 }
 
 func metaListURL(typ string) string {
@@ -9301,14 +9421,14 @@ func metaActionURL(typ string, id int64) string {
 }
 
 func metaTitle(typ string, id int64) string {
-	name := "分类"
+	name := "Categories"
 	if typ == "tag" {
-		name = "标签"
+		name = "Tags"
 	}
 	if id == 0 {
-		return "新增" + name
+		return "Add" + name
 	}
-	return "编辑" + name
+	return "Edit" + name
 }
 
 func userActionURL(id int64) string {
@@ -9320,9 +9440,9 @@ func userActionURL(id int64) string {
 
 func userTitle(id int64) string {
 	if id == 0 {
-		return "新增用户"
+		return "Add User"
 	}
-	return "编辑用户"
+	return "Edit User"
 }
 
 func methodNotAllowed(w http.ResponseWriter, allow string) {
@@ -9332,24 +9452,24 @@ func methodNotAllowed(w http.ResponseWriter, allow string) {
 
 func validatePermalinkOptions(r *http.Request) error {
 	patterns := map[string]string{
-		"文章路径": r.FormValue("permalink_post"),
-		"页面路径": r.FormValue("permalink_page"),
-		"分类路径": r.FormValue("permalink_category"),
+		"Post path":     r.FormValue("permalink_post"),
+		"Page path":     r.FormValue("permalink_page"),
+		"Category path": r.FormValue("permalink_category"),
 	}
 	seen := map[string]string{}
 	for label, pattern := range patterns {
 		pattern = cleanPublicPath(pattern)
 		if pattern == "/" || !strings.Contains(pattern, "{") {
-			return fmt.Errorf("%s 必须包含至少一个变量", label)
+			return fmt.Errorf("%s must include at least one variable", label)
 		}
 		for _, reserved := range []string{"/admin", "/uploads", "/theme", "/feed.xml", "/atom.xml", "/comments", "/comment", "/search", "/archive", "/author", "/preview"} {
 			if pattern == reserved || strings.HasPrefix(pattern, reserved+"/") {
-				return fmt.Errorf("%s 与内置路径 %s 冲突", label, reserved)
+				return fmt.Errorf("%s conflicts with built-in path %s", label, reserved)
 			}
 		}
 		shape := permalinkShape(pattern)
 		if prev := seen[shape]; prev != "" {
-			return fmt.Errorf("%s 与 %s 规则冲突", label, prev)
+			return fmt.Errorf("%s conflicts with %s rule", label, prev)
 		}
 		seen[shape] = label
 	}
@@ -9408,6 +9528,7 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		ContentURL:         a.pluginContentURL,
 		CommentURL:         a.pluginCommentURL,
 		AvatarURL:          a.emailAvatarURL,
+		Language:           a.language,
 		SiteURL:            a.siteURLPlugin,
 		AdminURL:           a.adminURLPlugin,
 		ClientIP:           a.clientIP,
@@ -9460,11 +9581,11 @@ func (a *App) contentWriter() *orchestration.Writer {
 func (a *App) extensionSQLitePath(owner, filename string) (string, error) {
 	owner = strings.TrimSpace(owner)
 	if owner == "" {
-		return "", fmt.Errorf("扩展名称不能为空")
+		return "", fmt.Errorf("extension name cannot be empty")
 	}
 	cleanOwner, err := safeExtensionPathName(owner)
 	if err != nil {
-		return "", fmt.Errorf("扩展名称无效：%w", err)
+		return "", fmt.Errorf("extension name is invalid: %w", err)
 	}
 	file, err := safeSQLiteFilename(filename)
 	if err != nil {
@@ -9534,14 +9655,14 @@ func (a *App) clearExtensionSQLite(ctx context.Context, owner, filename string) 
 func safeExtensionPathName(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" || value == "." || value == ".." {
-		return "", fmt.Errorf("名称不能为空")
+		return "", fmt.Errorf("name cannot be empty")
 	}
 	if strings.ContainsAny(value, `/\`) {
-		return "", fmt.Errorf("不能包含路径分隔符")
+		return "", fmt.Errorf("path separators are not allowed")
 	}
 	for _, r := range value {
 		if !(r == '-' || r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
-			return "", fmt.Errorf("只能包含字母、数字、点、下划线和短横线")
+			return "", fmt.Errorf("only letters, numbers, dots, underscores, and hyphens are allowed")
 		}
 	}
 	return value, nil
@@ -9550,21 +9671,21 @@ func safeExtensionPathName(value string) (string, error) {
 func safeSQLiteFilename(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "", fmt.Errorf("数据库文件名不能为空")
+		return "", fmt.Errorf("database filename cannot be empty")
 	}
 	base := filepath.Base(value)
 	if base != value || strings.ContainsAny(value, `/\`) || base == "." || base == ".." {
-		return "", fmt.Errorf("数据库文件名不能包含路径")
+		return "", fmt.Errorf("database filename cannot include a path")
 	}
 	if strings.HasPrefix(base, ".") {
-		return "", fmt.Errorf("数据库文件名不能以点开头")
+		return "", fmt.Errorf("database filename cannot start with a dot")
 	}
 	if !strings.HasSuffix(strings.ToLower(base), ".db") {
 		base += ".db"
 	}
 	for _, r := range base {
 		if !(r == '-' || r == '_' || r == '.' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z') {
-			return "", fmt.Errorf("数据库文件名只能包含字母、数字、点、下划线和短横线")
+			return "", fmt.Errorf("database filename can only contain letters, numbers, dots, underscores, and hyphens")
 		}
 	}
 	return base, nil
@@ -9686,6 +9807,19 @@ func normalizeAdminNotices(notices []plugin.AdminNotice) []plugin.AdminNotice {
 		default:
 			notice.Mode = plugin.NoticeAuto
 		}
+		out = append(out, notice)
+	}
+	return out
+}
+
+func translateAdminNotices(notices []plugin.AdminNotice, translate func(string) string) []plugin.AdminNotice {
+	if translate == nil || len(notices) == 0 {
+		return notices
+	}
+	out := make([]plugin.AdminNotice, 0, len(notices))
+	for _, notice := range notices {
+		notice.Message = translate(notice.Message)
+		notice.SkipCoreI18n = true
 		out = append(out, notice)
 	}
 	return out
@@ -9830,11 +9964,11 @@ func (a *App) formatDate(ctx context.Context, ts int64, optionName string) strin
 
 func (a *App) addUserUniqueErrors(ctx context.Context, errs *validate.Errors, name, mail string, exceptID int64) {
 	if exists, err := a.Users.ExistsName(ctx, name, exceptID); err == nil && exists {
-		errs.Add("name", "用户名已存在")
+		errs.Add("name", "Username already exists")
 	}
 	if mail != "" {
 		if exists, err := a.Users.ExistsMail(ctx, mail, exceptID); err == nil && exists {
-			errs.Add("mail", "邮箱已存在")
+			errs.Add("mail", "Email already exists")
 		}
 	}
 }
@@ -9859,7 +9993,10 @@ func valuesFromSchema(r *http.Request, schema []plugin.FieldSchema) map[string]s
 	return out
 }
 
-func validateSchemaValues(schema []plugin.FieldSchema, values map[string]string) error {
+func validateSchemaValues(schema []plugin.FieldSchema, values map[string]string, translate func(string) string, lang string) error {
+	if translate == nil {
+		translate = func(key string) string { return key }
+	}
 	for _, field := range schema {
 		if !field.Required || !schemaFieldVisible(field, values) || strings.TrimSpace(values[field.Name]) != "" {
 			continue
@@ -9868,7 +10005,7 @@ func validateSchemaValues(schema []plugin.FieldSchema, values map[string]string)
 		if label == "" {
 			label = field.Name
 		}
-		return fmt.Errorf("%s为必填项", label)
+		return fmt.Errorf(i18n.T(lang, "%s is required"), translate(label))
 	}
 	return nil
 }
@@ -9886,13 +10023,13 @@ func schemaValidationMessages(errs map[string]string) []string {
 			continue
 		}
 		if key != "" {
-			messages = append(messages, key+"："+message)
+			messages = append(messages, key+": "+message)
 		} else {
 			messages = append(messages, message)
 		}
 	}
 	if len(messages) == 0 {
-		messages = append(messages, "配置校验未通过")
+		messages = append(messages, "Configuration validation failed")
 	}
 	return messages
 }
@@ -9954,24 +10091,27 @@ func schemaValue(values map[string]string, name string) string {
 	return values[name]
 }
 
-func schemaGroups(schema []plugin.FieldSchema, values map[string]string) []schemaFieldGroup {
+func schemaGroups(schema []plugin.FieldSchema, values map[string]string, translate func(string) string) []schemaFieldGroup {
 	if len(schema) == 0 {
 		return nil
+	}
+	if translate == nil {
+		translate = func(key string) string { return key }
 	}
 	groups := make([]schemaFieldGroup, 0, 4)
 	indexByTitle := map[string]int{}
 	for _, field := range schema {
 		title := strings.TrimSpace(field.Group)
 		if title == "" {
-			title = "设置"
+			title = "Settings"
 		}
 		index, ok := indexByTitle[title]
 		if !ok {
 			index = len(groups)
 			indexByTitle[title] = index
-			groups = append(groups, schemaFieldGroup{Title: title, Class: schemaGroupClass(title)})
+			groups = append(groups, schemaFieldGroup{Title: title, Class: schemaGroupClass(title), Translate: translate})
 		}
-		groups[index].Fields = append(groups[index].Fields, schemaFieldView{Field: field, Values: values, Visible: schemaFieldVisible(field, values)})
+		groups[index].Fields = append(groups[index].Fields, schemaFieldView{Field: field, Values: values, Visible: schemaFieldVisible(field, values), Translate: translate})
 	}
 	return groups
 }
@@ -9985,15 +10125,15 @@ func schemaFieldVisible(field plugin.FieldSchema, values map[string]string) bool
 
 func schemaGroupClass(title string) string {
 	switch strings.TrimSpace(title) {
-	case "资料卡":
+	case "Profile Card":
 		return "schema-group-profile"
-	case "配色和透明度":
+	case "Colors and Opacity":
 		return "schema-group-colors"
-	case "背景和装饰图片":
+	case "Background and Decorative Images":
 		return "schema-group-media"
-	case "侧栏和导航":
+	case "Sidebar and Navigation":
 		return "schema-group-navigation"
-	case "页脚":
+	case "Footer":
 		return "schema-group-footer"
 	default:
 		return "schema-group-default"
@@ -10147,7 +10287,7 @@ func (a *App) contentFormFields(ctx context.Context, typ string, contentID int64
 		value := fieldValue(stored)
 		title := strings.TrimSpace(item.Group)
 		if title == "" {
-			title = "主题与插件字段"
+			title = "Theme and plugin fields"
 		}
 		index, exists := groupIndexes[title]
 		if !exists {
@@ -11212,6 +11352,10 @@ func (a *App) thumbnailURLPlugin(ctx context.Context, attachmentCID int64, width
 
 func (a *App) siteURLPlugin(ctx context.Context) string {
 	return strings.TrimRight(a.option(ctx, "base_url", ""), "/")
+}
+
+func (a *App) language(ctx context.Context) string {
+	return i18n.Normalize(a.option(ctx, "site_language", i18n.DefaultLanguage))
 }
 
 func (a *App) adminURLPlugin(ctx context.Context) string {

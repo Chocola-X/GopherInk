@@ -10,6 +10,15 @@
 
 主题的后台扩展页、数据调整回调、运行时初始化和评论增强回调会收到带主题名 owner 的 `plugin.Runtime`。确实需要保存主题私有的大量结构化数据时，可以复用 [插件数据库](plugins-and-hooks.md#插件数据库) 接口；常规主题设置仍应优先使用 `ConfigSchema`。
 
+核心会把当前 CMS 语言注入主题运行时和模板数据：
+
+- `rt.Language(ctx)`：返回规范化语言码，例如 `zh-CN` 或 `en-US`。
+- `.Lang`：前台模板当前语言码。
+- `.HTMLLang`：可直接用于 `<html lang="{{.HTMLLang}}">`。
+- `T` / `t`：当前主题自己的模板翻译函数。主题实现 `Theme.Translate` 时由该函数处理；未实现时返回原文。
+
+CMS 核心只负责暴露当前语言，不维护主题翻译表。主题需要语言适配时，应在主题包内维护自己的翻译逻辑和回落策略，例如中文未命中时回落英文；主题不适配某种语言时，注册时写入的原始文案会原样显示。主题的 `ConfigSchema`、`AdminPages`、`AdminNotices`、前台模板 `T/t` 都遵循这个边界：核心统一渲染后台外壳，但扩展文案由主题自己翻译。
+
 ## 最小主题结构
 
 ```text
@@ -48,15 +57,30 @@ func init() {
         DisplayName:  "Example Theme",
         Version:      "0.1.0",
         Author:       "Example Author",
-        Description:  "示例主题。",
+        Description:  "Example theme.",
         TemplateList: []string{"index.html", "post.html", "404.html"},
         Templates:    themeFS,
         Static:       staticFS,
         Embedded:     true,
+        Translate:    tr,
         Funcs: template.FuncMap{
             "upper": strings.ToUpper,
         },
     })
+}
+
+var zhCN = map[string]string{
+    "Example Theme": "示例主题",
+    "Example theme.": "示例主题。",
+}
+
+func tr(lang, key string) string {
+    if strings.HasPrefix(strings.ToLower(lang), "zh") {
+        if value := zhCN[key]; value != "" {
+            return value
+        }
+    }
+    return key
 }
 ```
 
@@ -99,6 +123,7 @@ plugin.RegisterTheme(plugin.Theme{
 | `Templates` | 包含模板的 `fs.FS` |
 | `Static` | 静态资源 `fs.FS` |
 | `Funcs` | 解析模板时加入的函数 |
+| `Translate` | 主题自己的翻译函数；核心只传入当前语言和原始 key |
 | `ConfigSchema` | 主题设置表单 Schema |
 | `ContentFields` | 文章/页面自定义字段 Schema |
 | `ConfigValidator` | 保存主题设置前执行跨字段校验 |
@@ -167,11 +192,15 @@ plugin.RegisterTheme(plugin.Theme{
 
 ```go
 InitRuntime: func(ctx context.Context, rt *plugin.Runtime) error {
+    lang := "en-US"
+    if rt.Language != nil {
+        lang = rt.Language(ctx)
+    }
     mode := "markdown"
     if rt.ContentRenderMode != nil {
         mode = rt.ContentRenderMode(ctx)
     }
-    _ = mode
+    _, _ = lang, mode
     return nil
 },
 ```

@@ -1,6 +1,6 @@
 {{define "base"}}
 <!doctype html>
-<html lang="zh-CN" class="mdui-theme-auto">
+<html lang="{{.HTMLLang}}" class="mdui-theme-auto">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,21 +14,21 @@
   <script type="module" src="/admin/assets/vendor/mdui-icons.js"></script>
   <script defer src="/admin/assets/app.js"></script>
 </head>
-<body class="{{if or (eq .Title "登录") (eq .Title "注册") (eq .Title "安装")}}auth-page{{else}}admin-page{{end}}" data-admin-primary="{{.AdminPrimary}}" data-admin-background="{{.AdminBackgroundImage}}" data-admin-mobile-background="{{.AdminMobileBackgroundImage}}" style="--admin-card-opacity: {{.AdminCardOpacity}}; --admin-sidebar-opacity: {{.AdminSidebarOpacity}}; --admin-topbar-opacity: {{.AdminTopbarOpacity}}; --admin-input-opacity: {{.AdminInputOpacity}}; --admin-bg-mask-opacity: {{.AdminBackgroundMaskOpacity}};">
+<body class="{{if .AuthPage}}auth-page{{else}}admin-page{{end}}" data-admin-primary="{{.AdminPrimary}}" data-admin-background="{{.AdminBackgroundImage}}" data-admin-mobile-background="{{.AdminMobileBackgroundImage}}" style="--admin-card-opacity: {{.AdminCardOpacity}}; --admin-sidebar-opacity: {{.AdminSidebarOpacity}}; --admin-topbar-opacity: {{.AdminTopbarOpacity}}; --admin-input-opacity: {{.AdminInputOpacity}}; --admin-bg-mask-opacity: {{.AdminBackgroundMaskOpacity}};">
 <div class="admin-bg"></div>
-{{if or (eq .Title "登录") (eq .Title "注册") (eq .Title "安装")}}
+{{if .AuthPage}}
   <main class="login-main">
     <div class="login-stack">
       {{template "content" .}}
-      {{range .Notices}}<div class="notice auth-notice notice-{{.Type}} {{if eq .Type "error"}}danger{{end}}" data-notice-mode="{{.Mode}}" data-notice-type="{{.Type}}">{{.Message}}</div>{{end}}
+      {{range .Notices}}<div class="notice auth-notice notice-{{.Type}} {{if eq .Type "error"}}danger{{end}}" data-notice-mode="{{.Mode}}" data-notice-type="{{.Type}}">{{if .SkipCoreI18n}}{{.Message}}{{else}}{{T .Message}}{{end}}</div>{{end}}
     </div>
   </main>
 {{else}}
   <div class="admin-shell">
     <mdui-top-app-bar class="admin-appbar">
-      <mdui-button-icon class="drawer-toggle" title="菜单"><mdui-icon name="menu"></mdui-icon></mdui-button-icon>
+      <mdui-button-icon class="drawer-toggle" title="{{T "Menu"}}"><mdui-icon name="menu"></mdui-icon></mdui-button-icon>
       <mdui-top-app-bar-title>{{index .Site "site_title"}}</mdui-top-app-bar-title>
-      <mdui-button-icon class="admin-theme-toggle" title="切换明暗模式" aria-label="切换明暗模式"><mdui-icon name="brightness_5"></mdui-icon></mdui-button-icon>
+      <mdui-button-icon class="admin-theme-toggle" title="{{T "Toggle color mode"}}" aria-label="{{T "Toggle color mode"}}"><mdui-icon name="brightness_5"></mdui-icon></mdui-button-icon>
       <mdui-button-icon href="/" target="_blank" rel="noopener noreferrer" title="{{T "View site"}}" aria-label="{{T "View site"}}"><mdui-icon-web></mdui-icon-web></mdui-button-icon>
       <form method="post" action="/admin/logout">
         <mdui-button-icon type="submit" title="{{T "Logout"}}"><mdui-icon name="logout"></mdui-icon></mdui-button-icon>
@@ -50,27 +50,27 @@
         <mdui-list-item href="/admin/plugins"><mdui-icon slot="icon" name="extension"></mdui-icon>{{T "Plugins"}}</mdui-list-item>
         <mdui-list-item href="/admin/options/general"><mdui-icon slot="icon" name="settings"></mdui-icon>{{T "Settings"}}</mdui-list-item>
         <mdui-list-item href="/admin/options/waf"><mdui-icon slot="icon" name="security"></mdui-icon>WAF</mdui-list-item>
-        <mdui-list-item href="/admin/management"><mdui-icon slot="icon" name="dashboard_customize"></mdui-icon>后台个性化</mdui-list-item>
+        <mdui-list-item href="/admin/management"><mdui-icon slot="icon" name="dashboard_customize"></mdui-icon>{{T "Backend personalization"}}</mdui-list-item>
         <mdui-list-item href="/admin/backup"><mdui-icon slot="icon" name="download"></mdui-icon>{{T "Backup"}}</mdui-list-item>
         <mdui-list-item href="/admin/profile"><mdui-icon slot="icon" name="person"></mdui-icon>{{T "Profile"}}</mdui-list-item>
         {{if .AdminMenu}}
-        <div class="nav-section">插件扩展</div>
-        {{range .AdminMenu}}<mdui-list-item href="{{.URL}}" {{if .OpenNewTab}}target="_blank" rel="noopener noreferrer"{{end}}><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{.Label}}</mdui-list-item>{{end}}
+        <div class="nav-section">{{T "Plugin extensions"}}</div>
+        {{range .AdminMenu}}<mdui-list-item href="{{.URL}}" {{if .OpenNewTab}}target="_blank" rel="noopener noreferrer"{{end}}><mdui-icon slot="icon" name="{{.Icon}}"></mdui-icon>{{T .Label}}</mdui-list-item>{{end}}
         {{end}}
       </mdui-list>
       <footer class="admin-product-info">
         <div><strong>GopherInk</strong><span>v0.5.0</span></div>
-        <nav aria-label="GopherInk 项目链接">
+        <nav aria-label="{{T "Project links"}}">
           <a href="https://github.com/Chocola-X/GopherInk" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a href="https://gopherink.nekopara.uk" target="_blank" rel="noopener noreferrer">官方网站</a>
+          <a href="https://gopherink.nekopara.uk" target="_blank" rel="noopener noreferrer">{{T "Official website"}}</a>
         </nav>
       </footer>
     </aside>
-    <button class="drawer-scrim" type="button" aria-label="收起菜单"></button>
+    <button class="drawer-scrim" type="button" aria-label="{{T "Collapse menu"}}"></button>
     <div class="admin-layout-main">
       <main class="admin-main">
-        {{range .AdminNotices}}<div class="notice notice-{{.Type}} {{if eq .Type "error"}}danger{{end}}" data-notice-mode="{{.Mode}}" data-notice-type="{{.Type}}">{{.Message}}</div>{{end}}
-        {{range .Notices}}<div class="notice notice-{{.Type}} {{if eq .Type "error"}}danger{{end}}" data-notice-mode="{{.Mode}}" data-notice-type="{{.Type}}">{{.Message}}</div>{{end}}
+        {{range .AdminNotices}}<div class="notice notice-{{.Type}} {{if eq .Type "error"}}danger{{end}}" data-notice-mode="{{.Mode}}" data-notice-type="{{.Type}}">{{if .SkipCoreI18n}}{{.Message}}{{else}}{{T .Message}}{{end}}</div>{{end}}
+        {{range .Notices}}<div class="notice notice-{{.Type}} {{if eq .Type "error"}}danger{{end}}" data-notice-mode="{{.Mode}}" data-notice-type="{{.Type}}">{{if .SkipCoreI18n}}{{.Message}}{{else}}{{T .Message}}{{end}}</div>{{end}}
         {{template "content" .}}
       </main>
     </div>

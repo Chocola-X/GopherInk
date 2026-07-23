@@ -1,17 +1,17 @@
 {{define "content"}}
 <div class="page-head">
   <div>
-    <h1>设置</h1>
-    <p class="muted">核心只保留站点运行必需项。</p>
+    <h1>{{T "Settings"}}</h1>
+    <p class="muted">{{T "Core settings keep only what is required for site runtime."}}</p>
   </div>
 </div>
-{{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
+{{if .Saved}}<div class="notice">{{T "Settings saved."}}</div>{{end}}
 <form method="post" class="form-panel field-stack">
-  <mdui-text-field name="site_title" label="站点标题" value="{{index .Options "site_title"}}" required></mdui-text-field>
-  <mdui-text-field name="site_description" label="站点描述" value="{{index .Options "site_description"}}"></mdui-text-field>
-  <mdui-text-field name="base_url" label="站点地址" value="{{index .Options "base_url"}}" required></mdui-text-field>
+  <mdui-text-field name="site_title" label="{{T "Site title"}}" value="{{index .Options "site_title"}}" required></mdui-text-field>
+  <mdui-text-field name="site_description" label="{{T "Site description"}}" value="{{index .Options "site_description"}}"></mdui-text-field>
+  <mdui-text-field name="base_url" label="{{T "Site URL"}}" value="{{index .Options "base_url"}}" required></mdui-text-field>
   <div class="form-actions">
-    <mdui-button type="submit"><mdui-icon slot="icon" name="settings"></mdui-icon>保存设置</mdui-button>
+    <mdui-button type="submit"><mdui-icon slot="icon" name="settings"></mdui-icon>{{T "Save Settings"}}</mdui-button>
   </div>
 </form>
 {{end}}

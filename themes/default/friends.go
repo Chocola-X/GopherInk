@@ -49,6 +49,7 @@ type friendAdminPageData struct {
 	TargetTitle  string
 	TargetURL    string
 	TargetNotice string
+	Lang         string
 }
 
 type friendPageTarget struct {
@@ -56,21 +57,26 @@ type friendPageTarget struct {
 	Slug string
 }
 
-var friendAdminTemplate = template.Must(template.New("friends.html").ParseFS(themeFS, "admin/friends.html"))
+var friendAdminTemplate = template.Must(template.New("friends.html").Funcs(template.FuncMap{
+	"T": defaultThemeT,
+}).ParseFS(themeFS, "admin/friends.html"))
 
 func renderFriendAdminPage(ctx context.Context, rt *plugin.Runtime, page string, renderContext plugin.AdminPageRenderContext) (template.HTML, error) {
 	if page != friendAdminPageName {
-		return "", fmt.Errorf("未知的主题页面：%s", page)
+		return "", fmt.Errorf("unknown theme page: %s", page)
 	}
 	links, err := decodeFriendLinks(renderContext.Config[friendLinksKey])
 	if err != nil {
-		return "", fmt.Errorf("读取友链配置：%w", err)
+		return "", fmt.Errorf("read friend link settings: %w", err)
 	}
 	data := friendAdminPageData{
 		CSRF:       renderContext.CSRF,
 		PageTarget: strings.TrimSpace(renderContext.Config[friendPageTargetKey]),
 		Shuffle:    renderContext.Config[friendShuffleKey] == "1",
 		Links:      friendAdminLinks(ctx, rt, links),
+	}
+	if rt != nil && rt.Language != nil {
+		data.Lang = rt.Language(ctx)
 	}
 	if data.PageTarget != "" {
 		content, contentErr := resolveFriendPageTarget(ctx, rt, data.PageTarget)
@@ -83,7 +89,7 @@ func renderFriendAdminPage(ctx context.Context, rt *plugin.Runtime, page string,
 	}
 	var output bytes.Buffer
 	if err := friendAdminTemplate.ExecuteTemplate(&output, "friends.html", data); err != nil {
-		return "", fmt.Errorf("渲染友链设置：%w", err)
+		return "", fmt.Errorf("render friend link settings: %w", err)
 	}
 	return template.HTML(output.String()), nil
 }
@@ -104,10 +110,10 @@ func friendAdminLinks(ctx context.Context, rt *plugin.Runtime, links []friendLin
 
 func handleFriendAdminPageAction(ctx context.Context, rt *plugin.Runtime, page string, form map[string][]string) (plugin.AdminPageActionResult, error) {
 	if page != friendAdminPageName {
-		return plugin.AdminPageActionResult{}, fmt.Errorf("未知的主题页面：%s", page)
+		return plugin.AdminPageActionResult{}, fmt.Errorf("unknown theme page: %s", page)
 	}
 	if firstFriendFormValue(form, "action") != "save-friends" {
-		return plugin.AdminPageActionResult{}, fmt.Errorf("不支持的友链操作")
+		return plugin.AdminPageActionResult{}, fmt.Errorf("unsupported friend link action")
 	}
 	pageTarget := strings.TrimSpace(firstFriendFormValue(form, friendPageTargetKey))
 	if _, err := resolveFriendPageTarget(ctx, rt, pageTarget); err != nil {
@@ -119,7 +125,7 @@ func handleFriendAdminPageAction(ctx context.Context, rt *plugin.Runtime, page s
 	}
 	raw, err := json.Marshal(links)
 	if err != nil {
-		return plugin.AdminPageActionResult{}, fmt.Errorf("保存友链配置：%w", err)
+		return plugin.AdminPageActionResult{}, fmt.Errorf("save friend link settings: %w", err)
 	}
 	shuffle := "0"
 	if firstFriendFormValue(form, friendShuffleKey) == "1" {
@@ -131,7 +137,7 @@ func handleFriendAdminPageAction(ctx context.Context, rt *plugin.Runtime, page s
 			friendShuffleKey:    shuffle,
 			friendLinksKey:      string(raw),
 		},
-		Notice: plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "友链设置已保存。"},
+		Notice: plugin.AdminNotice{Type: plugin.NoticeSuccess, Mode: plugin.NoticeSnackbar, Message: "Friend link settings saved."},
 	}, nil
 }
 
@@ -142,10 +148,10 @@ func friendLinksFromForm(form map[string][]string) ([]friendLink, error) {
 	emails := form["friend_email"]
 	iconURLs := form["friend_icon_url"]
 	if len(names) != len(descriptions) || len(names) != len(urls) || len(names) != len(emails) || len(names) != len(iconURLs) {
-		return nil, fmt.Errorf("友链表单数据不完整，请刷新页面后重试")
+		return nil, fmt.Errorf("friend link form data is incomplete; refresh the page and try again")
 	}
 	if len(names) > maxFriendLinks {
-		return nil, fmt.Errorf("友链数量不能超过 %d 条", maxFriendLinks)
+		return nil, fmt.Errorf("friend links cannot exceed %d entries", maxFriendLinks)
 	}
 	links := make([]friendLink, 0, len(names))
 	for i := range names {
@@ -159,21 +165,21 @@ func friendLinksFromForm(form map[string][]string) ([]friendLink, error) {
 		position := i + 1
 		switch {
 		case link.Name == "":
-			return nil, fmt.Errorf("第 %d 条友链缺少链接名称", position)
+			return nil, fmt.Errorf("friend link %d is missing a name", position)
 		case len([]rune(link.Name)) > 100:
-			return nil, fmt.Errorf("第 %d 条友链的名称不能超过 100 个字符", position)
+			return nil, fmt.Errorf("friend link %d name cannot exceed 100 characters", position)
 		case link.Description == "":
-			return nil, fmt.Errorf("第 %d 条友链缺少链接描述", position)
+			return nil, fmt.Errorf("friend link %d is missing a description", position)
 		case len([]rune(link.Description)) > 250:
-			return nil, fmt.Errorf("第 %d 条友链的描述不能超过 250 个字符", position)
+			return nil, fmt.Errorf("friend link %d description cannot exceed 250 characters", position)
 		case !validFriendURL(link.URL):
-			return nil, fmt.Errorf("第 %d 条友链的 URL 必须是有效的 HTTP 或 HTTPS 地址", position)
+			return nil, fmt.Errorf("friend link %d URL must be a valid HTTP or HTTPS URL", position)
 		case link.Email == "" && link.IconURL == "":
-			return nil, fmt.Errorf("第 %d 条友链必须填写邮箱或友链图标 URL", position)
+			return nil, fmt.Errorf("friend link %d must include either an email or icon URL", position)
 		case link.Email != "" && !validFriendEmail(link.Email):
-			return nil, fmt.Errorf("第 %d 条友链的邮箱格式不正确", position)
+			return nil, fmt.Errorf("friend link %d email is invalid", position)
 		case link.IconURL != "" && !validFriendIconURL(link.IconURL):
-			return nil, fmt.Errorf("第 %d 条友链的图标 URL 格式不正确", position)
+			return nil, fmt.Errorf("friend link %d icon URL is invalid", position)
 		}
 		links = append(links, link)
 	}
@@ -217,7 +223,7 @@ func decodeFriendLinks(raw string) ([]friendLink, error) {
 		return nil, err
 	}
 	if len(links) > maxFriendLinks {
-		return nil, fmt.Errorf("友链数量超过 %d 条", maxFriendLinks)
+		return nil, fmt.Errorf("friend links exceed %d entries", maxFriendLinks)
 	}
 	return links, nil
 }
@@ -245,17 +251,17 @@ func resolveFriendPageTarget(ctx context.Context, rt *plugin.Runtime, value stri
 	}
 	contents, _, err := rt.ListContents(ctx, query)
 	if err != nil {
-		return plugin.PublicContent{}, fmt.Errorf("目标独立页面不存在或固定链接不正确")
+		return plugin.PublicContent{}, fmt.Errorf("target page does not exist or the permalink is incorrect")
 	}
 	if len(contents) == 0 {
-		return plugin.PublicContent{}, fmt.Errorf("目标独立页面不存在或固定链接不正确")
+		return plugin.PublicContent{}, fmt.Errorf("target page does not exist or the permalink is incorrect")
 	}
 	content := contents[0]
 	if content.Type != models.ContentTypePage {
-		return plugin.PublicContent{}, fmt.Errorf("目标内容不是独立页面")
+		return plugin.PublicContent{}, fmt.Errorf("target content is not a page")
 	}
 	if content.Status != models.ContentStatusPost {
-		return plugin.PublicContent{}, fmt.Errorf("目标独立页面必须处于已发布状态")
+		return plugin.PublicContent{}, fmt.Errorf("target page must be published")
 	}
 	return content, nil
 }
@@ -263,14 +269,14 @@ func resolveFriendPageTarget(ctx context.Context, rt *plugin.Runtime, value stri
 func parseFriendPageTarget(value string) (friendPageTarget, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return friendPageTarget{}, fmt.Errorf("请填写目标独立页面 CID 或固定链接")
+		return friendPageTarget{}, fmt.Errorf("enter a target page CID or permalink")
 	}
 	if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
 		return friendPageTarget{CID: id}, nil
 	}
 	parsed, err := url.Parse(value)
 	if err != nil {
-		return friendPageTarget{}, fmt.Errorf("目标独立页面固定链接格式不正确")
+		return friendPageTarget{}, fmt.Errorf("target page permalink is invalid")
 	}
 	candidate := parsed.Path
 	if candidate == "" {
@@ -280,14 +286,14 @@ func parseFriendPageTarget(value string) (friendPageTarget, error) {
 	if strings.HasPrefix(candidate, "/") || strings.Contains(candidate, "/") {
 		cleaned := strings.Trim(path.Clean("/"+candidate), "/")
 		if !strings.HasPrefix(cleaned, "page/") {
-			return friendPageTarget{}, fmt.Errorf("固定链接必须指向 /page/ 下的独立页面")
+			return friendPageTarget{}, fmt.Errorf("permalink must point to a page under /page/")
 		}
 		candidate = strings.TrimPrefix(cleaned, "page/")
 	}
 	candidate = strings.TrimSuffix(candidate, ".html")
 	candidate, err = url.PathUnescape(candidate)
 	if err != nil || candidate == "" || strings.Contains(candidate, "/") {
-		return friendPageTarget{}, fmt.Errorf("目标独立页面固定链接格式不正确")
+		return friendPageTarget{}, fmt.Errorf("target page permalink is invalid")
 	}
 	return friendPageTarget{Slug: candidate}, nil
 }
@@ -342,11 +348,11 @@ func friendEnrichComments(_ context.Context, _ *plugin.Runtime, config map[strin
 		switch {
 		case comment.AuthorID > 0 && comment.AuthorID == comment.OwnerID:
 			enrichments[comment.COID] = plugin.CommentEnrichment{
-				Badges: []plugin.CommentBadge{{Label: "博主", Icon: "bolt", Tone: "owner"}},
+				Badges: []plugin.CommentBadge{{Label: "Owner", Icon: "bolt", Tone: "owner"}},
 			}
 		case emails[strings.ToLower(strings.TrimSpace(comment.Mail))]:
 			enrichments[comment.COID] = plugin.CommentEnrichment{
-				Badges: []plugin.CommentBadge{{Label: "好朋友", Icon: "bolt", Tone: "friend"}},
+				Badges: []plugin.CommentBadge{{Label: "Friend", Icon: "bolt", Tone: "friend"}},
 			}
 		}
 	}

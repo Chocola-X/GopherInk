@@ -10,12 +10,12 @@
     <div class="comment-header-meta">
       <div class="comment-author-line">
         <strong class="comment-author">{{.AuthorHTML}}</strong>
-        {{if .Pending}}<span class="comment-pending">等待审核</span>{{end}}
+        {{if .Pending}}<span class="comment-pending">{{T "Pending"}}</span>{{end}}
       </div>
       <span class="comment-date">{{commentDate .Created}}</span>
     </div>
   </header>
-  <a class="comment-reply" href="{{.ReplyURL}}" data-comment-reply data-parent-id="{{.COID}}" data-parent-author="{{.Author}}">回复</a>
+  <a class="comment-reply" href="{{.ReplyURL}}" data-comment-reply data-parent-id="{{.COID}}" data-parent-author="{{.Author}}">{{T "Reply"}}</a>
   <div class="comment-content">{{if .ParentAuthor}}<a class="comment-reply-name" href="#{{.ParentAnchor}}">@{{.ParentAuthor}}</a> {{end}}{{.BodyHTML}}</div>
   <div class="comment-reply-slot" data-comment-reply-slot></div>
   {{if .Children}}<div class="comment-children">{{range .Children}}{{template "comment_item" .}}{{end}}</div>{{end}}
@@ -47,7 +47,7 @@
       </article>
     </a>
     {{else}}
-    <div class="mdui-card friend-links-empty">暂时还没有添加友链。</div>
+    <div class="mdui-card friend-links-empty">{{T "No friend links have been added yet."}}</div>
     {{end}}
   </div>
   {{if .Post.Text}}
@@ -65,10 +65,10 @@
       <div class="mdui-card-primary">
         <h1 class="mdui-card-primary-title">{{.Post.Title}}</h1>
         <div class="mdui-card-primary-subtitle">
-          {{date .Post.Created}} | 阅读时间: {{readingTime .Post.Text}} | 分类:
-          {{range $idx, $cat := .Categories}}{{if $idx}}, {{end}}<a href="{{metaURL $cat}}">{{$cat.Name}}</a>{{else}}未分类{{end}}
-          | 标签:
-          {{range $idx, $tag := .Tags}}{{if $idx}}, {{end}}<a href="{{metaURL $tag}}">{{$tag.Name}}</a>{{else}}无{{end}}
+          {{date .Post.Created}} | {{T "Reading time"}}: {{readingTimeI18n .Lang .Post.Text}} | {{T "Categories"}}:
+          {{range $idx, $cat := .Categories}}{{if $idx}}, {{end}}<a href="{{metaURL $cat}}">{{$cat.Name}}</a>{{else}}{{T "Uncategorized"}}{{end}}
+          | {{T "Tags"}}:
+          {{range $idx, $tag := .Tags}}{{if $idx}}, {{end}}<a href="{{metaURL $tag}}">{{$tag.Name}}</a>{{else}}{{T "None"}}{{end}}
         </div>
       </div>
     </div>
@@ -76,13 +76,13 @@
   {{if and (eq (themeValue .ThemeConfig "show_stale_notice" "1") "1") (staleDays .Post.Modified (themeInt .ThemeConfig "stale_notice_days" 30))}}
   <div class="post-alert">
     <mdui-icon name="report"></mdui-icon>
-    请注意，本文最后修改于 {{daysSince .Post.Modified}} 天前，其中某些信息可能已经过时。
+    {{T "Note: this post was last modified"}} {{daysSince .Post.Modified}} {{T "days ago. Some information may be outdated."}}
   </div>
   {{end}}
   {{if .PasswordRequired}}
   <form class="post-protected" method="get">
-    <mdui-text-field type="password" name="password" label="请输入密码访问" required></mdui-text-field>
-    <mdui-button type="submit">提交</mdui-button>
+    <mdui-text-field type="password" name="password" label="{{T "Enter password to view"}}" required></mdui-text-field>
+    <mdui-button type="submit">{{T "Submit"}}</mdui-button>
   </form>
   {{else}}
   <div class="post-content mdui-prose">{{.ContentHTML}}</div>
@@ -103,14 +103,14 @@
 {{end}}
 {{if .RelatedPosts}}
 <section class="mdui-card post-related">
-  <h2>相关文章</h2>
+  <h2>{{T "Related Posts"}}</h2>
   <div class="sidebar-list">{{range .RelatedPosts}}<a href="{{contentURL .}}">{{.Title}}</a>{{end}}</div>
 </section>
 {{end}}
 {{if eq .Post.AllowComment "1"}}
 <section id="comments" class="comments-wrap">
-  <h2 class="comment-title">评论</h2>
-  {{if .CommentOK}}<div class="notice-card">{{if .CommentPending}}评论已提交，正在等待审核。{{else}}评论已提交。{{end}}</div>{{end}}
+  <h2 class="comment-title">{{T "Comments"}}</h2>
+  {{if .CommentOK}}<div class="notice-card">{{if .CommentPending}}{{T "Comment submitted and waiting for moderation."}}{{else}}{{T "Comment submitted."}}{{end}}</div>{{end}}
   {{if .CommentError}}<div class="notice-card notice-error">{{.CommentErrorMessage}}</div>{{end}}
   <form id="{{.CommentRespondID}}" class="mdui-card comment-respond{{if .CommentFormAvatar.Enabled}} has-avatar{{end}}" method="post" action="{{.CommentAction}}"{{if .CommentGuardEnabled}} data-comment-guard-endpoint="{{.CommentGuardEndpoint}}"{{end}}>
     <input type="hidden" name="_csrf" value="{{.CommentCSRF}}">
@@ -120,26 +120,26 @@
     <input class="hp-field" type="text" name="website" tabindex="-1" autocomplete="off">
     {{if .CommentFormAvatar.Enabled}}
     <div class="comment-form-avatar-wrap">
-      <img class="comment-form-avatar" src="{{if .CommentIdentity.AvatarURL}}{{.CommentIdentity.AvatarURL}}{{else}}{{.CommentFormAvatar.DefaultURL}}{{end}}" alt="评论头像预览" referrerpolicy="no-referrer" {{if not .CommentIdentity.LoggedIn}}data-comment-avatar-preview data-avatar-template="{{.CommentFormAvatar.Template}}" data-avatar-default="{{.CommentFormAvatar.DefaultURL}}"{{end}}>
+      <img class="comment-form-avatar" src="{{if .CommentIdentity.AvatarURL}}{{.CommentIdentity.AvatarURL}}{{else}}{{.CommentFormAvatar.DefaultURL}}{{end}}" alt="{{T "Comment avatar preview"}}" referrerpolicy="no-referrer" {{if not .CommentIdentity.LoggedIn}}data-comment-avatar-preview data-avatar-template="{{.CommentFormAvatar.Template}}" data-avatar-default="{{.CommentFormAvatar.DefaultURL}}"{{end}}>
     </div>
     {{end}}
     <div class="comment-respond-head">
-      <strong class="comment-respond-title">发表评论</strong>
-      <mdui-button-icon type="button" class="comment-cancel-reply" title="取消回复" hidden><mdui-icon name="close"></mdui-icon></mdui-button-icon>
+      <strong class="comment-respond-title">{{T "Leave a Comment"}}</strong>
+      <mdui-button-icon type="button" class="comment-cancel-reply" title="{{T "Cancel reply"}}" hidden><mdui-icon name="close"></mdui-icon></mdui-button-icon>
     </div>
     {{if .CommentIdentity.LoggedIn}}
     <div class="comment-current-user">
-      <strong>以 {{.CommentIdentity.Name}} 身份评论</strong>
+      <strong>{{printf (T "Commenting as %s") .CommentIdentity.Name}}</strong>
     </div>
     {{else}}
     <div class="comment-web">
-      <mdui-text-field name="author" label="称呼" value="{{remember "author"}}" required></mdui-text-field>
-      <mdui-text-field name="mail" label="邮箱" type="email" value="{{remember "mail"}}" {{if .CommentsRequireMail}}required{{end}}></mdui-text-field>
-      <mdui-text-field name="url" label="网址" value="{{remember "url"}}" {{if .CommentsRequireURL}}required{{end}}></mdui-text-field>
+      <mdui-text-field name="author" label="{{T "Name"}}" value="{{remember "author"}}" required></mdui-text-field>
+      <mdui-text-field name="mail" label="{{T "Email"}}" type="email" value="{{remember "mail"}}" {{if .CommentsRequireMail}}required{{end}}></mdui-text-field>
+      <mdui-text-field name="url" label="{{T "Website"}}" value="{{remember "url"}}" {{if .CommentsRequireURL}}required{{end}}></mdui-text-field>
     </div>
     {{end}}
-    <mdui-text-field class="comment-textarea" name="text" label="评论" rows="5" required></mdui-text-field>
-    <div class="comment-form-button"><mdui-button type="submit">提交评论</mdui-button></div>
+    <mdui-text-field class="comment-textarea" name="text" label="{{T "Comments"}}" rows="5" required></mdui-text-field>
+    <div class="comment-form-button"><mdui-button type="submit">{{T "Submit Comment"}}</mdui-button></div>
     {{if $commentBgImg}}
     <img class="comment-bg-image" src="{{$commentBgImg}}" alt="">
     {{end}}
@@ -147,14 +147,14 @@
   <div class="comment-list">
     {{range .Comments}}{{template "comment_item" .}}
     {{else}}
-    <p class="muted">还没有评论。</p>
+    <p class="muted">{{T "No comments yet."}}</p>
     {{end}}
   </div>
   {{if gt .CommentPager.TotalPages 1}}
   <nav class="pagination comment-pagination">
-    {{if .CommentPager.HasPrev}}<a href="{{.CommentPager.PrevURL}}"><mdui-icon name="chevron_left"></mdui-icon>上一页</a>{{else}}<span>上一页</span>{{end}}
+    {{if .CommentPager.HasPrev}}<a href="{{.CommentPager.PrevURL}}"><mdui-icon name="chevron_left"></mdui-icon>{{T "Previous"}}</a>{{else}}<span>{{T "Previous"}}</span>{{end}}
     <span>{{.CommentPager.Page}} / {{.CommentPager.TotalPages}}</span>
-    {{if .CommentPager.HasNext}}<a href="{{.CommentPager.NextURL}}">下一页<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span>下一页</span>{{end}}
+    {{if .CommentPager.HasNext}}<a href="{{.CommentPager.NextURL}}">{{T "Next"}}<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span>{{T "Next"}}</span>{{end}}
   </nav>
   {{end}}
 </section>

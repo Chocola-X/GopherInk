@@ -1,23 +1,23 @@
 {{define "content"}}
-<div class="page-head"><div><h1>个人设置</h1><p class="muted">更新个人资料和密码。</p></div></div>
-{{if .Saved}}<div class="notice">已保存。</div>{{end}}
+<div class="page-head"><div><h1>{{T "Profile"}}</h1><p class="muted">{{T "Update your profile and password."}}</p></div></div>
+{{if .Saved}}<div class="notice">{{T "Saved."}}</div>{{end}}
 <form method="post" class="form-panel field-stack profile-panel">
   <img class="profile-avatar" src="{{adminAvatarURL .User.Mail 176}}" alt="">
-  <mdui-text-field label="用户名" value="{{.User.Name}}" disabled></mdui-text-field>
-  <mdui-text-field name="screenName" label="昵称" value="{{.User.ScreenName}}" {{if fieldError .Errors "screenName"}}helper="{{fieldError .Errors "screenName"}}"{{end}}></mdui-text-field>
-  <mdui-text-field name="mail" label="邮箱" value="{{.User.Mail}}" {{if fieldError .Errors "mail"}}helper="{{fieldError .Errors "mail"}}"{{end}}></mdui-text-field>
-  <mdui-text-field name="url" label="个人主页" value="{{.User.URL}}" {{if fieldError .Errors "url"}}helper="{{fieldError .Errors "url"}}"{{end}}></mdui-text-field>
-  <mdui-text-field name="password" label="新密码" type="password" helper="{{if fieldError .Errors "password"}}{{fieldError .Errors "password"}}{{else}}留空表示不修改{{end}}"></mdui-text-field>
-  <mdui-text-field name="confirm" label="确认新密码" type="password" helper="{{if fieldError .Errors "confirm"}}{{fieldError .Errors "confirm"}}{{else}}修改密码时需要再次输入{{end}}"></mdui-text-field>
-  <div class="form-actions"><mdui-button type="submit">保存</mdui-button></div>
+  <mdui-text-field label="{{T "Username"}}" value="{{.User.Name}}" disabled></mdui-text-field>
+  <mdui-text-field name="screenName" label="{{T "Nickname"}}" value="{{.User.ScreenName}}" {{if fieldError .Errors "screenName"}}helper="{{fieldError .Errors "screenName"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="mail" label="{{T "Email"}}" value="{{.User.Mail}}" {{if fieldError .Errors "mail"}}helper="{{fieldError .Errors "mail"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="url" label="{{T "Website"}}" value="{{.User.URL}}" {{if fieldError .Errors "url"}}helper="{{fieldError .Errors "url"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="password" label="{{T "New password"}}" type="password" helper="{{if fieldError .Errors "password"}}{{fieldError .Errors "password"}}{{else}}{{T "Leave blank to keep unchanged"}}{{end}}"></mdui-text-field>
+  <mdui-text-field name="confirm" label="{{T "Confirm new password"}}" type="password" helper="{{if fieldError .Errors "confirm"}}{{fieldError .Errors "confirm"}}{{else}}{{T "Required again when changing password"}}{{end}}"></mdui-text-field>
+  <div class="form-actions"><mdui-button type="submit">{{T "Save"}}</mdui-button></div>
 </form>
 <section class="form-panel profile-security-panel">
-  <div><h2>会话安全</h2><p class="muted">吊销除当前浏览器之外的所有已登录会话。</p></div>
-  <form method="post" action="/admin/profile/revoke-sessions"><mdui-button type="submit" variant="outlined"><mdui-icon slot="icon" name="logout"></mdui-icon>吊销其他会话</mdui-button></form>
+  <div><h2>{{T "Session Security"}}</h2><p class="muted">{{T "Revoke all sessions except the current browser."}}</p></div>
+  <form method="post" action="/admin/profile/revoke-sessions"><mdui-button type="submit" variant="outlined"><mdui-icon slot="icon" name="logout"></mdui-icon>{{T "Revoke other sessions"}}</mdui-button></form>
 </section>
 {{if .PersonalPlugins}}
 <section class="form-panel field-stack">
-  <h2>插件个人设置</h2>
+  <h2>{{T "Plugin Personal Settings"}}</h2>
   {{range .PersonalPlugins}}<mdui-list-item href="/admin/profile/plugins/{{.Name}}"><mdui-icon slot="icon" name="tune"></mdui-icon>{{.Label}}</mdui-list-item>{{end}}
 </section>
 {{end}}

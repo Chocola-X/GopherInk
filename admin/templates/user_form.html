@@ -1,20 +1,20 @@
 {{define "content"}}
-<div class="page-head"><div><h1>{{.Title}}</h1></div><mdui-button variant="outlined" href="/admin/users">返回</mdui-button></div>
+<div class="page-head"><div><h1>{{.Title}}</h1></div><mdui-button variant="outlined" href="/admin/users">{{T "Back"}}</mdui-button></div>
 <form method="post" action="{{.Action}}" class="form-panel field-stack">
-  <mdui-text-field name="name" label="用户名" value="{{.User.Name}}" {{if fieldError .Errors "name"}}helper="{{fieldError .Errors "name"}}"{{end}} required></mdui-text-field>
-  <mdui-text-field name="screenName" label="昵称" value="{{.User.ScreenName}}" {{if fieldError .Errors "screenName"}}helper="{{fieldError .Errors "screenName"}}"{{end}}></mdui-text-field>
-  <mdui-text-field name="mail" label="邮箱" value="{{.User.Mail}}" {{if fieldError .Errors "mail"}}helper="{{fieldError .Errors "mail"}}"{{end}}></mdui-text-field>
-  <mdui-text-field name="url" label="个人主页" value="{{.User.URL}}" {{if fieldError .Errors "url"}}helper="{{fieldError .Errors "url"}}"{{end}}></mdui-text-field>
-  <mdui-text-field name="password" label="密码" type="password" helper="{{if fieldError .Errors "password"}}{{fieldError .Errors "password"}}{{else}}编辑用户时留空表示不修改{{end}}"></mdui-text-field>
-  <mdui-text-field name="confirm" label="确认密码" type="password" helper="{{if fieldError .Errors "confirm"}}{{fieldError .Errors "confirm"}}{{else}}请再次输入上面的密码{{end}}"></mdui-text-field>
-  <mdui-select name="role" label="用户组" value="{{if .User.Role}}{{.User.Role}}{{else}}subscriber{{end}}">
-    <mdui-menu-item value="administrator">管理员</mdui-menu-item>
-    <mdui-menu-item value="editor">编辑</mdui-menu-item>
-    <mdui-menu-item value="contributor">贡献者</mdui-menu-item>
-    <mdui-menu-item value="subscriber">关注者</mdui-menu-item>
-    <mdui-menu-item value="visitor">访问者</mdui-menu-item>
+  <mdui-text-field name="name" label="{{T "Username"}}" value="{{.User.Name}}" {{if fieldError .Errors "name"}}helper="{{fieldError .Errors "name"}}"{{end}} required></mdui-text-field>
+  <mdui-text-field name="screenName" label="{{T "Nickname"}}" value="{{.User.ScreenName}}" {{if fieldError .Errors "screenName"}}helper="{{fieldError .Errors "screenName"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="mail" label="{{T "Email"}}" value="{{.User.Mail}}" {{if fieldError .Errors "mail"}}helper="{{fieldError .Errors "mail"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="url" label="{{T "Website"}}" value="{{.User.URL}}" {{if fieldError .Errors "url"}}helper="{{fieldError .Errors "url"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="password" label="{{T "Password"}}" type="password" helper="{{if fieldError .Errors "password"}}{{fieldError .Errors "password"}}{{else}}{{T "Leave blank when editing a user to keep unchanged"}}{{end}}"></mdui-text-field>
+  <mdui-text-field name="confirm" label="{{T "Confirm password"}}" type="password" helper="{{if fieldError .Errors "confirm"}}{{fieldError .Errors "confirm"}}{{else}}{{T "Enter the password again"}}{{end}}"></mdui-text-field>
+  <mdui-select name="role" label="{{T "Role"}}" value="{{if .User.Role}}{{.User.Role}}{{else}}subscriber{{end}}">
+    <mdui-menu-item value="administrator">{{T "Administrator"}}</mdui-menu-item>
+    <mdui-menu-item value="editor">{{T "Editor"}}</mdui-menu-item>
+    <mdui-menu-item value="contributor">{{T "Contributor"}}</mdui-menu-item>
+    <mdui-menu-item value="subscriber">{{T "Subscriber"}}</mdui-menu-item>
+    <mdui-menu-item value="visitor">{{T "Visitor"}}</mdui-menu-item>
   </mdui-select>
   {{if fieldError .Errors "role"}}<div class="notice danger">{{fieldError .Errors "role"}}</div>{{end}}
-  <div class="form-actions"><mdui-button type="submit">保存</mdui-button></div>
+  <div class="form-actions"><mdui-button type="submit">{{T "Save"}}</mdui-button></div>
 </form>
 {{end}}

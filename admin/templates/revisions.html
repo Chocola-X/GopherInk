@@ -1,7 +1,7 @@
 {{define "content"}}
 <div class="page-head">
-  <div><h1>修订版本</h1><p class="muted">{{.Content.Title}}</p></div>
-  <mdui-button variant="outlined" href="{{if eq .Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{.Content.CID}}/edit">返回编辑</mdui-button>
+  <div><h1>{{T "Revisions"}}</h1><p class="muted">{{.Content.Title}}</p></div>
+  <mdui-button variant="outlined" href="{{if eq .Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{.Content.CID}}/edit">{{T "Back to editor"}}</mdui-button>
 </div>
 <section class="revision-list">
   {{range .Revisions}}
@@ -17,19 +17,19 @@
       <p class="revision-full" hidden>{{.Text}}</p>
     </div>
     <div class="revision-actions">
-      <mdui-button type="button" variant="text" class="revision-toggle" data-open-label="查看" data-close-label="收起">查看</mdui-button>
+      <mdui-button type="button" variant="text" class="revision-toggle" data-open-label="{{T "View"}}" data-close-label="{{T "Collapse"}}">{{T "View"}}</mdui-button>
       <form method="post" action="{{if eq $.Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{$.Content.CID}}/restore">
         <input type="hidden" name="rid" value="{{.RID}}">
-        <mdui-button type="submit" variant="outlined">恢复</mdui-button>
+        <mdui-button type="submit" variant="outlined">{{T "Restore"}}</mdui-button>
       </form>
       <form method="post" action="{{if eq $.Type "page"}}/admin/pages{{else}}/admin/posts{{end}}/{{$.Content.CID}}/revisions">
         <input type="hidden" name="rid" value="{{.RID}}">
-        <mdui-button type="submit" variant="outlined">删除</mdui-button>
+        <mdui-button type="submit" variant="outlined">{{T "Delete"}}</mdui-button>
       </form>
     </div>
   </article>
   {{else}}
-  <div class="revision-empty muted">暂无修订版本。</div>
+  <div class="revision-empty muted">{{T "No revisions."}}</div>
   {{end}}
 </section>
 {{end}}

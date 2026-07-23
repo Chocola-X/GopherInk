@@ -1,63 +1,63 @@
 {{define "content"}}
-<div class="page-head"><div><h1>评论设置</h1></div></div>
+<div class="page-head"><div><h1>{{T "Discussion Settings"}}</h1></div></div>
 {{template "options_tabs" .}}
-{{if .Error}}<div class="notice danger">{{.Error}}</div>{{end}}
+{{if .Error}}<div class="notice danger">{{T .Error}}</div>{{end}}
 <form method="post" class="form-panel field-stack">
   <fieldset class="fieldset comment-processing-options comment-processing-layout" data-comment-processing-options>
-    <legend>评论处理</legend>
-    <mdui-select class="comment-processing-primary" name="comments_moderation_mode" label="评论处理方式" value="{{index .Options "comments_moderation_mode"}}">
-      <mdui-menu-item value="open">评论不需要审核</mdui-menu-item>
-      <mdui-menu-item value="all">所有评论必须审核</mdui-menu-item>
-      <mdui-menu-item value="approved_author">评论者须有评论通过审核</mdui-menu-item>
+    <legend>{{T "Comment Moderation"}}</legend>
+    <mdui-select class="comment-processing-primary" name="comments_moderation_mode" label="{{T "Moderation mode"}}" value="{{index .Options "comments_moderation_mode"}}">
+      <mdui-menu-item value="open">{{T "No moderation required"}}</mdui-menu-item>
+      <mdui-menu-item value="all">{{T "All comments require moderation"}}</mdui-menu-item>
+      <mdui-menu-item value="approved_author">{{T "Commenter must have an approved comment"}}</mdui-menu-item>
     </mdui-select>
-    <mdui-text-field class="comment-processing-primary" name="comments_auto_close" label="自动关闭评论天数" type="number" min="0" step="1" helper="0 表示不自动关闭" value="{{index .Options "comments_auto_close"}}"></mdui-text-field>
+    <mdui-text-field class="comment-processing-primary" name="comments_auto_close" label="{{T "Auto-close comments after days"}}" type="number" min="0" step="1" helper="{{T "0 disables auto-close"}}" value="{{index .Options "comments_auto_close"}}"></mdui-text-field>
     <div class="comment-processing-primary" data-comment-interval {{if ne (index .Options "comments_post_interval_enable") "1"}}hidden{{end}}>
-      <mdui-text-field name="comments_post_interval" label="评论间隔秒数" type="number" min="1" max="86400" step="1" value="{{index .Options "comments_post_interval"}}" helper="登录的编辑者和内容作者不受此限制"></mdui-text-field>
+      <mdui-text-field name="comments_post_interval" label="{{T "Comment interval seconds"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "comments_post_interval"}}" helper="{{T "Logged-in editors and content authors are exempt"}}"></mdui-text-field>
     </div>
     <div class="comment-option-row comment-processing-toggle">
-      <mdui-checkbox name="comments_post_interval_enable" value="1" {{if eq (index .Options "comments_post_interval_enable") "1"}}checked{{end}}>限制同一内容、同一 IP 的评论间隔</mdui-checkbox>
+      <mdui-checkbox name="comments_post_interval_enable" value="1" {{if eq (index .Options "comments_post_interval_enable") "1"}}checked{{end}}>{{T "Limit comment interval by content and IP"}}</mdui-checkbox>
       <input type="hidden" name="comments_post_interval_enable" value="0">
     </div>
     <div class="comment-option-row comment-processing-toggle">
-      <mdui-checkbox name="comments_check_referer" value="1" {{if eq (index .Options "comments_check_referer") "1"}}checked{{end}}>检查评论来源页与内容链接一致</mdui-checkbox>
+      <mdui-checkbox name="comments_check_referer" value="1" {{if eq (index .Options "comments_check_referer") "1"}}checked{{end}}>{{T "Require referer to match content URL"}}</mdui-checkbox>
       <input type="hidden" name="comments_check_referer" value="0">
     </div>
     <div class="comment-option-row comment-processing-toggle">
-      <mdui-checkbox name="comments_antispam" value="1" {{if eq (index .Options "comments_antispam") "1"}}checked{{end}}>启用基础反垃圾处理</mdui-checkbox>
+      <mdui-checkbox name="comments_antispam" value="1" {{if eq (index .Options "comments_antispam") "1"}}checked{{end}}>{{T "Enable basic anti-spam checks"}}</mdui-checkbox>
       <input type="hidden" name="comments_antispam" value="0">
     </div>
-    <mdui-text-field class="comment-processing-wide" name="comments_stop_words" label="停用词" rows="3" helper="每行或逗号分隔；命中后进入垃圾评论">{{index .Options "comments_stop_words"}}</mdui-text-field>
-    <mdui-text-field class="comment-processing-wide" name="comments_ip_blacklist" label="IP 黑名单" rows="3" helper="每行或逗号分隔；支持以 * 结尾的网段前缀">{{index .Options "comments_ip_blacklist"}}</mdui-text-field>
+    <mdui-text-field class="comment-processing-wide" name="comments_stop_words" label="{{T "Stop words"}}" rows="3" helper="{{T "One per line or comma-separated; matches become spam"}}">{{index .Options "comments_stop_words"}}</mdui-text-field>
+    <mdui-text-field class="comment-processing-wide" name="comments_ip_blacklist" label="{{T "IP blacklist"}}" rows="3" helper="{{T "One per line or comma-separated; supports prefixes ending with *"}}">{{index .Options "comments_ip_blacklist"}}</mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset settings-grid-two">
-    <legend>访客身份</legend>
+    <legend>{{T "Visitor Identity"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="comments_require_mail" value="1" {{if eq (index .Options "comments_require_mail") "1"}}checked{{end}}>访客必须填写邮箱</mdui-checkbox>
+      <mdui-checkbox name="comments_require_mail" value="1" {{if eq (index .Options "comments_require_mail") "1"}}checked{{end}}>{{T "Visitors must enter email"}}</mdui-checkbox>
       <input type="hidden" name="comments_require_mail" value="0">
     </div>
     <div class="comment-option-row">
-      <mdui-checkbox name="comments_require_url" value="1" {{if eq (index .Options "comments_require_url") "1"}}checked{{end}}>访客必须填写网址</mdui-checkbox>
+      <mdui-checkbox name="comments_require_url" value="1" {{if eq (index .Options "comments_require_url") "1"}}checked{{end}}>{{T "Visitors must enter website"}}</mdui-checkbox>
       <input type="hidden" name="comments_require_url" value="0">
     </div>
     <div class="comment-option-row">
-      <mdui-checkbox name="comments_show_url" value="1" {{if eq (index .Options "comments_show_url") "1"}}checked{{end}}>评论者名称显示主页链接</mdui-checkbox>
+      <mdui-checkbox name="comments_show_url" value="1" {{if eq (index .Options "comments_show_url") "1"}}checked{{end}}>{{T "Link commenter name to website"}}</mdui-checkbox>
       <input type="hidden" name="comments_show_url" value="0">
     </div>
     <div class="comment-option-row">
-      <mdui-checkbox name="comments_url_nofollow" value="1" {{if eq (index .Options "comments_url_nofollow") "1"}}checked{{end}}>评论者链接添加 nofollow</mdui-checkbox>
+      <mdui-checkbox name="comments_url_nofollow" value="1" {{if eq (index .Options "comments_url_nofollow") "1"}}checked{{end}}>{{T "Add nofollow to commenter links"}}</mdui-checkbox>
       <input type="hidden" name="comments_url_nofollow" value="0">
     </div>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>头像</legend>
+    <legend>{{T "Avatar"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="comments_avatar" value="1" {{if eq (index .Options "comments_avatar") "1"}}checked{{end}}>显示评论者头像</mdui-checkbox>
+      <mdui-checkbox name="comments_avatar" value="1" {{if eq (index .Options "comments_avatar") "1"}}checked{{end}}>{{T "Show commenter avatars"}}</mdui-checkbox>
       <input type="hidden" name="comments_avatar" value="0">
     </div>
-    <mdui-text-field name="avatar_url_template" label="头像服务 URL 模板" value="{{index .Options "avatar_url_template"}}" placeholder="https://weavatar.com/avatar/{hash}?s={size}" helper="这里填写头像服务地址，不是邮箱地址；留空使用 Gravatar；必须包含 {hash}，可选 {size}"></mdui-text-field>
-    <mdui-select name="comments_avatar_rating" label="Gravatar 评级" value="{{index .Options "comments_avatar_rating"}}">
+    <mdui-text-field name="avatar_url_template" label="{{T "Avatar service URL template"}}" value="{{index .Options "avatar_url_template"}}" placeholder="https://weavatar.com/avatar/{hash}?s={size}" helper="{{T "Enter avatar service URL, not an email address; leave blank for Gravatar; must include {hash}, optional {size}"}}"></mdui-text-field>
+    <mdui-select name="comments_avatar_rating" label="{{T "Gravatar rating"}}" value="{{index .Options "comments_avatar_rating"}}">
       <mdui-menu-item value="g">G</mdui-menu-item>
       <mdui-menu-item value="pg">PG</mdui-menu-item>
       <mdui-menu-item value="r">R</mdui-menu-item>
@@ -66,31 +66,31 @@
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>排序和分页</legend>
-    <mdui-select name="comments_order" label="评论排序" value="{{index .Options "comments_order"}}">
-      <mdui-menu-item value="ASC">较旧在前</mdui-menu-item>
-      <mdui-menu-item value="DESC">较新在前</mdui-menu-item>
+    <legend>{{T "Sorting and Pagination"}}</legend>
+    <mdui-select name="comments_order" label="{{T "Comment order"}}" value="{{index .Options "comments_order"}}">
+      <mdui-menu-item value="ASC">{{T "Older first"}}</mdui-menu-item>
+      <mdui-menu-item value="DESC">{{T "Newer first"}}</mdui-menu-item>
     </mdui-select>
-    <mdui-select name="comments_page_display" label="默认评论页" value="{{index .Options "comments_page_display"}}">
-      <mdui-menu-item value="first">第一页</mdui-menu-item>
-      <mdui-menu-item value="last">最后一页</mdui-menu-item>
+    <mdui-select name="comments_page_display" label="{{T "Default comment page"}}" value="{{index .Options "comments_page_display"}}">
+      <mdui-menu-item value="first">{{T "First page"}}</mdui-menu-item>
+      <mdui-menu-item value="last">{{T "Last page"}}</mdui-menu-item>
     </mdui-select>
-    <mdui-text-field name="comment_date_format" label="评论日期格式" value="{{index .Options "comment_date_format"}}"></mdui-text-field>
-    <mdui-text-field name="comments_list_size" label="后台每页评论数" type="number" min="1" max="100" step="1" value="{{index .Options "comments_list_size"}}"></mdui-text-field>
-    <mdui-text-field name="comments_page_size" label="前台每页评论数" type="number" min="1" max="1000" step="1" value="{{index .Options "comments_page_size"}}"></mdui-text-field>
-    <mdui-text-field name="comments_max_nesting_levels" label="最大嵌套层级" type="number" min="2" max="7" step="1" value="{{index .Options "comments_max_nesting_levels"}}"></mdui-text-field>
+    <mdui-text-field name="comment_date_format" label="{{T "Comment date format"}}" value="{{index .Options "comment_date_format"}}"></mdui-text-field>
+    <mdui-text-field name="comments_list_size" label="{{T "Admin comments per page"}}" type="number" min="1" max="100" step="1" value="{{index .Options "comments_list_size"}}"></mdui-text-field>
+    <mdui-text-field name="comments_page_size" label="{{T "Frontend comments per page"}}" type="number" min="1" max="1000" step="1" value="{{index .Options "comments_page_size"}}"></mdui-text-field>
+    <mdui-text-field name="comments_max_nesting_levels" label="{{T "Maximum nesting level"}}" type="number" min="2" max="7" step="1" value="{{index .Options "comments_max_nesting_levels"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset comment-format-settings">
-    <legend>内容格式</legend>
+    <legend>{{T "Content Format"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="comments_markdown" value="1" {{if eq (index .Options "comments_markdown") "1"}}checked{{end}}>评论支持 Markdown</mdui-checkbox>
+      <mdui-checkbox name="comments_markdown" value="1" {{if eq (index .Options "comments_markdown") "1"}}checked{{end}}>{{T "Enable Markdown in comments"}}</mdui-checkbox>
       <input type="hidden" name="comments_markdown" value="0">
     </div>
-    <mdui-text-field class="full-span" name="comments_html_tag_allowed" label="允许的 HTML 标签" helper="例如：a,code,strong；默认全部转义" value="{{index .Options "comments_html_tag_allowed"}}"></mdui-text-field>
+    <mdui-text-field class="full-span" name="comments_html_tag_allowed" label="{{T "Allowed HTML tags"}}" helper="{{T "Example: a,code,strong; escaped by default"}}" value="{{index .Options "comments_html_tag_allowed"}}"></mdui-text-field>
   </fieldset>
-  <div class="form-actions"><mdui-button type="submit">保存设置</mdui-button></div>
+  <div class="form-actions"><mdui-button type="submit">{{T "Save Settings"}}</mdui-button></div>
 </form>
 {{end}}
 
-{{define "options_tabs"}}<div class="subnav"><mdui-button variant="tonal" href="/admin/options/general"><mdui-icon slot="icon" name="tune"></mdui-icon>基本</mdui-button><mdui-button variant="tonal" href="/admin/options/reading"><mdui-icon slot="icon" name="menu_book"></mdui-icon>阅读</mdui-button><mdui-button variant="filled" href="/admin/options/discussion"><mdui-icon slot="icon" name="forum"></mdui-icon>评论</mdui-button><mdui-button variant="tonal" href="/admin/options/permalink"><mdui-icon slot="icon" name="link"></mdui-icon>永久链接</mdui-button></div>{{end}}
+{{define "options_tabs"}}<div class="subnav"><mdui-button variant="tonal" href="/admin/options/general"><mdui-icon slot="icon" name="tune"></mdui-icon>{{T "Basic"}}</mdui-button><mdui-button variant="tonal" href="/admin/options/reading"><mdui-icon slot="icon" name="menu_book"></mdui-icon>{{T "Reading"}}</mdui-button><mdui-button variant="filled" href="/admin/options/discussion"><mdui-icon slot="icon" name="forum"></mdui-icon>{{T "Discussion"}}</mdui-button><mdui-button variant="tonal" href="/admin/options/permalink"><mdui-icon slot="icon" name="link"></mdui-icon>{{T "Permalink"}}</mdui-button></div>{{end}}

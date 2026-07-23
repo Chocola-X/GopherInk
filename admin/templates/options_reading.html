@@ -1,40 +1,40 @@
 {{define "content"}}
-<div class="page-head"><div><h1>阅读设置</h1></div></div>{{template "options_tabs" .}}{{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
+<div class="page-head"><div><h1>{{T "Reading Settings"}}</h1></div></div>{{template "options_tabs" .}}{{if .Saved}}<div class="notice">{{T "Settings saved."}}</div>{{end}}
 <form method="post" class="form-panel field-stack">
   <fieldset class="fieldset settings-grid-two">
-    <legend>文章显示</legend>
-    <mdui-text-field name="post_date_format" label="文章日期格式" value="{{index .Options "post_date_format"}}"></mdui-text-field>
-    <mdui-text-field name="posts_list_size" label="文章列表数目" type="number" value="{{index .Options "posts_list_size"}}"></mdui-text-field>
-    <mdui-text-field name="page_size" label="每页文章数目" type="number" value="{{index .Options "page_size"}}"></mdui-text-field>
-    <mdui-select name="content_render_mode" label="正文渲染模式" value="{{index .Options "content_render_mode"}}">
-      <mdui-menu-item value="markdown">Markdown（安全转义 HTML）</mdui-menu-item>
-      <mdui-menu-item value="autop">纯文本 / AutoP</mdui-menu-item>
-      <mdui-menu-item value="html">允许 HTML（仅用于受信任作者）</mdui-menu-item>
+    <legend>{{T "Post Display"}}</legend>
+    <mdui-text-field name="post_date_format" label="{{T "Post date format"}}" value="{{index .Options "post_date_format"}}"></mdui-text-field>
+    <mdui-text-field name="posts_list_size" label="{{T "Recent post list size"}}" type="number" value="{{index .Options "posts_list_size"}}"></mdui-text-field>
+    <mdui-text-field name="page_size" label="{{T "Posts per page"}}" type="number" value="{{index .Options "page_size"}}"></mdui-text-field>
+    <mdui-select name="content_render_mode" label="{{T "Content render mode"}}" value="{{index .Options "content_render_mode"}}">
+      <mdui-menu-item value="markdown">{{T "Markdown (escape HTML safely)"}}</mdui-menu-item>
+      <mdui-menu-item value="autop">{{T "Plain text / AutoP"}}</mdui-menu-item>
+      <mdui-menu-item value="html">{{T "Allow HTML (trusted authors only)"}}</mdui-menu-item>
     </mdui-select>
   </fieldset>
 
   <fieldset class="fieldset settings-grid-two">
-    <legend>首页和聚合</legend>
-    <mdui-select name="feed_full_text" label="聚合全文输出" value="{{index .Options "feed_full_text"}}">
-      <mdui-menu-item value="0">仅输出摘要</mdui-menu-item>
-      <mdui-menu-item value="1">全文输出</mdui-menu-item>
+    <legend>{{T "Homepage and Feeds"}}</legend>
+    <mdui-select name="feed_full_text" label="{{T "Feed content"}}" value="{{index .Options "feed_full_text"}}">
+      <mdui-menu-item value="0">{{T "Excerpt only"}}</mdui-menu-item>
+      <mdui-menu-item value="1">{{T "Full text"}}</mdui-menu-item>
     </mdui-select>
-    <mdui-select name="front_page_type" label="首页显示" value="{{index .Options "front_page_type"}}">
-      <mdui-menu-item value="posts">最新文章</mdui-menu-item>
-      <mdui-menu-item value="page">指定页面</mdui-menu-item>
+    <mdui-select name="front_page_type" label="{{T "Homepage displays"}}" value="{{index .Options "front_page_type"}}">
+      <mdui-menu-item value="posts">{{T "Latest Posts"}}</mdui-menu-item>
+      <mdui-menu-item value="page">{{T "Specific Page"}}</mdui-menu-item>
     </mdui-select>
-    <mdui-text-field name="front_page_cid" label="首页页面 CID" type="number" helper="首页显示为指定页面时生效" value="{{index .Options "front_page_cid"}}"></mdui-text-field>
-    <mdui-text-field name="posts_index_path" label="文章列表路径" helper="首页不是最新文章时可设置，例如 /blog" value="{{index .Options "posts_index_path"}}"></mdui-text-field>
+    <mdui-text-field name="front_page_cid" label="{{T "Homepage page CID"}}" type="number" helper="{{T "Used when homepage displays a specific page"}}" value="{{index .Options "front_page_cid"}}"></mdui-text-field>
+    <mdui-text-field name="posts_index_path" label="{{T "Posts index path"}}" helper="{{T "Use when homepage is not latest posts, e.g. /blog"}}" value="{{index .Options "posts_index_path"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>修订版本</legend>
+    <legend>{{T "Revisions"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="revision_enabled" value="1" {{if eq (index .Options "revision_enabled") "1"}}checked{{end}}>启用文章和页面快照</mdui-checkbox>
+      <mdui-checkbox name="revision_enabled" value="1" {{if eq (index .Options "revision_enabled") "1"}}checked{{end}}>{{T "Enable post and page snapshots"}}</mdui-checkbox>
       <input type="hidden" name="revision_enabled" value="0">
     </div>
-    <mdui-text-field name="revision_limit" label="每篇内容保留的快照数量" type="number" min="0" max="10000" step="1" helper="默认 20；填写 0 表示不限制数量" value="{{index .Options "revision_limit"}}"></mdui-text-field>
+    <mdui-text-field name="revision_limit" label="{{T "Snapshots retained per content item"}}" type="number" min="0" max="10000" step="1" helper="{{T "Default 20; use 0 for unlimited"}}" value="{{index .Options "revision_limit"}}"></mdui-text-field>
   </fieldset>
-  <div class="form-actions"><mdui-button type="submit">保存设置</mdui-button></div>
+  <div class="form-actions"><mdui-button type="submit">{{T "Save Settings"}}</mdui-button></div>
 </form>
-{{end}}{{define "options_tabs"}}<div class="subnav"><mdui-button variant="tonal" href="/admin/options/general"><mdui-icon slot="icon" name="tune"></mdui-icon>基本</mdui-button><mdui-button variant="filled" href="/admin/options/reading"><mdui-icon slot="icon" name="menu_book"></mdui-icon>阅读</mdui-button><mdui-button variant="tonal" href="/admin/options/discussion"><mdui-icon slot="icon" name="forum"></mdui-icon>评论</mdui-button><mdui-button variant="tonal" href="/admin/options/permalink"><mdui-icon slot="icon" name="link"></mdui-icon>永久链接</mdui-button></div>{{end}}
+{{end}}{{define "options_tabs"}}<div class="subnav"><mdui-button variant="tonal" href="/admin/options/general"><mdui-icon slot="icon" name="tune"></mdui-icon>{{T "Basic"}}</mdui-button><mdui-button variant="filled" href="/admin/options/reading"><mdui-icon slot="icon" name="menu_book"></mdui-icon>{{T "Reading"}}</mdui-button><mdui-button variant="tonal" href="/admin/options/discussion"><mdui-icon slot="icon" name="forum"></mdui-icon>{{T "Discussion"}}</mdui-button><mdui-button variant="tonal" href="/admin/options/permalink"><mdui-icon slot="icon" name="link"></mdui-icon>{{T "Permalink"}}</mdui-button></div>{{end}}

@@ -1,16 +1,16 @@
 {{define "content"}}
-<div class="page-head"><div><h1>{{.Title}}</h1></div><mdui-button variant="outlined" href="{{if eq .Type "tag"}}/admin/tags{{else}}/admin/categories{{end}}">返回</mdui-button></div>
+<div class="page-head"><div><h1>{{.Title}}</h1></div><mdui-button variant="outlined" href="{{if eq .Type "tag"}}/admin/tags{{else}}/admin/categories{{end}}">{{T "Back"}}</mdui-button></div>
 <form method="post" action="{{.Action}}" class="form-panel field-stack">
-  {{if .Error}}<div class="notice danger">{{.Error}}</div>{{end}}
-  <mdui-text-field name="name" label="名称" value="{{.Meta.Name}}" {{if fieldError .Errors "name"}}helper="{{fieldError .Errors "name"}}"{{end}} required></mdui-text-field>
-  <mdui-text-field name="slug" label="缩略名" value="{{.Meta.Slug}}" {{if fieldError .Errors "slug"}}helper="{{fieldError .Errors "slug"}}"{{end}}></mdui-text-field>
-  <mdui-text-field name="description" label="描述" value="{{.Meta.Description}}" {{if fieldError .Errors "description"}}helper="{{fieldError .Errors "description"}}"{{end}}></mdui-text-field>
+  {{if .Error}}<div class="notice danger">{{T .Error}}</div>{{end}}
+  <mdui-text-field name="name" label="{{T "Name"}}" value="{{.Meta.Name}}" {{if fieldError .Errors "name"}}helper="{{fieldError .Errors "name"}}"{{end}} required></mdui-text-field>
+  <mdui-text-field name="slug" label="{{T "Slug"}}" value="{{.Meta.Slug}}" {{if fieldError .Errors "slug"}}helper="{{fieldError .Errors "slug"}}"{{end}}></mdui-text-field>
+  <mdui-text-field name="description" label="{{T "Description"}}" value="{{.Meta.Description}}" {{if fieldError .Errors "description"}}helper="{{fieldError .Errors "description"}}"{{end}}></mdui-text-field>
   {{if eq .Type "category"}}
-  <mdui-select name="parent" label="父级分类" value="{{.Meta.Parent}}">
-    <mdui-menu-item value="0">不选择</mdui-menu-item>
+  <mdui-select name="parent" label="{{T "Parent category"}}" value="{{.Meta.Parent}}">
+    <mdui-menu-item value="0">{{T "None"}}</mdui-menu-item>
     {{range .Categories}}{{if ne .MID $.Meta.MID}}<mdui-menu-item value="{{.MID}}"><span class="meta-parent-option" style="--meta-depth: {{.Depth}}">{{.Name}}</span></mdui-menu-item>{{end}}{{end}}
   </mdui-select>
   {{end}}
-  <div class="form-actions"><mdui-button type="submit">保存</mdui-button></div>
+  <div class="form-actions"><mdui-button type="submit">{{T "Save"}}</mdui-button></div>
 </form>
 {{end}}

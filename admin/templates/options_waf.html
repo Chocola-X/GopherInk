@@ -1,161 +1,161 @@
 {{define "content"}}
 <div class="waf-page {{if eq .WAFTab "logs"}}waf-log-page{{end}}">
-<div class="page-head"><div><h1>WAF</h1><p class="muted">在请求进入业务处理前进行基础限流、路径拦截和公开页缓存。</p></div></div>
-{{if .Saved}}<div class="notice">设置已保存。</div>{{end}}
-{{if .Error}}<div class="notice danger">{{.Error}}</div>{{end}}
+<div class="page-head"><div><h1>WAF</h1><p class="muted">{{T "Apply basic rate limiting, path blocking, and public page caching before requests enter business handlers."}}</p></div></div>
+{{if .Saved}}<div class="notice">{{T "Settings saved."}}</div>{{end}}
+{{if .Error}}<div class="notice danger">{{T .Error}}</div>{{end}}
 <div class="subnav">
-  <mdui-button variant="{{if eq .WAFTab "settings"}}filled{{else}}tonal{{end}}" href="/admin/options/waf"><mdui-icon slot="icon" name="tune"></mdui-icon>设置</mdui-button>
-  <mdui-button variant="{{if eq .WAFTab "logs"}}filled{{else}}tonal{{end}}" href="/admin/options/waf?tab=logs"><mdui-icon slot="icon" name="list_alt"></mdui-icon>WAF 日志</mdui-button>
+  <mdui-button variant="{{if eq .WAFTab "settings"}}filled{{else}}tonal{{end}}" href="/admin/options/waf"><mdui-icon slot="icon" name="tune"></mdui-icon>{{T "Settings"}}</mdui-button>
+  <mdui-button variant="{{if eq .WAFTab "logs"}}filled{{else}}tonal{{end}}" href="/admin/options/waf?tab=logs"><mdui-icon slot="icon" name="list_alt"></mdui-icon>{{T "WAF Logs"}}</mdui-button>
 </div>
 {{if eq .WAFTab "logs"}}
 <section class="form-panel waf-log-panel">
   {{if .WAFLog}}
     <pre class="waf-log-view">{{.WAFLog}}</pre>
   {{else}}
-    <p class="muted waf-log-empty">暂无 WAF 事件。</p>
+    <p class="muted waf-log-empty">{{T "No WAF events."}}</p>
   {{end}}
   <form method="post" class="form-actions waf-log-actions">
     <input type="hidden" name="action" value="clear_waf_log">
-    <mdui-button type="submit" variant="outlined"><mdui-icon slot="icon" name="delete_sweep"></mdui-icon>清理日志</mdui-button>
+    <mdui-button type="submit" variant="outlined"><mdui-icon slot="icon" name="delete_sweep"></mdui-icon>{{T "Clear logs"}}</mdui-button>
   </form>
 </section>
 {{else}}
 <form method="post" class="form-panel field-stack">
   <fieldset class="fieldset">
-    <legend>总开关</legend>
+    <legend>{{T "Master Switch"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_enabled" value="1" {{if eq (index .Options "waf_enabled") "1"}}checked{{end}}>启用 WAF</mdui-checkbox>
+      <mdui-checkbox name="waf_enabled" value="1" {{if eq (index .Options "waf_enabled") "1"}}checked{{end}}>{{T "Enable WAF"}}</mdui-checkbox>
       <input type="hidden" name="waf_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_state_max_entries" label="状态表最大条目数" type="number" min="1000" max="1000000" step="1" value="{{index .Options "waf_state_max_entries"}}" helper="限制限流计数器和封禁表规模；默认 100000"></mdui-text-field>
-    <mdui-text-field name="waf_log_max_entries" label="WAF 日志最大记录条目数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_log_max_entries"}}" helper="超过后自动保留最新记录；默认 1000"></mdui-text-field>
+    <mdui-text-field name="waf_state_max_entries" label="{{T "Maximum state table entries"}}" type="number" min="1000" max="1000000" step="1" value="{{index .Options "waf_state_max_entries"}}" helper="{{T "Limits rate counter and ban table size; default 100000"}}"></mdui-text-field>
+    <mdui-text-field name="waf_log_max_entries" label="{{T "Maximum WAF log entries"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_log_max_entries"}}" helper="{{T "When exceeded, only newest records are kept; default 1000"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>安全响应头</legend>
+    <legend>{{T "Security Headers"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_hsts_enabled" value="1" {{if eq (index .Options "waf_hsts_enabled") "1"}}checked{{end}}>启用 HSTS</mdui-checkbox>
+      <mdui-checkbox name="waf_hsts_enabled" value="1" {{if eq (index .Options "waf_hsts_enabled") "1"}}checked{{end}}>{{T "Enable HSTS"}}</mdui-checkbox>
       <input type="hidden" name="waf_hsts_enabled" value="0">
     </div>
   </fieldset>
 
   <fieldset class="fieldset waf-proxy-settings">
-    <legend>反向代理 IP 信任</legend>
+    <legend>{{T "Reverse Proxy IP Trust"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_trust_proxy_headers" value="1" {{if eq (index .Options "waf_trust_proxy_headers") "1"}}checked{{end}}>信任 X-Forwarded-For / X-Real-IP</mdui-checkbox>
+      <mdui-checkbox name="waf_trust_proxy_headers" value="1" {{if eq (index .Options "waf_trust_proxy_headers") "1"}}checked{{end}}>{{T "Trust X-Forwarded-For / X-Real-IP"}}</mdui-checkbox>
       <input type="hidden" name="waf_trust_proxy_headers" value="0">
     </div>
-    <mdui-select name="waf_trust_proxy_mode" label="匹配模式" value="{{index .Options "waf_trust_proxy_mode"}}">
-      <mdui-menu-item value="allowlist">白名单模式</mdui-menu-item>
-      <mdui-menu-item value="denylist">黑名单模式</mdui-menu-item>
+    <mdui-select name="waf_trust_proxy_mode" label="{{T "Match mode"}}" value="{{index .Options "waf_trust_proxy_mode"}}">
+      <mdui-menu-item value="allowlist">{{T "Allowlist mode"}}</mdui-menu-item>
+      <mdui-menu-item value="denylist">{{T "Denylist mode"}}</mdui-menu-item>
     </mdui-select>
-    <mdui-text-field class="full-span" name="waf_trust_proxy_ips" label="代理 IP 地址组" rows="5" value="{{index .Options "waf_trust_proxy_ips"}}" helper="一行一个 IP 或 CIDR；白名单模式只信任匹配来源，黑名单模式不信任匹配来源"></mdui-text-field>
+    <mdui-text-field class="full-span" name="waf_trust_proxy_ips" label="{{T "Proxy IP list"}}" rows="5" value="{{index .Options "waf_trust_proxy_ips"}}" helper="{{T "One IP or CIDR per line; allowlist trusts matching sources, denylist does not trust matching sources"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>URL 快速索引</legend>
+    <legend>{{T "URL Fast Index"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_url_index_enabled" value="1" {{if eq (index .Options "waf_url_index_enabled") "1"}}checked{{end}}>启用公开 URL 索引拦截</mdui-checkbox>
+      <mdui-checkbox name="waf_url_index_enabled" value="1" {{if eq (index .Options "waf_url_index_enabled") "1"}}checked{{end}}>{{T "Enable public URL index blocking"}}</mdui-checkbox>
       <input type="hidden" name="waf_url_index_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_url_index_ttl" label="索引刷新秒数" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_url_index_ttl"}}"></mdui-text-field>
-    <mdui-text-field name="waf_index_max_items" label="索引最大条目数" type="number" min="100" max="1000000" step="1" value="{{index .Options "waf_index_max_items"}}"></mdui-text-field>
+    <mdui-text-field name="waf_url_index_ttl" label="{{T "Index refresh seconds"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_url_index_ttl"}}"></mdui-text-field>
+    <mdui-text-field name="waf_index_max_items" label="{{T "Maximum index entries"}}" type="number" min="100" max="1000000" step="1" value="{{index .Options "waf_index_max_items"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>公开页缓存</legend>
+    <legend>{{T "Public Page Cache"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_cache_enabled" value="1" {{if eq (index .Options "waf_cache_enabled") "1"}}checked{{end}}>启用公开动态页面缓存</mdui-checkbox>
+      <mdui-checkbox name="waf_cache_enabled" value="1" {{if eq (index .Options "waf_cache_enabled") "1"}}checked{{end}}>{{T "Enable public dynamic page cache"}}</mdui-checkbox>
       <input type="hidden" name="waf_cache_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_cache_ttl" label="缓存 TTL（秒）" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_cache_ttl"}}"></mdui-text-field>
-    <mdui-text-field name="waf_cache_max_entries" label="缓存最大条目数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_cache_max_entries"}}"></mdui-text-field>
+    <mdui-text-field name="waf_cache_ttl" label="{{T "Cache TTL (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_cache_ttl"}}"></mdui-text-field>
+    <mdui-text-field name="waf_cache_max_entries" label="{{T "Maximum cache entries"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_cache_max_entries"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>动态请求限流</legend>
+    <legend>{{T "Dynamic Request Rate Limit"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_dynamic_rate_enabled" value="1" {{if eq (index .Options "waf_dynamic_rate_enabled") "1"}}checked{{end}}>启用动态请求 IP 限流</mdui-checkbox>
+      <mdui-checkbox name="waf_dynamic_rate_enabled" value="1" {{if eq (index .Options "waf_dynamic_rate_enabled") "1"}}checked{{end}}>{{T "Enable dynamic request IP rate limit"}}</mdui-checkbox>
       <input type="hidden" name="waf_dynamic_rate_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_dynamic_rate_window" label="时间窗口（秒）" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_dynamic_rate_window"}}"></mdui-text-field>
-    <mdui-text-field name="waf_dynamic_rate_limit" label="窗口内允许动态请求数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_dynamic_rate_limit"}}"></mdui-text-field>
+    <mdui-text-field name="waf_dynamic_rate_window" label="{{T "Time window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_dynamic_rate_window"}}"></mdui-text-field>
+    <mdui-text-field name="waf_dynamic_rate_limit" label="{{T "Allowed dynamic requests per window"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_dynamic_rate_limit"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>静态资源限流</legend>
+    <legend>{{T "Static Asset Rate Limit"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_static_rate_enabled" value="1" {{if eq (index .Options "waf_static_rate_enabled") "1"}}checked{{end}}>启用主题和后台静态资源 IP 限流</mdui-checkbox>
+      <mdui-checkbox name="waf_static_rate_enabled" value="1" {{if eq (index .Options "waf_static_rate_enabled") "1"}}checked{{end}}>{{T "Enable IP rate limit for theme and admin static assets"}}</mdui-checkbox>
       <input type="hidden" name="waf_static_rate_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_static_rate_window" label="时间窗口（秒）" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_static_rate_window"}}"></mdui-text-field>
-    <mdui-text-field name="waf_static_rate_limit" label="窗口内允许静态资源请求数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_static_rate_limit"}}"></mdui-text-field>
+    <mdui-text-field name="waf_static_rate_window" label="{{T "Time window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_static_rate_window"}}"></mdui-text-field>
+    <mdui-text-field name="waf_static_rate_limit" label="{{T "Allowed static asset requests per window"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_static_rate_limit"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>附件资源限流</legend>
+    <legend>{{T "Attachment Asset Rate Limit"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_upload_rate_enabled" value="1" {{if eq (index .Options "waf_upload_rate_enabled") "1"}}checked{{end}}>启用 /uploads/ 附件资源 IP 限流</mdui-checkbox>
+      <mdui-checkbox name="waf_upload_rate_enabled" value="1" {{if eq (index .Options "waf_upload_rate_enabled") "1"}}checked{{end}}>{{T "Enable IP rate limit for /uploads/ attachments"}}</mdui-checkbox>
       <input type="hidden" name="waf_upload_rate_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_upload_rate_window" label="时间窗口（秒）" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_upload_rate_window"}}"></mdui-text-field>
-    <mdui-text-field name="waf_upload_rate_limit" label="窗口内允许附件请求数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_upload_rate_limit"}}"></mdui-text-field>
+    <mdui-text-field name="waf_upload_rate_window" label="{{T "Time window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_upload_rate_window"}}"></mdui-text-field>
+    <mdui-text-field name="waf_upload_rate_limit" label="{{T "Allowed attachment requests per window"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_upload_rate_limit"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset waf-ban-settings">
-    <legend>附件下载封禁</legend>
+    <legend>{{T "Attachment Download Ban"}}</legend>
     <div class="comment-option-row waf-ban-toggle">
-      <mdui-checkbox name="waf_attachment_ban_enabled" value="1" {{if eq (index .Options "waf_attachment_ban_enabled") "1"}}checked{{end}}>启用附件下载次数封禁</mdui-checkbox>
+      <mdui-checkbox name="waf_attachment_ban_enabled" value="1" {{if eq (index .Options "waf_attachment_ban_enabled") "1"}}checked{{end}}>{{T "Enable attachment download count ban"}}</mdui-checkbox>
       <input type="hidden" name="waf_attachment_ban_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_attachment_ban_window" label="统计窗口（秒）" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_attachment_ban_window"}}"></mdui-text-field>
-    <mdui-text-field name="waf_attachment_ban_limit" label="窗口内允许附件下载次数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_attachment_ban_limit"}}"></mdui-text-field>
-    <mdui-text-field name="waf_attachment_ban_seconds" label="封禁时长（秒）" type="number" min="1" max="604800" step="1" value="{{index .Options "waf_attachment_ban_seconds"}}"></mdui-text-field>
+    <mdui-text-field name="waf_attachment_ban_window" label="{{T "Counting window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_attachment_ban_window"}}"></mdui-text-field>
+    <mdui-text-field name="waf_attachment_ban_limit" label="{{T "Allowed attachment downloads per window"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_attachment_ban_limit"}}"></mdui-text-field>
+    <mdui-text-field name="waf_attachment_ban_seconds" label="{{T "Ban duration (seconds)"}}" type="number" min="1" max="604800" step="1" value="{{index .Options "waf_attachment_ban_seconds"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset waf-ban-settings">
-    <legend>非法路径封禁</legend>
+    <legend>{{T "Invalid Path Ban"}}</legend>
     <div class="comment-option-row waf-ban-toggle">
-      <mdui-checkbox name="waf_invalid_path_enabled" value="1" {{if eq (index .Options "waf_invalid_path_enabled") "1"}}checked{{end}}>启用不存在路径统计封禁</mdui-checkbox>
+      <mdui-checkbox name="waf_invalid_path_enabled" value="1" {{if eq (index .Options "waf_invalid_path_enabled") "1"}}checked{{end}}>{{T "Enable missing path count ban"}}</mdui-checkbox>
       <input type="hidden" name="waf_invalid_path_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_invalid_path_window" label="统计窗口（秒）" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_invalid_path_window"}}"></mdui-text-field>
-    <mdui-text-field name="waf_invalid_path_limit" label="窗口内允许非法路径次数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_invalid_path_limit"}}"></mdui-text-field>
-    <mdui-text-field name="waf_invalid_path_ban_seconds" label="封禁时长（秒）" type="number" min="1" max="604800" step="1" value="{{index .Options "waf_invalid_path_ban_seconds"}}"></mdui-text-field>
+    <mdui-text-field name="waf_invalid_path_window" label="{{T "Counting window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_invalid_path_window"}}"></mdui-text-field>
+    <mdui-text-field name="waf_invalid_path_limit" label="{{T "Allowed invalid paths per window"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_invalid_path_limit"}}"></mdui-text-field>
+    <mdui-text-field name="waf_invalid_path_ban_seconds" label="{{T "Ban duration (seconds)"}}" type="number" min="1" max="604800" step="1" value="{{index .Options "waf_invalid_path_ban_seconds"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>搜索限流</legend>
+    <legend>{{T "Search Rate Limit"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_search_rate_enabled" value="1" {{if eq (index .Options "waf_search_rate_enabled") "1"}}checked{{end}}>启用搜索请求独立限流</mdui-checkbox>
+      <mdui-checkbox name="waf_search_rate_enabled" value="1" {{if eq (index .Options "waf_search_rate_enabled") "1"}}checked{{end}}>{{T "Enable separate search request rate limit"}}</mdui-checkbox>
       <input type="hidden" name="waf_search_rate_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_search_rate_window" label="搜索限流窗口（秒）" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_search_rate_window"}}"></mdui-text-field>
-    <mdui-text-field name="waf_search_rate_limit" label="窗口内允许搜索次数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_search_rate_limit"}}"></mdui-text-field>
+    <mdui-text-field name="waf_search_rate_window" label="{{T "Search rate window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_search_rate_window"}}"></mdui-text-field>
+    <mdui-text-field name="waf_search_rate_limit" label="{{T "Allowed searches per window"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_search_rate_limit"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">
-    <legend>XML-RPC 限流</legend>
+    <legend>{{T "XML-RPC Rate Limit"}}</legend>
     <div class="comment-option-row">
-      <mdui-checkbox name="waf_xmlrpc_rate_enabled" value="1" {{if eq (index .Options "waf_xmlrpc_rate_enabled") "1"}}checked{{end}}>启用 XML-RPC 独立限流</mdui-checkbox>
+      <mdui-checkbox name="waf_xmlrpc_rate_enabled" value="1" {{if eq (index .Options "waf_xmlrpc_rate_enabled") "1"}}checked{{end}}>{{T "Enable separate XML-RPC rate limit"}}</mdui-checkbox>
       <input type="hidden" name="waf_xmlrpc_rate_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_xmlrpc_rate_window" label="XML-RPC 限流窗口（秒）" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_xmlrpc_rate_window"}}"></mdui-text-field>
-    <mdui-text-field name="waf_xmlrpc_rate_limit" label="窗口内允许 XML-RPC 请求数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_xmlrpc_rate_limit"}}"></mdui-text-field>
+    <mdui-text-field name="waf_xmlrpc_rate_window" label="{{T "XML-RPC rate window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_xmlrpc_rate_window"}}"></mdui-text-field>
+    <mdui-text-field name="waf_xmlrpc_rate_limit" label="{{T "Allowed XML-RPC requests per window"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_xmlrpc_rate_limit"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset waf-ban-settings">
-    <legend>后台登录爆破封禁</legend>
+    <legend>{{T "Admin Login Brute-force Ban"}}</legend>
     <div class="comment-option-row waf-ban-toggle">
-      <mdui-checkbox name="waf_login_ban_enabled" value="1" {{if eq (index .Options "waf_login_ban_enabled") "1"}}checked{{end}}>启用登录失败封禁</mdui-checkbox>
+      <mdui-checkbox name="waf_login_ban_enabled" value="1" {{if eq (index .Options "waf_login_ban_enabled") "1"}}checked{{end}}>{{T "Enable login failure ban"}}</mdui-checkbox>
       <input type="hidden" name="waf_login_ban_enabled" value="0">
     </div>
-    <mdui-text-field name="waf_login_window" label="试错统计窗口（秒）" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_login_window"}}"></mdui-text-field>
-    <mdui-text-field name="waf_login_failures" label="窗口内允许失败次数" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_login_failures"}}"></mdui-text-field>
-    <mdui-text-field name="waf_login_ban_seconds" label="封禁时长（秒）" type="number" min="1" max="604800" step="1" value="{{index .Options "waf_login_ban_seconds"}}"></mdui-text-field>
+    <mdui-text-field name="waf_login_window" label="{{T "Login failure counting window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_login_window"}}"></mdui-text-field>
+    <mdui-text-field name="waf_login_failures" label="{{T "Allowed failures per window"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_login_failures"}}"></mdui-text-field>
+    <mdui-text-field name="waf_login_ban_seconds" label="{{T "Ban duration (seconds)"}}" type="number" min="1" max="604800" step="1" value="{{index .Options "waf_login_ban_seconds"}}"></mdui-text-field>
   </fieldset>
 
-  <div class="form-actions"><mdui-button type="submit"><mdui-icon slot="icon" name="security"></mdui-icon>保存设置</mdui-button></div>
+  <div class="form-actions"><mdui-button type="submit"><mdui-icon slot="icon" name="security"></mdui-icon>{{T "Save Settings"}}</mdui-button></div>
 </form>
 {{end}}
 </div>

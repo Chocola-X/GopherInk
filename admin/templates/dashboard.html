@@ -1,62 +1,62 @@
 {{define "content"}}
 <div class="page-head">
   <div>
-    <h1>控制台</h1>
-    <p class="muted">集中查看站点状态，快速进入常用管理功能。</p>
+    <h1>{{T "Dashboard"}}</h1>
+    <p class="muted">{{T "Review site status and jump into common management tasks."}}</p>
   </div>
-  <mdui-button href="/admin/posts/new"><mdui-icon slot="icon" name="add"></mdui-icon>写文章</mdui-button>
+  <mdui-button href="/admin/posts/new"><mdui-icon slot="icon" name="add"></mdui-icon>{{T "New Post"}}</mdui-button>
 </div>
 <section class="grid">
   <a class="stat-panel dashboard-stat-card" href="/admin/posts">
-    <span class="muted">文章</span>
+    <span class="muted">{{T "Posts"}}</span>
     <strong class="stat-value">{{.PostStats.Published}}</strong>
-    <span class="dashboard-stat-detail">已发布 {{.PostStats.Published}} · 草稿 {{.PostStats.Drafts}}</span>
+    <span class="dashboard-stat-detail">{{T "Published"}} {{.PostStats.Published}} · {{T "Drafts"}} {{.PostStats.Drafts}}</span>
   </a>
   <a class="stat-panel dashboard-stat-card" href="/admin/pages">
-    <span class="muted">页面</span>
+    <span class="muted">{{T "Pages"}}</span>
     <strong class="stat-value">{{.PageStats.Published}}</strong>
-    <span class="dashboard-stat-detail">已发布 {{.PageStats.Published}} · 草稿 {{.PageStats.Drafts}}</span>
+    <span class="dashboard-stat-detail">{{T "Published"}} {{.PageStats.Published}} · {{T "Drafts"}} {{.PageStats.Drafts}}</span>
   </a>
   <a class="stat-panel dashboard-stat-card" href="/admin/comments">
-    <span class="muted">评论</span>
+    <span class="muted">{{T "Comments"}}</span>
     <strong class="stat-value">{{.CommentStats.Approved}}</strong>
-    <span class="dashboard-stat-detail">已通过 {{.CommentStats.Approved}} · 待审核 {{.CommentStats.Waiting}} · 垃圾 {{.CommentStats.Spam}}</span>
+    <span class="dashboard-stat-detail">{{T "Approved"}} {{.CommentStats.Approved}} · {{T "Pending"}} {{.CommentStats.Waiting}} · {{T "Spam"}} {{.CommentStats.Spam}}</span>
   </a>
   <a class="stat-panel dashboard-stat-card" href="/admin/plugins">
-    <span class="muted">已编译插件</span>
+    <span class="muted">{{T "Compiled Plugins"}}</span>
     <strong class="stat-value">{{.PluginStats.Total}}</strong>
-    <span class="dashboard-stat-detail">总数量 {{.PluginStats.Total}} · 启用 {{.PluginStats.Active}}</span>
+    <span class="dashboard-stat-detail">{{T "Total"}} {{.PluginStats.Total}} · {{T "Enable"}} {{.PluginStats.Active}}</span>
   </a>
 </section>
 <section class="form-panel" style="margin-top:16px">
-  <h2>快捷入口</h2>
+  <h2>{{T "Shortcuts"}}</h2>
   <p>
-    <mdui-button href="/admin/pages/new" variant="outlined">写页面</mdui-button>
-    <mdui-button href="/admin/categories" variant="outlined">管理分类</mdui-button>
-    <mdui-button href="/admin/comments" variant="outlined">管理评论</mdui-button>
+    <mdui-button href="/admin/pages/new" variant="outlined">{{T "New Page"}}</mdui-button>
+    <mdui-button href="/admin/categories" variant="outlined">{{T "Manage Categories"}}</mdui-button>
+    <mdui-button href="/admin/comments" variant="outlined">{{T "Manage Comments"}}</mdui-button>
   </p>
 </section>
 <section class="form-panel" style="margin-top:16px">
-  <h2>当前主题</h2>
+  <h2>{{T "Current Theme"}}</h2>
   {{if .Theme.Name}}
     <p><strong>{{if .Theme.DisplayName}}{{.Theme.DisplayName}}{{else}}{{.Theme.Name}}{{end}}</strong> <span class="muted">v{{.Theme.Version}}{{if .Theme.Author}} · {{.Theme.Author}}{{end}}</span></p>
     {{if .Theme.Description}}<p class="muted">{{.Theme.Description}}</p>{{end}}
     <p class="row-actions dashboard-theme-actions">
-      <mdui-button href="/admin/themes" variant="outlined">管理主题</mdui-button>
-      {{if .Theme.HasConfig}}<mdui-button href="/admin/themes/{{.Theme.Name}}/config" variant="tonal">主题设置</mdui-button>{{end}}
+      <mdui-button href="/admin/themes" variant="outlined">{{T "Manage Themes"}}</mdui-button>
+      {{if .Theme.HasConfig}}<mdui-button href="/admin/themes/{{.Theme.Name}}/config" variant="tonal">{{T "Theme Settings"}}</mdui-button>{{end}}
     </p>
   {{else}}
-    <p class="muted">暂无启用主题。</p>
+    <p class="muted">{{T "No active theme."}}</p>
   {{end}}
 </section>
 <section class="form-panel" style="margin-top:16px">
-  <h2>插件</h2>
+  <h2>{{T "Plugins"}}</h2>
   {{if .Plugins}}
     {{range .Plugins}}
-      <p><strong>{{.Name}}</strong> <span class="muted">v{{.Version}} · {{if .Active}}已启用{{else}}未启用{{end}}{{if .Description}} · {{.Description}}{{end}}</span></p>
+      <p><strong>{{.Name}}</strong> <span class="muted">v{{.Version}} · {{if .Active}}{{T "Enabled"}}{{else}}{{T "Disabled"}}{{end}}{{if .Description}} · {{.Description}}{{end}}</span></p>
     {{end}}
   {{else}}
-    <p class="muted">暂无插件</p>
+    <p class="muted">{{T "No plugins"}}</p>
   {{end}}
 </section>
 {{end}}
