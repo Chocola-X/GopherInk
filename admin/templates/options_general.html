@@ -11,8 +11,7 @@
     <mdui-text-field name="site_description" label="{{T "Site description"}}" value="{{index .Options "site_description"}}"></mdui-text-field>
     <mdui-text-field name="site_keywords" label="{{T "Keywords"}}" value="{{index .Options "site_keywords"}}"></mdui-text-field>
     <mdui-select name="site_language" label="{{T "Language"}}" value="{{index .Options "site_language"}}">
-      <mdui-menu-item value="zh-CN">{{T "Simplified Chinese"}}</mdui-menu-item>
-      <mdui-menu-item value="en-US">English</mdui-menu-item>
+      {{range .SupportedLanguages}}<mdui-menu-item value="{{.}}">{{languageName .}}</mdui-menu-item>{{end}}
     </mdui-select>
     <mdui-select name="site_timezone" label="{{T "Timezone"}}" value="{{index .Options "site_timezone"}}">
       <mdui-menu-item value="Local">{{T "Local timezone"}}</mdui-menu-item>

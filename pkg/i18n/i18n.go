@@ -689,6 +689,11 @@ var zhCN = map[string]string{
 	"tables":                        "张表",
 }
 
+var languageNames = map[string]string{
+	"en-US": "English",
+	"zh-CN": "简体中文",
+}
+
 var messages = map[string]map[string]string{
 	"zh-CN": zhCN,
 }
@@ -711,7 +716,20 @@ func HTMLLang(lang string) string {
 }
 
 func SupportedLanguages() []string {
-	return []string{FallbackLanguage, "zh-CN"}
+	result := []string{FallbackLanguage}
+	for lang := range messages {
+		if lang != FallbackLanguage {
+			result = append(result, lang)
+		}
+	}
+	return result
+}
+
+func LanguageName(code string) string {
+	if name, ok := languageNames[code]; ok {
+		return name
+	}
+	return code
 }
 
 func T(lang, key string) string {

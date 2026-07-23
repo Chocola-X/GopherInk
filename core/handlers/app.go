@@ -2340,7 +2340,7 @@ func (a *App) adminOptionsGeneral(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		a.renderAdmin(w, r, "options_general.html", map[string]any{"Title": "General Settings", "Options": prepareGeneralOptions(options), "Saved": r.URL.Query().Get("saved") == "1"})
+		a.renderAdmin(w, r, "options_general.html", map[string]any{"Title": "General Settings", "Options": prepareGeneralOptions(options), "SupportedLanguages": i18n.SupportedLanguages(), "Saved": r.URL.Query().Get("saved") == "1"})
 		return
 	}
 	if r.Method == http.MethodPost {
@@ -2354,7 +2354,7 @@ func (a *App) adminOptionsGeneral(w http.ResponseWriter, r *http.Request) {
 				options[key] = r.FormValue(key)
 			}
 			options["upload_max_size_mb"] = r.FormValue("upload_max_size_mb")
-			a.renderAdmin(w, r, "options_general.html", map[string]any{"Title": "General Settings", "Options": prepareGeneralOptions(options), "Error": err.Error()})
+			a.renderAdmin(w, r, "options_general.html", map[string]any{"Title": "General Settings", "Options": prepareGeneralOptions(options), "SupportedLanguages": i18n.SupportedLanguages(), "Error": err.Error()})
 			return
 		}
 		if strings.TrimSpace(r.FormValue("upload_image_processing")) == "" {
@@ -2375,7 +2375,7 @@ func (a *App) adminOptionsGeneral(w http.ResponseWriter, r *http.Request) {
 				options[key] = r.FormValue(key)
 			}
 			options["upload_max_size_mb"] = r.FormValue("upload_max_size_mb")
-			a.renderAdmin(w, r, "options_general.html", map[string]any{"Title": "General Settings", "Options": prepareGeneralOptions(options), "Error": err.Error()})
+			a.renderAdmin(w, r, "options_general.html", map[string]any{"Title": "General Settings", "Options": prepareGeneralOptions(options), "SupportedLanguages": i18n.SupportedLanguages(), "Error": err.Error()})
 			return
 		}
 	}
@@ -8080,6 +8080,7 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 		"checked":                checked,
 		"contentPublicURL":       contentPublicURL,
 		"fieldError":             func(errors any, field string) string { return i18n.T(lang, fieldError(errors, field)) },
+		"languageName":           i18n.LanguageName,
 		"fieldValue":             fieldValue,
 		"schemaValue":            schemaValue,
 		"schemaChecked":          schemaChecked,
