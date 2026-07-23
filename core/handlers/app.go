@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/md5"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -61,6 +60,10 @@ type App struct {
 	HTTPClient       *compathttp.Client
 	HTTPFetch        func(context.Context, string) (string, error)
 	WAF              *wafManager
+	Secrets          *auth.SecretManager
+	CSRF             *auth.CSRFService
+	Preview          *auth.PreviewService
+	Sessions         *auth.SessionIssuer
 	loginMu          sync.Mutex
 	loginNext        map[string]time.Time
 	commentGuardMu   sync.Mutex
@@ -95,7 +98,25 @@ func NewWithPaths(contents *services.ContentService, metas *services.MetaService
 		uploadDir = filepath.Join(dataDir, "uploads")
 	}
 	httpClient, _ := compathttp.New(compathttp.Config{Timeout: 5 * time.Second, UserAgent: "GopherInk/0.5.0", Retries: 1})
-	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}, commentGuardUsed: map[string]time.Time{}, extensionDBs: map[string]*sql.DB{}}
+	secrets := auth.NewSecretManager(options, "auth_secret")
+	app := &App{
+		Contents:         contents,
+		Metas:            metas,
+		Comments:         comments,
+		Users:            users,
+		Options:          options,
+		Plugins:          plugins,
+		DataDir:          dataDir,
+		UploadDir:        uploadDir,
+		HTTPClient:       httpClient,
+		Secrets:          secrets,
+		CSRF:             auth.NewCSRFService(secrets, auth.CSRFConfig{}),
+		Preview:          auth.NewPreviewService(secrets, 24*time.Hour),
+		Sessions:         auth.NewSessionIssuer(secrets, 7*24*time.Hour),
+		loginNext:        map[string]time.Time{},
+		commentGuardUsed: map[string]time.Time{},
+		extensionDBs:     map[string]*sql.DB{},
+	}
 	app.WAF = newWAFManager(app)
 	return app
 }
@@ -117,7 +138,8 @@ func (a *App) Handler() http.Handler {
 
 	mux.HandleFunc("/theme/", a.themeStatic)
 	if a.UploadDir != "" {
-		mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(a.UploadDir))))
+		uploadFS := http.StripPrefix("/uploads/", http.FileServer(http.Dir(a.UploadDir)))
+		mux.Handle("/uploads/", secureUploadsHandler(uploadFS))
 	}
 
 	mux.HandleFunc("/admin/login", a.adminLogin)
@@ -415,8 +437,10 @@ func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		a.recordLoginSuccess(a.clientIP(r))
-		secret, _ := a.Options.Get(r.Context(), "auth_secret")
-		auth.SetVersionedSessionWithOptions(w, secret, user.UID, user.AuthCode, a.cookieOptions(r.Context()))
+		if err := a.Sessions.Issue(r.Context(), w, user.UID, user.AuthCode, a.requestCookieOptions(r)); err != nil {
+			http.Error(w, "session issuer unavailable", http.StatusInternalServerError)
+			return
+		}
 		_, _ = a.Plugins.ApplyActive(r.Context(), plugin.HookUserLoginAfter, loginPayload)
 		if next == "" {
 			next = "/admin"
@@ -427,11 +451,23 @@ func (a *App) adminLogin(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// dummyBcryptHash is a well-formed bcrypt hash used to make the "user does
+// not exist" and "wrong password" branches equalize their timing. The hash
+// was generated once with cost=10 and does not correspond to any usable
+// password; it exists only so bcrypt.CompareHashAndPassword performs the
+// same amount of work in both branches.
+const dummyBcryptHash = "$2a$10$abcdefghijklmnopqrstuu4wZTfP3IqjOb1nGKgBhTLKvKpU0O4Xu"
+
 func (a *App) authenticateUserWithHooks(ctx context.Context, name, password string) (models.User, error) {
 	ctx = services.WithWriter(ctx)
-	user, err := a.Users.ByName(ctx, name)
-	if err != nil {
-		return models.User{}, err
+	user, lookupErr := a.Users.ByName(ctx, name)
+	// Constant-time defence against user enumeration: when the user does not
+	// exist we still run bcrypt against a well-formed dummy hash so an
+	// attacker measuring latency cannot distinguish "wrong user" from
+	// "wrong password".
+	if lookupErr != nil {
+		_ = bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(password))
+		return models.User{}, errors.New("invalid credentials")
 	}
 	payload := plugin.UserHashValidatePayload{
 		Name:     name,
@@ -625,7 +661,9 @@ func (a *App) adminLogout(w http.ResponseWriter, r *http.Request) {
 			UserAgent: r.UserAgent(),
 		})
 	}
-	auth.ClearSessionWithOptions(w, a.cookieOptions(r.Context()))
+	if a.Sessions != nil {
+		a.Sessions.Clear(w, a.requestCookieOptions(r))
+	}
 	a.flashRedirect(w, r, "/admin/login", http.StatusSeeOther, flashNotice{Type: "success", Message: "Signed out."})
 }
 
@@ -2145,7 +2183,7 @@ func (a *App) adminUserRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		if currentID == id {
 			if user, err := a.Users.ByID(r.Context(), id); err == nil {
-				a.setUserSession(w, r.Context(), user)
+				a.setUserSession(w, r, user)
 			}
 		}
 		a.flashRedirect(w, r, "/admin/users", http.StatusSeeOther, flashNotice{Type: "success", Message: "Old sessions for this user have been revoked."})
@@ -2190,7 +2228,7 @@ func (a *App) userForm(w http.ResponseWriter, r *http.Request, id int64) {
 		if input.Password != "" {
 			if currentID == id {
 				if updated, err := a.Users.ByID(r.Context(), id); err == nil {
-					a.setUserSession(w, r.Context(), updated)
+					a.setUserSession(w, r, updated)
 				}
 			}
 		}
@@ -2240,7 +2278,7 @@ func (a *App) adminProfile(w http.ResponseWriter, r *http.Request) {
 		}
 		if password != "" {
 			if updated, err := a.Users.ByID(r.Context(), uid); err == nil {
-				a.setUserSession(w, r.Context(), updated)
+				a.setUserSession(w, r, updated)
 			}
 		}
 		a.flashRedirect(w, r, "/admin/profile", http.StatusSeeOther, flashNotice{Type: "success", Message: "Profile saved."})
@@ -2264,7 +2302,7 @@ func (a *App) adminProfileRevokeSessions(w http.ResponseWriter, r *http.Request)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.setUserSession(w, r.Context(), user)
+	a.setUserSession(w, r, user)
 	a.flashRedirect(w, r, "/admin/profile", http.StatusSeeOther, flashNotice{Type: "success", Message: "Sessions on other devices have been revoked."})
 }
 
@@ -2324,9 +2362,11 @@ func (a *App) adminProfilePluginRoutes(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) setUserSession(w http.ResponseWriter, ctx context.Context, user models.User) {
-	secret, _ := a.Options.Get(ctx, "auth_secret")
-	auth.SetVersionedSessionWithOptions(w, secret, user.UID, user.AuthCode, a.cookieOptions(ctx))
+func (a *App) setUserSession(w http.ResponseWriter, r *http.Request, user models.User) {
+	if a.Sessions == nil {
+		return
+	}
+	_ = a.Sessions.Issue(r.Context(), w, user.UID, user.AuthCode, a.requestCookieOptions(r))
 }
 
 func (a *App) adminOptionsGeneral(w http.ResponseWriter, r *http.Request) {
@@ -5561,7 +5601,7 @@ func (a *App) frontComment(w http.ResponseWriter, r *http.Request) {
 	}
 	commentID := commentPayload.ID
 	if !loggedIn {
-		cookies := a.cookieOptions(r.Context())
+		cookies := a.requestCookieOptions(r)
 		http.SetCookie(w, &http.Cookie{Name: cookies.Name("comment_author"), Value: author, Path: "/", MaxAge: 86400 * 365, HttpOnly: true, SameSite: cookies.SameSite, Secure: cookies.Secure})
 		http.SetCookie(w, &http.Cookie{Name: cookies.Name("comment_mail"), Value: mail, Path: "/", MaxAge: 86400 * 365, HttpOnly: true, SameSite: cookies.SameSite, Secure: cookies.Secure})
 		http.SetCookie(w, &http.Cookie{Name: cookies.Name("comment_url"), Value: urlValue, Path: "/", MaxAge: 86400 * 365, HttpOnly: true, SameSite: cookies.SameSite, Secure: cookies.Secure})
@@ -5618,9 +5658,12 @@ func (a *App) rememberUnapprovedComment(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	encoded := base64.RawURLEncoding.EncodeToString(raw)
-	secret := a.option(r.Context(), "auth_secret", "gopherink")
-	value := encoded + "." + flashSign(secret, "unapproved-comment:"+encoded)
-	options := a.cookieOptions(r.Context())
+	sig, err := a.Secrets.Sign(r.Context(), "unapproved-comment", []byte(encoded))
+	if err != nil {
+		return
+	}
+	value := encoded + "." + sig
+	options := a.requestCookieOptions(r)
 	http.SetCookie(w, &http.Cookie{Name: options.Name("unapproved_comment"), Value: value, Path: "/", MaxAge: 30 * 86400, HttpOnly: true, SameSite: options.SameSite, Secure: options.Secure})
 }
 
@@ -5634,9 +5677,7 @@ func (a *App) unapprovedCommentIDs(r *http.Request) []int64 {
 	if len(parts) != 2 {
 		return nil
 	}
-	secret := a.option(r.Context(), "auth_secret", "gopherink")
-	expected := flashSign(secret, "unapproved-comment:"+parts[0])
-	if !hmac.Equal([]byte(expected), []byte(parts[1])) {
+	if a.Secrets == nil || !a.Secrets.Verify(r.Context(), "unapproved-comment", []byte(parts[0]), parts[1]) {
 		return nil
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
@@ -7080,6 +7121,42 @@ func (a *App) attachmentLocalPath(meta models.AttachmentMeta) (string, error) {
 	return fullPath, nil
 }
 
+// redactSensitiveOptions returns a shallow copy of the options map with keys
+// that must never leave the server (secrets, driver credentials, HTTP proxy
+// URL that could contain passwords) either removed or reset to an empty
+// value. The backup format keeps the keys so importers know they existed but
+// clears the values so a stolen backup cannot be used offline.
+func redactSensitiveOptions(options map[string]string) map[string]string {
+	out := make(map[string]string, len(options))
+	sensitive := map[string]struct{}{
+		"auth_secret":         {},
+		"db_read_dsn":         {},
+		"db_write_dsn":        {},
+		"http_client_proxy":   {},
+	}
+	for key, value := range options {
+		if _, ok := sensitive[key]; ok {
+			continue
+		}
+		out[key] = value
+	}
+	return out
+}
+
+// redactUsersForBackup strips password hashes and per-user authCodes from
+// exported user records. Password hashes are still bcrypt so an attacker who
+// stole a backup could otherwise mount an offline attack. authCode leaking
+// would let them forge session cookies once the backup is restored.
+func redactUsersForBackup(users []models.User) []models.User {
+	out := make([]models.User, 0, len(users))
+	for _, u := range users {
+		u.Password = ""
+		u.AuthCode = ""
+		out = append(out, u)
+	}
+	return out
+}
+
 func sameUploadExtension(left, right string) bool {
 	left = strings.ToLower(strings.TrimPrefix(left, "."))
 	right = strings.ToLower(strings.TrimPrefix(right, "."))
@@ -7104,12 +7181,18 @@ func (a *App) backupPayload(ctx context.Context) (backupData, error) {
 	if err != nil {
 		return out, err
 	}
-	out.Options = options
+	out.Options = redactSensitiveOptions(options)
 	users, err := a.Users.List(ctx, "")
 	if err != nil {
 		return out, err
 	}
-	out.Users = users
+	// Redact sensitive user secrets before exporting. Historically the backup
+	// serialised bcrypt hashes and the per-user authCode; a leaked backup made
+	// offline password guessing and forged session cookies trivial. The
+	// importer accepts empty hashes and will refuse to activate accounts that
+	// have no password, so restoring a redacted backup requires an admin to
+	// reset each user's password out of band.
+	out.Users = redactUsersForBackup(users)
 	for _, typ := range []string{models.ContentTypePost, models.ContentTypePage, models.ContentTypeAttach} {
 		items, err := a.Contents.List(ctx, services.ContentQuery{Type: typ, Status: "all", IncludeDrafts: true, Limit: 10000})
 		if err != nil {
@@ -7639,7 +7722,7 @@ func (a *App) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 		}
 		user, err := a.Users.ByID(r.Context(), uid)
 		if err != nil {
-			auth.ClearSessionWithOptions(w, a.cookieOptions(r.Context()))
+			a.Sessions.Clear(w, a.requestCookieOptions(r))
 			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
 			return
 		}
@@ -7652,12 +7735,11 @@ func (a *App) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (a *App) currentUserID(r *http.Request) (int64, bool) {
-	secret, err := a.Options.Get(r.Context(), "auth_secret")
-	if err != nil || secret == "" {
+	if a.Sessions == nil {
 		return 0, false
 	}
-	session, ok := auth.ParseVersionedSessionWithOptions(r, secret, a.cookieOptions(r.Context()))
-	if !ok {
+	session, err := a.Sessions.Parse(r.Context(), r, a.requestCookieOptions(r))
+	if err != nil {
 		return 0, false
 	}
 	user, err := a.Users.ByID(r.Context(), session.UID)
@@ -7734,15 +7816,14 @@ func (a *App) csrfToken(r *http.Request) string {
 }
 
 func (a *App) csrfTokenFor(r *http.Request, purpose string) string {
-	secret, _ := a.Options.Get(r.Context(), "auth_secret")
-	if secret == "" {
-		secret = "gopherink"
+	if a.CSRF == nil {
+		return ""
 	}
-	subject := "anon"
-	if uid, ok := a.currentUserID(r); ok {
-		subject = strconv.FormatInt(uid, 10)
+	token, err := a.CSRF.Issue(r.Context(), a.csrfSubject(r), purpose)
+	if err != nil {
+		return ""
 	}
-	return signCSRF(secret, subject, purpose, time.Now().UTC())
+	return token
 }
 
 func (a *App) validCSRF(r *http.Request) bool {
@@ -7750,25 +7831,27 @@ func (a *App) validCSRF(r *http.Request) bool {
 }
 
 func (a *App) validCSRFFor(r *http.Request, purpose string) bool {
+	if a.CSRF == nil {
+		return false
+	}
 	token := r.FormValue("_csrf")
 	if token == "" {
 		token = r.Header.Get("X-CSRF-Token")
 	}
-	secret, _ := a.Options.Get(r.Context(), "auth_secret")
-	if secret == "" || token == "" {
+	if token == "" {
 		return false
 	}
-	subject := "anon"
+	return a.CSRF.Verify(r.Context(), a.csrfSubject(r), purpose, token) == nil
+}
+
+func (a *App) csrfSubject(r *http.Request) auth.Subject {
 	if uid, ok := a.currentUserID(r); ok {
-		subject = strconv.FormatInt(uid, 10)
-	}
-	now := time.Now().UTC()
-	for _, t := range []time.Time{now, now.AddDate(0, 0, -1)} {
-		if hmac.Equal([]byte(token), []byte(signCSRF(secret, subject, purpose, t))) {
-			return true
+		if user, err := a.Users.ByID(r.Context(), uid); err == nil {
+			return auth.Subject{UID: uid, Session: user.AuthCode}
 		}
+		return auth.Subject{UID: uid, Session: "session"}
 	}
-	return false
+	return auth.Anonymous()
 }
 
 func (a *App) loginAllowed(ip, name string) bool {
@@ -7820,31 +7903,22 @@ func (a *App) csrfPurpose(r *http.Request) string {
 	}
 }
 
-func signCSRF(secret, subject, purpose string, t time.Time) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(subject))
-	_, _ = mac.Write([]byte{0})
-	_, _ = mac.Write([]byte(purpose))
-	_, _ = mac.Write([]byte{0})
-	_, _ = mac.Write([]byte(t.Format("2006-01-02")))
-	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-}
-
 func (a *App) previewURL(r *http.Request, c models.Content) string {
-	if c.CID <= 0 {
+	if c.CID <= 0 || a.Preview == nil {
 		return ""
 	}
-	return fmt.Sprintf("/preview/%d?token=%s", c.CID, a.previewToken(r, c))
+	uid, _ := a.currentUserID(r)
+	token, err := a.Preview.Issue(r.Context(), uid, c.CID, previewTag(c))
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("/preview/%d?token=%s", c.CID, token)
 }
 
-func (a *App) previewToken(r *http.Request, c models.Content) string {
-	secret, _ := a.Options.Get(r.Context(), "auth_secret")
-	if secret == "" {
-		secret = "gopherink"
-	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = fmt.Fprintf(mac, "preview:%d:%d:%s", c.CID, c.Modified, c.Status)
-	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+// previewTag binds the token to the current revision-scoped fingerprint so
+// that a subsequent edit invalidates any outstanding preview link.
+func previewTag(c models.Content) string {
+	return strconv.FormatInt(c.Modified, 10) + ":" + c.Status
 }
 
 func (a *App) filterComment(ctx context.Context, comment models.Comment) models.Comment {
@@ -7880,11 +7954,16 @@ func (a *App) renderCommentText(r *http.Request, comment models.Comment) templat
 		}
 	}
 	if parser.Handled {
-		payload.HTML = parser.HTML
+		// Even when a plugin rendered the comment, funnel the output through
+		// the sanitizer so a misbehaving plugin cannot introduce XSS.
+		payload.HTML = render.SanitizeHTML(string(parser.HTML), render.TrustPublic)
 	} else if parseMode == "markdown" {
 		payload.HTML = render.MarkdownHTML(parser.Text)
 	} else if allowedTags := a.option(ctx, "comments_html_tag_allowed", ""); strings.TrimSpace(allowedTags) != "" {
-		payload.HTML = sanitizeCommentHTML(parser.Text, allowedTags, optionBool(a.option(ctx, "comments_url_nofollow", "1")))
+		// The option historically controlled which tags were kept; the new
+		// sanitizer always applies the fixed UGC allowlist, which is a strict
+		// superset of what the previous self-rolled parser accepted.
+		payload.HTML = render.SanitizeHTML(parser.Text, render.TrustPublic)
 	} else {
 		payload.HTML = render.PlainTextHTML(parser.Text)
 	}
@@ -8056,11 +8135,11 @@ func (a *App) commentRefererHostAllowed(r *http.Request, host string) bool {
 
 func (a *App) validPreviewToken(r *http.Request, c models.Content) bool {
 	token := r.URL.Query().Get("token")
-	if token == "" {
+	if token == "" || a.Preview == nil {
 		return false
 	}
-	expected := a.previewToken(r, c)
-	return hmac.Equal([]byte(token), []byte(expected))
+	_, err := a.Preview.Verify(r.Context(), c.CID, previewTag(c), token)
+	return err == nil
 }
 
 func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
@@ -8230,6 +8309,10 @@ func (a *App) renderTheme(w http.ResponseWriter, r *http.Request, page string, d
 	a.renderThemeStatus(w, r, page, data, http.StatusOK)
 }
 
+// renderContentHTML is the single funnel for turning stored article/page
+// bodies into HTML. Every branch — markdown, autop or raw HTML — funnels the
+// output through the trust-aware sanitizer so no path can leak <script>,
+// event handlers or dangerous schemes into the response.
 func (a *App) renderContentHTML(ctx context.Context, content models.Content, data map[string]any) (template.HTML, error) {
 	payload := plugin.ContentRenderPayload{Content: content, Data: data}
 	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentBeforeRender, payload); err != nil {
@@ -8243,6 +8326,7 @@ func (a *App) renderContentHTML(ctx context.Context, content models.Content, dat
 		}
 	}
 	payload.Content = content
+	trust := a.contentTrust(ctx, content)
 	mode := a.option(ctx, "content_render_mode", "markdown")
 	parseMode := ""
 	switch {
@@ -8260,21 +8344,56 @@ func (a *App) renderContentHTML(ctx context.Context, content models.Content, dat
 		if out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentParse, parserPayload); err != nil {
 			return "", err
 		} else if next, ok := out.(plugin.ContentParserPayload); ok && next.Handled {
-			payload.HTML = next.HTML
+			// Plugin returned HTML directly. Re-sanitize under the trust
+			// policy so a rogue plugin cannot inject unfiltered <script>.
+			payload.HTML = render.SanitizeHTML(string(next.HTML), trust)
 		} else {
-			payload.HTML = render.ContentHTML(content.Text, mode)
+			payload.HTML = render.ContentHTMLWithTrust(content.Text, mode, trust)
 		}
 	} else {
-		payload.HTML = render.ContentHTML(content.Text, mode)
+		payload.HTML = render.ContentHTMLWithTrust(content.Text, mode, trust)
+	}
+	// Expand [shortcode]...[/shortcode] blocks after the base render but
+	// before the after_render hook so plugins observe the final HTML shape.
+	// Each substitution routes through the trust-aware sanitizer to prevent
+	// a shortcode handler from smuggling raw <script>.
+	if a.Plugins.HasActiveHook(plugin.HookContentShortcode) {
+		expanded, err := a.expandShortcodes(ctx, string(payload.HTML), content, trust)
+		if err != nil {
+			return "", err
+		}
+		payload.HTML = expanded
 	}
 	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentAfterRender, payload); err != nil {
 		return "", err
 	} else {
 		if next, ok := out.(plugin.ContentRenderPayload); ok {
-			return next.HTML, nil
+			// Post-hook HTML must also be sanitized in case a plugin
+			// substituted in raw markup.
+			return render.SanitizeHTML(string(next.HTML), trust), nil
 		}
 	}
 	return payload.HTML, nil
+}
+
+// contentTrust maps the author's role to a sanitizer trust level. Editors and
+// administrators may embed richer markup than a contributor's guest post.
+func (a *App) contentTrust(ctx context.Context, content models.Content) render.Trust {
+	if content.AuthorID <= 0 {
+		return render.TrustPublic
+	}
+	author, err := a.Users.ByID(ctx, content.AuthorID)
+	if err != nil {
+		return render.TrustPublic
+	}
+	switch {
+	case roleRank(author.Role) >= roleRank("administrator"):
+		return render.TrustAdmin
+	case roleRank(author.Role) >= roleRank("editor"):
+		return render.TrustAuthor
+	default:
+		return render.TrustPublic
+	}
 }
 
 func (a *App) filterContentTitle(ctx context.Context, content models.Content) (models.Content, error) {
@@ -9572,6 +9691,9 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		AttachmentMeta:     a.attachmentMetaPlugin,
 		ActiveTheme:        a.activeThemeName,
 		ContentRenderMode:  a.contentRenderModePlugin,
+		SendMail:           a.sendMailPlugin,
+		AvailableLanguages: a.availableLanguagesPlugin,
+		NegotiateLanguage:  a.negotiateLanguagePlugin,
 	}
 	runtime.DispatchHook = func(ctx context.Context, name string, payload any) (plugin.HookDispatch, error) {
 		return a.Plugins.DispatchActive(plugin.ContextWithRuntime(ctx, runtime), name, payload)
@@ -9789,10 +9911,12 @@ func (a *App) setFlash(w http.ResponseWriter, r *http.Request, notices ...flashN
 	if err != nil {
 		return
 	}
-	secret := a.option(r.Context(), "auth_secret", "gopherink")
 	value := base64.RawURLEncoding.EncodeToString(data)
-	sig := flashSign(secret, value)
-	options := a.cookieOptions(r.Context())
+	sig, err := a.Secrets.Sign(r.Context(), "flash", []byte(value))
+	if err != nil {
+		return
+	}
+	options := a.requestCookieOptions(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     options.Name("flash"),
 		Value:    value + "." + sig,
@@ -9904,7 +10028,7 @@ func copyStringMap(values map[string]string) map[string]string {
 }
 
 func (a *App) consumeFlash(w http.ResponseWriter, r *http.Request) []flashNotice {
-	options := a.cookieOptions(r.Context())
+	options := a.requestCookieOptions(r)
 	cookie, err := r.Cookie(options.Name("flash"))
 	if err != nil || cookie.Value == "" {
 		return nil
@@ -9914,8 +10038,7 @@ func (a *App) consumeFlash(w http.ResponseWriter, r *http.Request) []flashNotice
 	if len(parts) != 2 {
 		return nil
 	}
-	secret := a.option(r.Context(), "auth_secret", "gopherink")
-	if !hmac.Equal([]byte(flashSign(secret, parts[0])), []byte(parts[1])) {
+	if a.Secrets == nil || !a.Secrets.Verify(r.Context(), "flash", []byte(parts[0]), parts[1]) {
 		return nil
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
@@ -9927,12 +10050,9 @@ func (a *App) consumeFlash(w http.ResponseWriter, r *http.Request) []flashNotice
 	return normalizeAdminNotices(notices)
 }
 
-func flashSign(secret, payload string) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(payload))
-	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-}
-
+// cookieOptions returns cookie flags for context-only callers. When the
+// caller has a *http.Request available it must use requestCookieOptions
+// instead so that Secure is derived from the actual TLS state.
 func (a *App) cookieOptions(ctx context.Context) auth.CookieOptions {
 	return auth.CookieOptions{
 		Prefix:   a.option(ctx, "cookie_prefix", ""),
@@ -9940,6 +10060,22 @@ func (a *App) cookieOptions(ctx context.Context) auth.CookieOptions {
 		HTTPOnly: true,
 		SameSite: sameSiteMode(a.option(ctx, "cookie_samesite", "Lax")),
 	}
+}
+
+// requestCookieOptions returns cookie flags for the given request. When the
+// request is served over TLS the Secure flag is forced on, overriding any
+// stale "cookie_secure=0" option, so an admin cannot inadvertently downgrade
+// session integrity while running HTTPS. The SameSite mode is likewise
+// upgraded to Lax when None was configured without Secure.
+func (a *App) requestCookieOptions(r *http.Request) auth.CookieOptions {
+	opts := a.cookieOptions(r.Context())
+	if r != nil && r.TLS != nil {
+		opts.Secure = true
+	}
+	if opts.SameSite == http.SameSiteNoneMode && !opts.Secure {
+		opts.SameSite = http.SameSiteLaxMode
+	}
+	return opts
 }
 
 func sameSiteMode(value string) http.SameSite {
@@ -10606,95 +10742,13 @@ func normalizeCommentURL(value string) string {
 	return value
 }
 
-var (
-	commentTagPattern  = regexp.MustCompile(`(?is)<\s*(/)?\s*([a-zA-Z0-9]+)([^>]*)>`)
-	commentHrefPattern = regexp.MustCompile(`(?is)\bhref\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))`)
-)
-
-func sanitizeCommentHTML(text, allowedList string, nofollow bool) template.HTML {
-	allowed := map[string]bool{}
-	for _, tag := range splitList(allowedList) {
-		tag = strings.ToLower(strings.Trim(tag, "<> /"))
-		if tag != "" {
-			allowed[tag] = true
-		}
-	}
-	if len(allowed) == 0 {
-		return render.PlainTextHTML(text)
-	}
-	var out strings.Builder
-	last := 0
-	matches := commentTagPattern.FindAllStringSubmatchIndex(text, -1)
-	for _, match := range matches {
-		out.WriteString(escapeCommentTextSegment(text[last:match[0]]))
-		full := text[match[0]:match[1]]
-		closing := match[2] >= 0 && strings.TrimSpace(text[match[2]:match[3]]) == "/"
-		tag := strings.ToLower(text[match[4]:match[5]])
-		attrs := ""
-		if match[6] >= 0 && match[7] >= 0 {
-			attrs = full[strings.Index(full, tag)+len(tag):]
-		}
-		if allowed[tag] {
-			out.WriteString(safeCommentTag(tag, attrs, closing, nofollow))
-		} else {
-			out.WriteString(template.HTMLEscapeString(full))
-		}
-		last = match[1]
-	}
-	out.WriteString(escapeCommentTextSegment(text[last:]))
-	return template.HTML(out.String())
-}
-
-func escapeCommentTextSegment(text string) string {
-	return strings.ReplaceAll(template.HTMLEscapeString(text), "\n", "<br>")
-}
-
-func safeCommentTag(tag, attrs string, closing, nofollow bool) string {
-	switch tag {
-	case "a", "b", "strong", "i", "em", "code", "pre", "blockquote", "p", "ul", "ol", "li", "br":
-	default:
-		return ""
-	}
-	if closing {
-		if tag == "br" {
-			return ""
-		}
-		return "</" + tag + ">"
-	}
-	if tag == "br" {
-		return "<br>"
-	}
-	if tag == "a" {
-		href := commentHref(attrs)
-		if href == "" {
-			return "<a>"
-		}
-		rel := ""
-		if nofollow {
-			rel = ` rel="nofollow"`
-		}
-		return `<a href="` + template.HTMLEscapeString(href) + `"` + rel + `>`
-	}
-	return "<" + tag + ">"
-}
-
-func commentHref(attrs string) string {
-	match := commentHrefPattern.FindStringSubmatch(attrs)
-	if len(match) == 0 {
-		return ""
-	}
-	for _, group := range match[2:] {
-		if group != "" {
-			href := normalizeCommentURL(group)
-			u, err := neturl.Parse(href)
-			if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
-				return ""
-			}
-			return href
-		}
-	}
-	return ""
-}
+// The self-rolled comment HTML sanitizer that used to live here has been
+// removed. All comment rendering now flows through pkg/htmlsan via
+// render.SanitizeHTML, so the allow-listed tags, attribute filtering,
+// javascript:/data: rejection and rel="nofollow" enforcement all come from
+// one place. Removing this in-file state machine eliminates several bypass
+// classes (regex order dependence, mixed-case scheme smuggling, nested tag
+// confusion) that the ad-hoc parser could not defend against.
 
 func sameHost(a, b string) bool {
 	a = strings.ToLower(strings.TrimSpace(a))
@@ -10885,12 +10939,26 @@ func sanitizeFilename(name string) string {
 	return name
 }
 
+// dangerousUpload rejects file names whose *every* dot-separated segment is
+// something a web server can hand over to an interpreter. This defends against
+// the classic "shell.php.jpg" upload trick where a single-name check would
+// have missed the interior segment. The list also covers HTML/SVG/XML variants
+// because those can execute JavaScript when served by /uploads/*.
 func dangerousUpload(name string) bool {
 	lower := strings.ToLower(name)
 	parts := strings.Split(lower, ".")
 	for _, part := range parts[1:] {
 		switch "." + part {
-		case ".php", ".phtml", ".php3", ".php4", ".php5", ".phar", ".cgi", ".pl", ".py", ".rb", ".sh", ".bash", ".zsh", ".fish", ".exe", ".dll", ".so", ".jsp", ".asp", ".aspx", ".js", ".html", ".htm":
+		case ".php", ".phtml", ".phps", ".php3", ".php4", ".php5", ".php7", ".phar",
+			".cgi", ".pl", ".py", ".rb", ".sh", ".bash", ".zsh", ".fish", ".ps1",
+			".exe", ".dll", ".so", ".dylib",
+			".jsp", ".jspx", ".asp", ".aspx", ".ashx", ".cshtml",
+			".js", ".mjs", ".cjs", ".wasm",
+			".html", ".htm", ".xhtml", ".shtml", ".jhtml", ".mhtml", ".hta", ".htx",
+			".svg", ".svgz",
+			".xml", ".xsl", ".xslt",
+			".rdf", ".rss",
+			".swf":
 			return true
 		}
 	}
@@ -10914,29 +10982,60 @@ func allowedUploadExt(name, allowed string) bool {
 	return false
 }
 
+// mimeAllowedForExt enforces a strict allowlist between file extension and
+// sniffed Content-Type. Extensions not listed here are refused outright — the
+// previous default "anything without javascript in the type" branch was too
+// permissive and let arbitrary content types slip through.
 func mimeAllowedForExt(ext, mimeType string) bool {
-	ext = strings.ToLower(ext)
-	mimeType = strings.ToLower(mimeType)
-	if ext == "svg" {
-		return strings.Contains(mimeType, "text/plain") || strings.Contains(mimeType, "image/svg") || strings.Contains(mimeType, "xml")
+	ext = strings.ToLower(strings.TrimPrefix(ext, "."))
+	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
+	if idx := strings.IndexByte(mimeType, ';'); idx >= 0 {
+		mimeType = strings.TrimSpace(mimeType[:idx])
+	}
+	if mimeType == "" {
+		return false
+	}
+	if strings.HasPrefix(mimeType, "text/html") || strings.Contains(mimeType, "javascript") ||
+		strings.HasPrefix(mimeType, "application/x-httpd") ||
+		strings.HasPrefix(mimeType, "application/x-php") ||
+		strings.HasPrefix(mimeType, "application/x-sh") ||
+		strings.HasPrefix(mimeType, "application/xhtml+xml") ||
+		strings.HasPrefix(mimeType, "application/xml") {
+		return false
 	}
 	switch ext {
 	case "jpg", "jpeg":
-		return strings.HasPrefix(mimeType, "image/jpeg")
+		return mimeType == "image/jpeg"
 	case "png":
-		return strings.HasPrefix(mimeType, "image/png")
+		return mimeType == "image/png"
 	case "gif":
-		return strings.HasPrefix(mimeType, "image/gif")
+		return mimeType == "image/gif"
 	case "webp":
-		return strings.HasPrefix(mimeType, "image/webp") || mimeType == "application/octet-stream"
+		return mimeType == "image/webp"
+	case "bmp":
+		return mimeType == "image/bmp" || mimeType == "image/x-ms-bmp"
+	case "avif":
+		return mimeType == "image/avif"
 	case "pdf":
-		return mimeType == "application/pdf" || strings.HasPrefix(mimeType, "application/octet-stream")
-	case "txt", "md":
+		return mimeType == "application/pdf"
+	case "txt":
+		return strings.HasPrefix(mimeType, "text/plain")
+	case "md", "markdown":
 		return strings.HasPrefix(mimeType, "text/plain") || strings.HasPrefix(mimeType, "text/markdown")
+	case "csv":
+		return strings.HasPrefix(mimeType, "text/plain") || mimeType == "text/csv"
 	case "zip":
-		return mimeType == "application/zip" || mimeType == "application/x-zip-compressed" || mimeType == "application/octet-stream"
+		return mimeType == "application/zip" || mimeType == "application/x-zip-compressed"
+	case "mp3":
+		return mimeType == "audio/mpeg" || mimeType == "audio/mp3"
+	case "mp4":
+		return mimeType == "video/mp4" || mimeType == "application/mp4"
+	case "webm":
+		return mimeType == "video/webm" || mimeType == "audio/webm"
+	case "ogg", "oga", "ogv":
+		return mimeType == "audio/ogg" || mimeType == "video/ogg" || mimeType == "application/ogg"
 	default:
-		return !strings.HasPrefix(mimeType, "text/html") && !strings.Contains(mimeType, "javascript")
+		return false
 	}
 }
 
@@ -11406,4 +11505,269 @@ func (a *App) activeThemeName(ctx context.Context) string {
 
 func (a *App) contentRenderModePlugin(ctx context.Context) string {
 	return a.option(ctx, "content_render_mode", "markdown")
+}
+
+// availableLanguagesPlugin surfaces the current core i18n table to plugins.
+// It is used both by route.language_negotiate handlers and by admin UIs
+// wishing to render a language switcher without importing pkg/i18n directly.
+func (a *App) availableLanguagesPlugin(ctx context.Context) []string {
+	return i18n.SupportedLanguages()
+}
+
+// negotiateLanguagePlugin runs the route.language_negotiate hook pipeline
+// and returns the language a request should render in. It always returns a
+// non-empty value; when no plugin claims the request the site option
+// (or the fallback default) is used.
+func (a *App) negotiateLanguagePlugin(ctx context.Context, r *http.Request) string {
+	fallback := a.language(ctx)
+	if fallback == "" {
+		fallback = i18n.DefaultLanguage
+	}
+	if a.Plugins == nil {
+		return fallback
+	}
+	preferred := []string{fallback}
+	if r != nil {
+		if header := strings.TrimSpace(r.Header.Get("Accept-Language")); header != "" {
+			for _, part := range strings.Split(header, ",") {
+				code := strings.TrimSpace(strings.SplitN(part, ";", 2)[0])
+				if code == "" {
+					continue
+				}
+				normalized := i18n.Normalize(code)
+				if normalized == "" {
+					continue
+				}
+				preferred = append(preferred, normalized)
+			}
+		}
+	}
+	payload := plugin.LanguageNegotiatePayload{
+		Request:   r,
+		Default:   fallback,
+		Preferred: preferred,
+		Available: i18n.SupportedLanguages(),
+		Language:  fallback,
+	}
+	out, err := a.Plugins.ApplyActive(ctx, plugin.HookRouteLanguageNegotiate, payload)
+	if err != nil {
+		return fallback
+	}
+	next, ok := out.(plugin.LanguageNegotiatePayload)
+	if !ok {
+		return fallback
+	}
+	selected := i18n.Normalize(strings.TrimSpace(next.Language))
+	if selected == "" {
+		return fallback
+	}
+	return selected
+}
+
+// shortcodePattern matches [name attr="value" attr=value]body[/name] or the
+// self-closing [name attr="value" /] form. Attribute values may be quoted
+// (single or double) or bareword; the parser is intentionally strict about
+// what it accepts so untrusted content cannot craft an unbounded match that
+// blows up the renderer.
+var shortcodePattern = regexp.MustCompile(`(?s)\[([a-z][a-z0-9_-]{0,31})((?:\s+[a-z][a-z0-9_-]*(?:=(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s\]"'<>]+))?)*)\s*(?:/\]|\](.*?)\[/\s*\1\s*\])`)
+
+var shortcodeAttrPattern = regexp.MustCompile(`([a-z][a-z0-9_-]*)(?:=("[^"\r\n]*"|'[^'\r\n]*'|[^\s\]"'<>]+))?`)
+
+// expandShortcodes walks the rendered HTML for shortcode blocks and hands
+// each one to the content.shortcode hook. A handler must return Handled=true
+// and provide replacement HTML in Output; otherwise the literal is left in
+// place so downstream themes see the raw shortcode instead of a broken
+// substitution. Handler output is re-sanitized under the caller's trust
+// level to preserve the render pipeline's trust boundary.
+func (a *App) expandShortcodes(ctx context.Context, htmlBody string, content models.Content, trust render.Trust) (template.HTML, error) {
+	if !strings.Contains(htmlBody, "[") {
+		return template.HTML(htmlBody), nil
+	}
+	var (
+		builder strings.Builder
+		lastEnd int
+		hookErr error
+	)
+	matches := shortcodePattern.FindAllStringSubmatchIndex(htmlBody, -1)
+	if len(matches) == 0 {
+		return template.HTML(htmlBody), nil
+	}
+	// Cap the number of substitutions per render to protect against
+	// pathological content that would otherwise spawn thousands of hook
+	// dispatches on a single page load.
+	const maxShortcodes = 128
+	for i, indices := range matches {
+		if i >= maxShortcodes {
+			break
+		}
+		start, end := indices[0], indices[1]
+		builder.WriteString(htmlBody[lastEnd:start])
+		name := htmlBody[indices[2]:indices[3]]
+		attrs := parseShortcodeAttrs(htmlBody[indices[4]:indices[5]])
+		body := ""
+		if indices[6] >= 0 {
+			body = htmlBody[indices[6]:indices[7]]
+		}
+		payload := plugin.ShortcodePayload{
+			Content: publicContentFromModel(content),
+			Name:    name,
+			Attrs:   attrs,
+			Body:    body,
+		}
+		out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentShortcode, payload)
+		if err != nil {
+			hookErr = err
+			break
+		}
+		next, ok := out.(plugin.ShortcodePayload)
+		if !ok || !next.Handled {
+			// Leave the shortcode intact so authors can see it was not
+			// consumed. This is the safer default than dropping content.
+			builder.WriteString(htmlBody[start:end])
+			lastEnd = end
+			continue
+		}
+		builder.WriteString(string(render.SanitizeHTML(string(next.Output), trust)))
+		lastEnd = end
+	}
+	if hookErr != nil {
+		return "", hookErr
+	}
+	builder.WriteString(htmlBody[lastEnd:])
+	return template.HTML(builder.String()), nil
+}
+
+// parseShortcodeAttrs turns a raw attribute run (leading space + tokens)
+// into a case-insensitive map. Unquoted values may not contain whitespace
+// or angle brackets — that constraint mirrors the pattern above and keeps
+// the parser from being weaponised against very long single-token inputs.
+func parseShortcodeAttrs(raw string) map[string]string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return map[string]string{}
+	}
+	out := make(map[string]string)
+	for _, match := range shortcodeAttrPattern.FindAllStringSubmatch(raw, -1) {
+		key := strings.ToLower(match[1])
+		value := match[2]
+		if len(value) >= 2 {
+			first, last := value[0], value[len(value)-1]
+			if (first == '"' && last == '"') || (first == '\'' && last == '\'') {
+				value = value[1 : len(value)-1]
+			}
+		}
+		out[key] = value
+	}
+	return out
+}
+
+// publicContentFromModel projects the internal models.Content into the
+// shape shortcode handlers see. It intentionally drops password/body fields
+// so a hook cannot accidentally leak the raw source; callers that need the
+// body must operate on the sanitized HTML.
+func publicContentFromModel(c models.Content) plugin.PublicContent {
+	return plugin.PublicContent{
+		CID:          c.CID,
+		Title:        c.Title,
+		Slug:         c.Slug,
+		SlugID:       c.SlugID,
+		Created:      c.Created,
+		Modified:     c.Modified,
+		Type:         c.Type,
+		Status:       c.Status,
+		AuthorID:     c.AuthorID,
+		CommentsNum:  c.CommentsNum,
+		AllowComment: c.AllowComment,
+		AllowPing:    c.AllowPing,
+		AllowFeed:    c.AllowFeed,
+		Template:     c.Template,
+		Parent:       c.Parent,
+		SortOrder:    c.SortOrder,
+		DraftOf:      c.DraftOf,
+	}
+}
+
+// sendMailPlugin dispatches a MailMessage through the mail.before_send /
+// mail.after_send hook pipeline. The core does not embed an SMTP client of
+// its own — mail transports are provided by plugins that observe
+// mail.before_send and set Handled=true after taking responsibility for
+// delivery. This keeps the transport surface pluggable and lets the core
+// remain free of an outbound network mailer that would need its own set of
+// hardening.
+func (a *App) sendMailPlugin(ctx context.Context, msg plugin.MailMessage) error {
+	if a.Plugins == nil {
+		return errors.New("mail dispatcher unavailable")
+	}
+	// Reject header injection at the edge so downstream transports never
+	// have to worry about smuggled Bcc/Subject lines.
+	if err := validateMailMessage(msg); err != nil {
+		return err
+	}
+	before := plugin.MailPayload{Message: msg}
+	beforeOut, err := a.Plugins.ApplyActive(ctx, plugin.HookMailBeforeSend, before)
+	if err != nil {
+		after := plugin.MailPayload{Message: msg, Err: err}
+		_, _ = a.Plugins.ApplyActive(ctx, plugin.HookMailAfterSend, after)
+		return err
+	}
+	next, ok := beforeOut.(plugin.MailPayload)
+	if ok {
+		msg = next.Message
+		if next.Cancelled {
+			_, _ = a.Plugins.ApplyActive(ctx, plugin.HookMailAfterSend, plugin.MailPayload{Message: msg, Cancelled: true, Result: next.Result})
+			return nil
+		}
+		if !next.Handled {
+			err := errors.New("no mail transport is registered for this message")
+			_, _ = a.Plugins.ApplyActive(ctx, plugin.HookMailAfterSend, plugin.MailPayload{Message: msg, Err: err})
+			return err
+		}
+	} else {
+		err := errors.New("no mail transport is registered for this message")
+		_, _ = a.Plugins.ApplyActive(ctx, plugin.HookMailAfterSend, plugin.MailPayload{Message: msg, Err: err})
+		return err
+	}
+	_, _ = a.Plugins.ApplyActive(ctx, plugin.HookMailAfterSend, plugin.MailPayload{Message: msg, Handled: true, Result: next.Result})
+	return nil
+}
+
+// validateMailMessage strips the classic CRLF header-injection vector and
+// enforces that at least one recipient and a non-empty subject or body are
+// present. It runs at the edge of the mail hook so every transport can
+// trust its input.
+func validateMailMessage(msg plugin.MailMessage) error {
+	if len(msg.To) == 0 && len(msg.CC) == 0 && len(msg.BCC) == 0 {
+		return errors.New("mail message has no recipients")
+	}
+	if strings.TrimSpace(msg.Subject) == "" && strings.TrimSpace(msg.Text) == "" && strings.TrimSpace(msg.HTML) == "" {
+		return errors.New("mail message is empty")
+	}
+	unsafe := func(value string) bool {
+		return strings.ContainsAny(value, "\r\n")
+	}
+	if unsafe(msg.Subject) {
+		return errors.New("mail message contains CRLF in header fields")
+	}
+	checkAddr := func(addr plugin.MailAddress) error {
+		if unsafe(addr.Name) || unsafe(addr.Address) {
+			return errors.New("mail address contains CRLF")
+		}
+		return nil
+	}
+	if err := checkAddr(msg.From); err != nil {
+		return err
+	}
+	for _, list := range [][]plugin.MailAddress{msg.To, msg.CC, msg.BCC, msg.ReplyTo} {
+		for _, addr := range list {
+			if err := checkAddr(addr); err != nil {
+				return err
+			}
+		}
+	}
+	for name, value := range msg.Headers {
+		if unsafe(name) || unsafe(value) {
+			return errors.New("mail header contains CRLF")
+		}
+	}
+	return nil
 }
