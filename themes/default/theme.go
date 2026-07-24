@@ -58,6 +58,10 @@ func init() {
 		HandleAdminPageAction: handleFriendAdminPageAction,
 		EnrichComments:        friendEnrichComments,
 		AdjustData:            adjustDefaultThemeData,
+		Routes: []plugin.Route{
+			{Method: "POST", Pattern: "/action/theme/default/view", Handler: handleView},
+			{Method: "POST", Pattern: "/action/theme/default/like", Handler: handleLike},
+		},
 		Funcs: template.FuncMap{
 			"themeValue":      themeValue,
 			"themeInt":        themeInt,
@@ -68,6 +72,27 @@ func init() {
 			"daysSince":       daysSince,
 			"staleDays":       staleDays,
 			"staleNoticeText": staleNoticeText,
+			"fieldInt": func(fields map[string]any, name string) int {
+				if fields == nil {
+					return 0
+				}
+				value, ok := fields[name]
+				if !ok || value == nil {
+					return 0
+				}
+				switch v := value.(type) {
+				case int64:
+					return int(v)
+				case int:
+					return v
+				case string:
+					n, _ := strconv.Atoi(strings.TrimSpace(v))
+					return n
+				default:
+					n, _ := strconv.Atoi(strings.TrimSpace(fmt.Sprint(v)))
+					return n
+				}
+			},
 			"fieldString": func(fields map[string]any, name string) string {
 				if fields == nil {
 					return ""
@@ -137,6 +162,8 @@ func init() {
 			},
 			{Name: "cover", Label: "Post/Page cover image", Group: "Theme Display", Type: plugin.FieldImage, Description: "Enter image URL; blank follows theme fallback; supports {random}", ForTypes: []string{"post", "page"}, Wide: true},
 			{Name: "remark", Label: "No-cover card note", Group: "Theme Display", Type: plugin.FieldText, Description: "Only shown in no-cover post cards", ForTypes: []string{"post", "page"}, Wide: true},
+			{Name: "views", Label: "Views", Group: "Theme Display", Type: plugin.FieldNumber, Default: "0", Description: "Managed automatically by the theme on each visit", ReadOnly: true, ForTypes: []string{"post", "page"}},
+			{Name: "likes", Label: "Likes", Group: "Theme Display", Type: plugin.FieldNumber, Default: "0", Description: "Managed automatically by the theme like button", ReadOnly: true, ForTypes: []string{"post", "page"}},
 		},
 	})
 }

@@ -221,59 +221,62 @@ type PublicMetaQuery struct {
 }
 
 type Runtime struct {
-	OwnerKind          string
-	Owner              string
-	ListContents       func(context.Context, PublicContentQuery) ([]PublicContent, int64, error)
-	ListComments       func(context.Context, PublicCommentQuery) ([]PublicComment, int64, error)
-	ListUsers          func(context.Context, PublicUserQuery) ([]PublicUser, int64, error)
-	ListMetas          func(context.Context, PublicMetaQuery) ([]PublicMeta, int64, error)
-	ListRevisions      func(context.Context, int64) ([]PublicRevision, error)
-	GetRevision        func(context.Context, int64) (PublicRevision, error)
-	RestoreRevision    func(context.Context, int64, int64) error
-	DeleteRevision     func(context.Context, int64, int64) error
-	ArchiveMonths      func(context.Context, int) ([]PublicArchivePeriod, error)
-	AdjacentPosts      func(context.Context, int64) (PublicContent, PublicContent, error)
-	RelatedPosts       func(context.Context, int64, int) ([]PublicContent, error)
-	GetEditingDraft    func(context.Context, int64) (PublicContent, error)
-	PublishDraft       func(context.Context, int64) error
-	ListThemeFiles     func(context.Context, ...string) ([]string, error)
-	ThemeEditableDir   func(context.Context, ...string) (string, bool)
-	ContentURL         func(context.Context, int64) (string, error)
-	CommentURL         func(context.Context, int64) (string, error)
-	AvatarURL          func(context.Context, string, int) string
-	Language           func(context.Context) string
-	SiteURL            func(context.Context) string
-	AdminURL           func(context.Context) string
-	ClientIP           func(*http.Request) string
-	CurrentUser        func(*http.Request) (PublicUser, bool)
-	Option             func(context.Context, string) (string, error)
-	SetOption          func(context.Context, string, string) error
-	SaveContent        func(context.Context, ContentWriteInput) (PublicContent, error)
-	DeleteContent      func(context.Context, int64) error
-	SaveComment        func(context.Context, CommentWriteInput) (PublicComment, error)
-	DeleteComment      func(context.Context, int64) error
-	Config             func(context.Context, string) (map[string]string, error)
-	PersonalConfig     func(context.Context, string, int64) (map[string]string, error)
-	DispatchHook       func(context.Context, string, any) (HookDispatch, error)
-	ServiceAvailable   func(string) bool
-	CallService        func(context.Context, string, ...any) (any, error)
-	NotifyAdmin        func(http.ResponseWriter, *http.Request, ...AdminNotice)
-	OpenPluginDB       func(context.Context) (*sql.DB, error)
-	PluginDBDialect    func(context.Context) string
-	IsIPBanned         func(context.Context, string) bool
-	IsURLAllowed       func(context.Context, string) bool
-	BanIP              func(context.Context, string, time.Duration, string) error
-	UnbanIP            func(context.Context, string) error
-	WAFStats           func(context.Context) (WAFStatistics, error)
-	GetContentAuthor   func(context.Context, int64) (PublicUser, error)
-	ListContentMetas   func(context.Context, int64) ([]PublicMeta, error)
-	GetContentFields   func(context.Context, int64) (map[string]any, error)
-	SetContentField    func(context.Context, int64, string, string) error
-	DeleteContentField func(context.Context, int64, string) error
-	ThumbnailURL       func(context.Context, int64, int, int) (string, error)
-	AttachmentMeta     func(context.Context, int64) (AttachmentMetaInfo, error)
-	ActiveTheme        func(context.Context) string
-	ContentRenderMode  func(context.Context) string
+	OwnerKind                string
+	Owner                    string
+	ListContents             func(context.Context, PublicContentQuery) ([]PublicContent, int64, error)
+	ListComments             func(context.Context, PublicCommentQuery) ([]PublicComment, int64, error)
+	ListUsers                func(context.Context, PublicUserQuery) ([]PublicUser, int64, error)
+	ListMetas                func(context.Context, PublicMetaQuery) ([]PublicMeta, int64, error)
+	ListRevisions            func(context.Context, int64) ([]PublicRevision, error)
+	GetRevision              func(context.Context, int64) (PublicRevision, error)
+	RestoreRevision          func(context.Context, int64, int64) error
+	DeleteRevision           func(context.Context, int64, int64) error
+	ArchiveMonths            func(context.Context, int) ([]PublicArchivePeriod, error)
+	AdjacentPosts            func(context.Context, int64) (PublicContent, PublicContent, error)
+	RelatedPosts             func(context.Context, int64, int) ([]PublicContent, error)
+	GetEditingDraft          func(context.Context, int64) (PublicContent, error)
+	PublishDraft             func(context.Context, int64) error
+	ListThemeFiles           func(context.Context, ...string) ([]string, error)
+	ThemeEditableDir         func(context.Context, ...string) (string, bool)
+	ContentURL               func(context.Context, int64) (string, error)
+	CommentURL               func(context.Context, int64) (string, error)
+	AvatarURL                func(context.Context, string, int) string
+	Language                 func(context.Context) string
+	SiteURL                  func(context.Context) string
+	AdminURL                 func(context.Context) string
+	ClientIP                 func(*http.Request) string
+	CurrentUser              func(*http.Request) (PublicUser, bool)
+	CSRFToken                func(*http.Request, string) string
+	ValidateCSRF             func(*http.Request, string) bool
+	Option                   func(context.Context, string) (string, error)
+	SetOption                func(context.Context, string, string) error
+	SaveContent              func(context.Context, ContentWriteInput) (PublicContent, error)
+	DeleteContent            func(context.Context, int64) error
+	SaveComment              func(context.Context, CommentWriteInput) (PublicComment, error)
+	DeleteComment            func(context.Context, int64) error
+	Config                   func(context.Context, string) (map[string]string, error)
+	PersonalConfig           func(context.Context, string, int64) (map[string]string, error)
+	DispatchHook             func(context.Context, string, any) (HookDispatch, error)
+	ServiceAvailable         func(string) bool
+	CallService              func(context.Context, string, ...any) (any, error)
+	NotifyAdmin              func(http.ResponseWriter, *http.Request, ...AdminNotice)
+	OpenPluginDB             func(context.Context) (*sql.DB, error)
+	PluginDBDialect          func(context.Context) string
+	IsIPBanned               func(context.Context, string) bool
+	IsURLAllowed             func(context.Context, string) bool
+	BanIP                    func(context.Context, string, time.Duration, string) error
+	UnbanIP                  func(context.Context, string) error
+	WAFStats                 func(context.Context) (WAFStatistics, error)
+	GetContentAuthor         func(context.Context, int64) (PublicUser, error)
+	ListContentMetas         func(context.Context, int64) ([]PublicMeta, error)
+	GetContentFields         func(context.Context, int64) (map[string]any, error)
+	SetContentField          func(context.Context, int64, ContentFieldInput) error
+	IncrementContentFieldInt func(context.Context, int64, string, int64) (int64, error)
+	DeleteContentField       func(context.Context, int64, string) error
+	ThumbnailURL             func(context.Context, int64, int, int) (string, error)
+	AttachmentMeta           func(context.Context, int64) (AttachmentMetaInfo, error)
+	ActiveTheme              func(context.Context) string
+	ContentRenderMode        func(context.Context) string
 }
 
 type runtimeContextKey struct{}
@@ -515,10 +518,11 @@ type RouteHandler func(*Runtime, http.ResponseWriter, *http.Request)
 type ServiceFunc func(context.Context, *Runtime, ...any) (any, error)
 
 type Route struct {
-	Plugin  string
-	Method  string
-	Pattern string
-	Handler RouteHandler
+	Plugin                string
+	Method                string
+	Pattern               string
+	Handler               RouteHandler
+	InvalidatesPublicData bool
 }
 
 type HookFunc func(context.Context, any) (any, error)
@@ -1264,6 +1268,7 @@ type Theme struct {
 	Capabilities          ThemeCapabilities
 	InitRuntime           func(context.Context, *Runtime) error
 	AdjustData            func(context.Context, map[string]any) error
+	Routes                []Route
 	EditableDir           string
 	Embedded              bool
 }

@@ -144,6 +144,7 @@ func sqliteSchema() []string {
 			floatValue real default '0'
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_fields_cid ON gb_fields (cid)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS gb_fields_cid_name ON gb_fields (cid, name)`,
 		`CREATE TABLE IF NOT EXISTS gb_revisions (
 			rid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			cid int(10) NOT NULL default '0',
@@ -259,7 +260,8 @@ func mysqlSchema() []string {
 			intValue int(10) default '0',
 			floatValue double default '0',
 			PRIMARY KEY (fid),
-			KEY gb_fields_cid (cid)
+			KEY gb_fields_cid (cid),
+			UNIQUE KEY gb_fields_cid_name (cid, name)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS gb_revisions (
 			rid int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -582,6 +584,7 @@ func postgresSchema() []string {
 			floatValue double precision default 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_fields_cid ON gb_fields (cid)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS gb_fields_cid_name ON gb_fields (cid, name)`,
 		`CREATE TABLE IF NOT EXISTS gb_revisions (
 			rid bigserial PRIMARY KEY,
 			cid bigint NOT NULL default 0,

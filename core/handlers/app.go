@@ -191,6 +191,54 @@ func (a *App) Handler() http.Handler {
 			route.Handler(routeRuntime, w, r.WithContext(plugin.ContextWithRuntime(r.Context(), routeRuntime)))
 		})
 	}
+	type ownedThemeRoute struct {
+		theme string
+		route plugin.Route
+	}
+	themeRoutes := map[string][]ownedThemeRoute{}
+	for _, theme := range a.Plugins.Themes() {
+		for _, route := range theme.Routes {
+			if strings.TrimSpace(route.Pattern) == "" || route.Handler == nil {
+				continue
+			}
+			themeRoutes[route.Pattern] = append(themeRoutes[route.Pattern], ownedThemeRoute{theme: theme.Name, route: route})
+		}
+	}
+	themeRoutePatterns := make([]string, 0, len(themeRoutes))
+	for pattern := range themeRoutes {
+		themeRoutePatterns = append(themeRoutePatterns, pattern)
+	}
+	sort.Strings(themeRoutePatterns)
+	for _, pattern := range themeRoutePatterns {
+		routes := themeRoutes[pattern]
+		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+			activeTheme, ok := a.activeTheme(r.Context())
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			allowed := make([]string, 0, len(routes))
+			for _, item := range routes {
+				if item.theme != activeTheme.Name {
+					continue
+				}
+				method := strings.ToUpper(strings.TrimSpace(item.route.Method))
+				if method != "" && method != r.Method {
+					allowed = append(allowed, method)
+					continue
+				}
+				themeRuntime := runtime.WithComponent("theme", activeTheme.Name)
+				item.route.Handler(themeRuntime, w, r.WithContext(plugin.ContextWithRuntime(r.Context(), themeRuntime)))
+				return
+			}
+			if len(allowed) > 0 {
+				w.Header().Set("Allow", strings.Join(allowed, ", "))
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			http.NotFound(w, r)
+		})
+	}
 
 	mux.HandleFunc("/feed.xml", a.frontRSS)
 	mux.HandleFunc("/atom.xml", a.frontAtom)
@@ -9524,54 +9572,57 @@ func (a *App) pluginConfig(ctx context.Context, name string) (map[string]string,
 
 func (a *App) pluginRuntime() *plugin.Runtime {
 	runtime := &plugin.Runtime{
-		ListContents:       a.Contents.ListContentsPlugin,
-		ListComments:       a.Comments.ListCommentsPlugin,
-		ListUsers:          a.Users.ListUsersPlugin,
-		ListMetas:          a.Metas.ListMetasPlugin,
-		ListRevisions:      a.listRevisionsPlugin,
-		GetRevision:        a.getRevisionPlugin,
-		RestoreRevision:    a.restoreRevisionPlugin,
-		DeleteRevision:     a.deleteRevisionPlugin,
-		ArchiveMonths:      a.archiveMonthsPlugin,
-		AdjacentPosts:      a.adjacentPostsPlugin,
-		RelatedPosts:       a.relatedPostsPlugin,
-		GetEditingDraft:    a.getEditingDraftPlugin,
-		PublishDraft:       a.publishDraftPlugin,
-		ListThemeFiles:     a.listThemeFilesPlugin,
-		ThemeEditableDir:   a.themeEditableDirPlugin,
-		ContentURL:         a.pluginContentURL,
-		CommentURL:         a.pluginCommentURL,
-		AvatarURL:          a.emailAvatarURL,
-		Language:           a.language,
-		SiteURL:            a.siteURLPlugin,
-		AdminURL:           a.adminURLPlugin,
-		ClientIP:           a.clientIP,
-		CurrentUser:        a.currentUserPlugin,
-		Option:             a.Options.Get,
-		SetOption:          a.Options.Set,
-		SaveContent:        a.saveContentPlugin,
-		DeleteContent:      a.deleteContentPlugin,
-		SaveComment:        a.saveCommentPlugin,
-		DeleteComment:      a.deleteCommentPlugin,
-		Config:             a.pluginConfig,
-		PersonalConfig:     a.pluginPersonalConfig,
-		NotifyAdmin:        a.setFlash,
-		OpenPluginDB:       a.openPluginDBForRuntime,
-		PluginDBDialect:    a.pluginDBDialectForRuntime,
-		IsIPBanned:         a.pluginIsIPBanned,
-		IsURLAllowed:       a.pluginIsURLAllowed,
-		BanIP:              a.pluginBanIP,
-		UnbanIP:            a.pluginUnbanIP,
-		WAFStats:           a.pluginWAFStats,
-		GetContentAuthor:   a.getContentAuthorPlugin,
-		ListContentMetas:   a.listContentMetasPlugin,
-		GetContentFields:   a.getContentFieldsPlugin,
-		SetContentField:    a.setContentFieldPlugin,
-		DeleteContentField: a.deleteContentFieldPlugin,
-		ThumbnailURL:       a.thumbnailURLPlugin,
-		AttachmentMeta:     a.attachmentMetaPlugin,
-		ActiveTheme:        a.activeThemeName,
-		ContentRenderMode:  a.contentRenderModePlugin,
+		ListContents:             a.Contents.ListContentsPlugin,
+		ListComments:             a.Comments.ListCommentsPlugin,
+		ListUsers:                a.Users.ListUsersPlugin,
+		ListMetas:                a.Metas.ListMetasPlugin,
+		ListRevisions:            a.listRevisionsPlugin,
+		GetRevision:              a.getRevisionPlugin,
+		RestoreRevision:          a.restoreRevisionPlugin,
+		DeleteRevision:           a.deleteRevisionPlugin,
+		ArchiveMonths:            a.archiveMonthsPlugin,
+		AdjacentPosts:            a.adjacentPostsPlugin,
+		RelatedPosts:             a.relatedPostsPlugin,
+		GetEditingDraft:          a.getEditingDraftPlugin,
+		PublishDraft:             a.publishDraftPlugin,
+		ListThemeFiles:           a.listThemeFilesPlugin,
+		ThemeEditableDir:         a.themeEditableDirPlugin,
+		ContentURL:               a.pluginContentURL,
+		CommentURL:               a.pluginCommentURL,
+		AvatarURL:                a.emailAvatarURL,
+		Language:                 a.language,
+		SiteURL:                  a.siteURLPlugin,
+		AdminURL:                 a.adminURLPlugin,
+		ClientIP:                 a.clientIP,
+		CurrentUser:              a.currentUserPlugin,
+		CSRFToken:                a.csrfTokenFor,
+		ValidateCSRF:             a.validCSRFFor,
+		Option:                   a.Options.Get,
+		SetOption:                a.Options.Set,
+		SaveContent:              a.saveContentPlugin,
+		DeleteContent:            a.deleteContentPlugin,
+		SaveComment:              a.saveCommentPlugin,
+		DeleteComment:            a.deleteCommentPlugin,
+		Config:                   a.pluginConfig,
+		PersonalConfig:           a.pluginPersonalConfig,
+		NotifyAdmin:              a.setFlash,
+		OpenPluginDB:             a.openPluginDBForRuntime,
+		PluginDBDialect:          a.pluginDBDialectForRuntime,
+		IsIPBanned:               a.pluginIsIPBanned,
+		IsURLAllowed:             a.pluginIsURLAllowed,
+		BanIP:                    a.pluginBanIP,
+		UnbanIP:                  a.pluginUnbanIP,
+		WAFStats:                 a.pluginWAFStats,
+		GetContentAuthor:         a.getContentAuthorPlugin,
+		ListContentMetas:         a.listContentMetasPlugin,
+		GetContentFields:         a.getContentFieldsPlugin,
+		SetContentField:          a.setContentFieldPlugin,
+		IncrementContentFieldInt: a.incrementContentFieldIntPlugin,
+		DeleteContentField:       a.deleteContentFieldPlugin,
+		ThumbnailURL:             a.thumbnailURLPlugin,
+		AttachmentMeta:           a.attachmentMetaPlugin,
+		ActiveTheme:              a.activeThemeName,
+		ContentRenderMode:        a.contentRenderModePlugin,
 	}
 	runtime.DispatchHook = func(ctx context.Context, name string, payload any) (plugin.HookDispatch, error) {
 		return a.Plugins.DispatchActive(plugin.ContextWithRuntime(ctx, runtime), name, payload)
@@ -11265,32 +11316,18 @@ func (a *App) getContentFieldsPlugin(ctx context.Context, cid int64) (map[string
 	return a.Contents.FieldMap(ctx, cid)
 }
 
-func (a *App) setContentFieldPlugin(ctx context.Context, cid int64, name, value string) error {
-	name = strings.TrimSpace(name)
-	if name == "" {
+func (a *App) setContentFieldPlugin(ctx context.Context, cid int64, field plugin.ContentFieldInput) error {
+	field.Name = strings.TrimSpace(field.Name)
+	if field.Name == "" {
 		return fmt.Errorf("content field name is required")
 	}
 	if _, err := a.Contents.ByID(ctx, cid); err != nil {
 		return err
 	}
-	fields, err := a.Contents.FieldsForContent(ctx, cid)
-	if err != nil {
-		return err
-	}
-	next := make([]services.SaveFieldInput, 0, len(fields)+1)
-	replaced := false
-	for _, field := range fields {
-		if field.Name == name {
-			next = append(next, services.SaveFieldInput{Name: name, Type: "str", StrValue: value})
-			replaced = true
-			continue
-		}
-		next = append(next, saveFieldFromModel(field))
-	}
-	if !replaced {
-		next = append(next, services.SaveFieldInput{Name: name, Type: "str", StrValue: value})
-	}
-	return a.Contents.SaveFields(ctx, cid, next)
+	return a.Contents.SetField(ctx, cid, services.SaveFieldInput{
+		Name: field.Name, Type: field.Type, StrValue: field.StrValue,
+		IntValue: field.IntValue, FloatValue: field.FloatValue,
+	})
 }
 
 func (a *App) deleteContentFieldPlugin(ctx context.Context, cid int64, name string) error {
@@ -11301,18 +11338,18 @@ func (a *App) deleteContentFieldPlugin(ctx context.Context, cid int64, name stri
 	if _, err := a.Contents.ByID(ctx, cid); err != nil {
 		return err
 	}
-	fields, err := a.Contents.FieldsForContent(ctx, cid)
-	if err != nil {
-		return err
+	return a.Contents.DeleteField(ctx, cid, name)
+}
+
+func (a *App) incrementContentFieldIntPlugin(ctx context.Context, cid int64, name string, delta int64) (int64, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return 0, fmt.Errorf("content field name is required")
 	}
-	next := make([]services.SaveFieldInput, 0, len(fields))
-	for _, field := range fields {
-		if field.Name == name {
-			continue
-		}
-		next = append(next, saveFieldFromModel(field))
+	if _, err := a.Contents.ByID(ctx, cid); err != nil {
+		return 0, err
 	}
-	return a.Contents.SaveFields(ctx, cid, next)
+	return a.Contents.IncrementFieldInt(ctx, cid, name, delta)
 }
 
 func (a *App) getEditingDraftPlugin(ctx context.Context, publishedID int64) (plugin.PublicContent, error) {

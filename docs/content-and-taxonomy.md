@@ -170,7 +170,7 @@ func (MyPlugin) ContentFieldSchema() []plugin.FieldSchema {
 
 字段名称必须通过服务端校验。`ForTypes` 限制适用内容类型；`ReadOnly` 或 `content.field_readonly` 可保护已有字段，服务端会拒绝伪造表单覆盖只读值。
 
-插件运行时可用 `GetContentFields` 读取字段映射，并用 `SetContentField(ctx, cid, name, value)` 或 `DeleteContentField(ctx, cid, name)` 修改单个字段。单字段写入保存为字符串字段，适合阅读量、点赞数、外部同步状态等轻量扩展；需要保存大量明细数据时应使用插件数据库。
+插件和主题运行时可用 `GetContentFields` 读取字段映射，并用 `SetContentField(ctx, cid, plugin.ContentFieldInput{...})` 或 `DeleteContentField(ctx, cid, name)` 修改单个字段。字段类型支持 `str`、`int`、`float`、`json`，写入只影响目标字段；阅读量、点赞数等并发计数必须使用 `IncrementContentFieldInt` 原子递增。需要保存大量明细数据时应使用插件数据库。
 
 ## 删除内容
 

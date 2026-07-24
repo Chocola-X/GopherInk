@@ -25,12 +25,15 @@
 {{define "content"}}
 {{$articleType := fieldString .Fields "articleType"}}
 {{$cover := fieldString .Fields "cover"}}
+{{$views := fieldInt .Fields "views"}}
+{{$likes := fieldInt .Fields "likes"}}
 {{$fallbackNoCover := themeValue .ThemeConfig "fallback_no_cover" "1"}}
 {{if and (not $cover) (ne $fallbackNoCover "1")}}{{$cover = themeValue .ThemeConfig "default_cover"}}{{end}}
 {{if eq $articleType "normal"}}{{$cover = ""}}{{end}}
 {{$cover = assetURL $cover}}
 {{$postEndImg := assetURL (themeValue .ThemeConfig "post_end_image")}}
 {{$commentBgImg := assetURL (themeValue .ThemeConfig "comment_bg_image")}}
+<span hidden data-content-metrics data-post-cid="{{.Post.CID}}" data-csrf="{{.CSRF}}"></span>
 {{if .IsFriendPage}}
 <section class="friend-page" aria-label="{{.Post.Title}}">
   <h1 class="friend-page-title">{{.Post.Title}}</h1>
@@ -65,7 +68,7 @@
       <div class="mdui-card-primary">
         <h1 class="mdui-card-primary-title">{{.Post.Title}}</h1>
         <div class="mdui-card-primary-subtitle">
-          {{date .Post.Created}} | {{T "Reading time"}}: {{readingTimeI18n .Lang .Post.Text}} | {{T "Categories"}}:
+          {{date .Post.Created}} | {{T "Reading time"}}: {{readingTimeI18n .Lang .Post.Text}} | {{T "Views"}}: <span data-view-count>{{$views}}</span> | {{T "Categories"}}:
           {{range $idx, $cat := .Categories}}{{if $idx}}, {{end}}<a href="{{metaURL $cat}}">{{$cat.Name}}</a>{{else}}{{T "Uncategorized"}}{{end}}
           | {{T "Tags"}}:
           {{range $idx, $tag := .Tags}}{{if $idx}}, {{end}}<a href="{{metaURL $tag}}">{{$tag.Name}}</a>{{else}}{{T "None"}}{{end}}
@@ -91,6 +94,12 @@
   {{end}}
   {{end}}
 </article>
+<div class="post-actions" data-post-cid="{{.Post.CID}}" data-csrf="{{.CSRF}}">
+  <button class="post-like-btn" type="button" data-like-btn aria-label="{{T "Like"}}">
+    <mdui-icon name="favorite_border"></mdui-icon>
+    <span class="post-like-count" data-like-count>{{$likes}}</span>
+  </button>
+</div>
 {{end}}
 {{if not .PasswordRequired}}
 {{if or .PrevPost.CID .NextPost.CID}}

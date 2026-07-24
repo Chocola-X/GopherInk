@@ -428,6 +428,7 @@ type Plugin interface {
 | `GetSiteURL(ctx)` / `GetAdminURL(ctx)` | 读取站点和后台入口 URL |
 | `ClientIP(r)` | 按站点反向代理信任策略取得访客 IP |
 | `CurrentUser(r)` | 从当前请求读取已登录用户的精简信息 |
+| `CSRFToken(r, purpose)` / `ValidateCSRF(r, purpose)` | 为扩展路由签发或校验指定用途的 CSRF 令牌 |
 | `Option(ctx, name)` | 读取站点选项 |
 | `SetOption(ctx, name, value)` | 写入站点选项 |
 | `Config(ctx, pluginName)` | 读取插件站点级配置 |
@@ -449,7 +450,8 @@ type Plugin interface {
 | `GetContentAuthor(ctx, cid)` | 读取指定内容作者的公开用户信息 |
 | `ListContentMetas(ctx, cid)` | 读取指定内容关联的分类、标签等 Meta |
 | `GetContentFields(ctx, cid)` | 读取指定内容的自定义字段映射 |
-| `SetContentField(ctx, cid, name, value)` / `DeleteContentField(ctx, cid, name)` | 设置或删除单个内容字段 |
+| `SetContentField(ctx, cid, field)` / `DeleteContentField(ctx, cid, name)` | 按 `ContentFieldInput` 类型设置或删除单个内容字段 |
+| `IncrementContentFieldInt(ctx, cid, name, delta)` | 原子递增整数内容字段并返回新值，适合轻量计数器 |
 | `AttachmentMeta(ctx, cid)` | 读取附件 URL、MIME、大小和图片尺寸等公开元数据 |
 | `ThumbnailURL(ctx, attachmentCID, width, height)` | 读取后台缩略图 URL |
 | `ActiveTheme(ctx)` | 读取当前启用主题技术名称 |

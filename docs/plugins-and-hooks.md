@@ -160,6 +160,7 @@ GopherInk 参考 Typecho 的插件能力，但不会完全照搬“插件直接�
 | `GetSiteURL(ctx)` / `GetAdminURL(ctx)` | 读取站点和后台入口 URL |
 | `ClientIP(r)` | 按站点反向代理信任策略取得访客 IP |
 | `CurrentUser(r)` | 从当前请求读取已登录用户的精简信息 |
+| `CSRFToken(r, purpose)` / `ValidateCSRF(r, purpose)` | 为插件或主题公开路由签发、校验指定用途的 CSRF 令牌 |
 | `Option(ctx, name)` | 读取站点选项 |
 | `SetOption(ctx, name, value)` | 写入站点选项 |
 | `SaveContent(ctx, input)` / `DeleteContent(ctx, cid)` | 通过核心编排层创建、更新或删除内容，会触发内容保存/删除钩子 |
@@ -181,7 +182,8 @@ GopherInk 参考 Typecho 的插件能力，但不会完全照搬“插件直接�
 | `GetContentAuthor(ctx, cid)` | 读取指定内容作者的公开用户信息 |
 | `ListContentMetas(ctx, cid)` | 读取指定内容关联的分类、标签等 Meta |
 | `GetContentFields(ctx, cid)` | 读取指定内容的自定义字段映射 |
-| `SetContentField(ctx, cid, name, value)` / `DeleteContentField(ctx, cid, name)` | 设置或删除单个内容字段；保留同内容下其他字段 |
+| `SetContentField(ctx, cid, field)` / `DeleteContentField(ctx, cid, name)` | 设置或删除单个内容字段；只修改目标行并保留其他字段 |
+| `IncrementContentFieldInt(ctx, cid, name, delta)` | 原子递增整数内容字段并返回新值 |
 | `AttachmentMeta(ctx, cid)` | 读取附件 URL、MIME、大小和图片尺寸等公开元数据 |
 | `ThumbnailURL(ctx, attachmentCID, width, height)` | 读取后台缩略图 URL；当前宽高参数为兼容预留 |
 | `ActiveTheme(ctx)` | 读取当前启用主题技术名称 |
@@ -197,7 +199,9 @@ Runtime 写入接口使用 `plugin.ContentWriteInput` 和 `plugin.CommentWriteIn
 
 不要在内容保存钩子中再次调用 `Runtime.SaveContent`，也不要在评论保存钩子中再次调用 `Runtime.SaveComment`。核心会用写入上下文阻止同一链路内的递归写入，避免插件造成无限循环。需要派生内容或评论时，应在完成钩子之后异步排队，或由插件自己的后台页面/路由显式触发。
 
-修订版本、编辑草稿和单字段写入接口面向可信插件。`RestoreRevision` 会复用核心修订恢复逻辑并刷新公开 URL/页面缓存；`PublishDraft` 会触发内容状态变更前后钩子，然后把编辑草稿合并到已发布内容。`SetContentField` 以字符串字段写入，适合阅读量、点赞数、插件状态标记等轻量数据；大量访问日志、统计明细或插件私有表仍应使用插件数据库。
+修订版本、编辑草稿和单字段写入接口面向可信插件。`RestoreRevision` 会复用核心修订恢复逻辑并刷新公开 URL/页面缓存；`PublishDraft` 会触发内容状态变更前后钩子，然后把编辑草稿合并到已发布内容。`SetContentField` 接收 `plugin.ContentFieldInput`，支持 `str`、`int`、`float`、`json`，并只更新目标字段；计数器必须使用 `IncrementContentFieldInt`，避免并发请求丢失增量。阅读量、点赞数和状态标记等聚合值适合保存在内容字段中；大量访问日志、统计明细或插件私有表仍应使用插件数据库。
+
+公开写入路由不能把 `X-Requested-With` 当作安全校验。模板或页面先使用 `CSRFToken(r, "public")` 取得令牌，请求处理器再调用 `ValidateCSRF(r, "public")`；后台路由使用 `admin` 或核心附加页面提供的 CSRF 流程。用途字符串必须由同一扩展固定定义，不能直接接受访客输入。
 
 WAF 写入接口只影响当前进程内的运行时封禁表，不会修改后台 WAF 设置，也不会写入永久 IP 黑名单。`BanIP` 要求传入单个有效 IP 和正数 `time.Duration`，事件会写入 `data/waf.log`。需要跨进程或重启后仍生效的策略，应由插件自行持久化规则，并在 `HookWAFCheck` 中根据自有规则拦截。
 
