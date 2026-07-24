@@ -59,6 +59,8 @@ var defaultThemeZhCN = map[string]string{
 	"Show notice when post modified time exceeds configured days": "文章最后修改时间超过设定天数时显示提醒",
 	"Stale notice days":                  "过期提醒天数",
 	"Calculated from post modified time": "按文章最后修改时间计算",
+	"Stale notice text":                  "过期提醒文本",
+	"Use {days} as placeholder for days since last modification; leave blank for default text": "使用 {days} 作为距最后修改天数的占位符；留空使用默认文本",
 	"Footer":                             "页脚",
 	"Footer HTML":                        "页脚 HTML",
 	"Blank shows Powered by GopherInk":   "留空时显示 Powered by GopherInk",

@@ -67,6 +67,7 @@ func init() {
 			"readingTimeI18n": readingTimeI18n,
 			"daysSince":       daysSince,
 			"staleDays":       staleDays,
+			"staleNoticeText": staleNoticeText,
 			"fieldString": func(fields map[string]any, name string) string {
 				if fields == nil {
 					return ""
@@ -106,6 +107,7 @@ func init() {
 			{Name: "enable_back_to_top", Label: "Show back-to-top button", Group: "Sidebar and Navigation", Type: plugin.FieldCheckbox, Default: "1"},
 			{Name: "show_stale_notice", Label: "Show stale post notice", Group: "Post Display", Type: plugin.FieldCheckbox, Default: "1", Description: "Show notice when post modified time exceeds configured days", Wide: true},
 			{Name: "stale_notice_days", Label: "Stale notice days", Group: "Post Display", Type: plugin.FieldNumber, Default: "30", Description: "Calculated from post modified time", Min: "1", Max: "3650", Step: "1", Required: true, ShowWhenField: "show_stale_notice", ShowWhenValue: "1", Wide: true},
+			{Name: "stale_notice_text", Label: "Stale notice text", Group: "Post Display", Type: plugin.FieldTextarea, Description: "Use {days} as placeholder for days since last modification; leave blank for default text", ShowWhenField: "show_stale_notice", ShowWhenValue: "1", Wide: true},
 			{Name: "footer_html", Label: "Footer HTML", Group: "Footer", Type: plugin.FieldTextarea, Description: "Blank shows Powered by GopherInk", Wide: true},
 		},
 		ContentFields: []plugin.FieldSchema{
@@ -241,4 +243,13 @@ func stripHTMLLike(text string) string {
 		}
 	}
 	return b.String()
+}
+
+func staleNoticeText(values map[string]string, lang string, days int) template.HTML {
+	custom := strings.TrimSpace(themeValue(values, "stale_notice_text"))
+	if custom != "" {
+		custom = strings.ReplaceAll(custom, "{days}", strconv.Itoa(days))
+		return template.HTML(custom)
+	}
+	return template.HTML(fmt.Sprintf("%s %d %s", defaultThemeT(lang, "Note: this post was last modified"), days, defaultThemeT(lang, "days ago. Some information may be outdated.")))
 }

@@ -76,7 +76,7 @@
   {{if and (eq (themeValue .ThemeConfig "show_stale_notice" "1") "1") (staleDays .Post.Modified (themeInt .ThemeConfig "stale_notice_days" 30))}}
   <div class="post-alert">
     <mdui-icon name="report"></mdui-icon>
-    {{T "Note: this post was last modified"}} {{daysSince .Post.Modified}} {{T "days ago. Some information may be outdated."}}
+    {{staleNoticeText .ThemeConfig .Lang (daysSince .Post.Modified)}}
   </div>
   {{end}}
   {{if .PasswordRequired}}
