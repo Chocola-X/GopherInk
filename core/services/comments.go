@@ -302,6 +302,7 @@ func (s *CommentService) ListCommentsPlugin(ctx context.Context, query plugin.Pu
 			AuthorID: comment.AuthorID, OwnerID: comment.OwnerID, Mail: comment.Mail, URL: comment.URL,
 			IP: comment.IP, Agent: comment.Agent, Text: comment.Text, Type: comment.Type,
 			Status: comment.Status, Parent: comment.Parent,
+			Title: comment.Title, Slug: comment.Slug, ContentType: comment.ContentType,
 		})
 	}
 	return out, total, nil
