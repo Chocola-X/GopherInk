@@ -1153,6 +1153,50 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   padding: 18px 24px;
 }
 
+.post-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+  padding-right: 4px;
+}
+
+.post-like-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  color: rgb(var(--mdui-color-on-surface-variant));
+  border: 1px solid rgba(var(--mdui-color-outline-variant), 0.62);
+  border-radius: 999px;
+  background: rgba(var(--mdui-color-surface), var(--cuckoo-card-opacity));
+  box-shadow: 0 2px 6px rgba(var(--mdui-color-shadow), 0.12);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.post-like-btn:hover {
+  border-color: rgba(var(--mdui-color-primary), 0.5);
+  background: rgba(var(--mdui-color-primary), 0.08);
+  transform: translateY(-1px);
+}
+
+.post-like-btn.is-liked {
+  color: rgb(var(--mdui-color-primary));
+  border-color: rgba(var(--mdui-color-primary), 0.5);
+  background: rgba(var(--mdui-color-primary), 0.1);
+}
+
+.post-like-btn mdui-icon {
+  font-size: 20px;
+}
+
+.post-like-count {
+  min-width: 1em;
+  text-align: center;
+}
+
 .post-neighbors {
   display: flex;
   justify-content: space-between;

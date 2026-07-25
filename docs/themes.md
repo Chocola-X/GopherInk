@@ -136,6 +136,7 @@ plugin.RegisterTheme(plugin.Theme{
 | `Capabilities` | 声明主题实现的核心协议能力 |
 | `InitRuntime` | 每次前台渲染前调整主题运行时参数 |
 | `AdjustData` | 渲染模板前补充或修改数据 |
+| `Routes` | 当前主题启用时生效的前台 HTTP 路由，可声明是否使公开缓存失效 |
 | `EditableDir` | 非嵌入主题允许编辑的目录 |
 | `Embedded` | 标记资源是否嵌入二进制 |
 
@@ -441,6 +442,17 @@ ContentFields: []plugin.FieldSchema{
 
 主题字段与插件字段经过统一校验和保存，模板数据中的 `.Fields` 映射可由主题函数读取。Schema 不再注册后，已有数据会作为普通自定义字段显示，用户可以继续编辑或删除。
 
+主题需要在自己的路由中修改字段时，复用 Runtime 的通用字段接口即可，不需要为每个业务新增核心 API：
+
+```go
+err := rt.SetContentField(ctx, cid, plugin.ContentFieldInput{
+    Name: "external_id", Type: "str", StrValue: value,
+})
+likes, err := rt.IncrementContentFieldInt(ctx, cid, "likes", 1)
+```
+
+`SetContentField` 支持 `str`、`int`、`float`、`json`，且只修改目标字段。并发计数必须使用 `IncrementContentFieldInt`，不能用“先读后写”模拟。
+
 内容详情页的字段位于 `.Fields`。首页、分类、标签、搜索和归档等聚合页为了避免逐篇查询，核心会批量读取字段并提供按 CID 索引的 `.PostFields`：
 
 ```gotemplate
@@ -462,7 +474,7 @@ AdjustData: func(ctx context.Context, data map[string]any) error {
 },
 ```
 
-它没有直接数据库服务句柄。需要数据库数据时，应优先由核心提供稳定模板数据，或通过插件命名服务扩展，不要在主题中打开第二套数据库连接。渲染请求的 context 包含只读插件 Runtime，可按需获取：
+它没有直接数据库服务句柄。需要数据库数据时，应优先由核心提供稳定模板数据，或通过插件命名服务扩展，不要在主题中打开第二套数据库连接。渲染请求的 context 包含绑定到当前主题的 Runtime，可按需获取：
 
 ```go
 AdjustData: func(ctx context.Context, data map[string]any) error {
@@ -480,6 +492,31 @@ AdjustData: func(ctx context.Context, data map[string]any) error {
 ```
 
 这里取得的 Runtime 与插件收到的 Runtime 使用相同启停和权限边界，不会暴露核心数据库对象。
+
+`AdjustData` 属于渲染阶段，不应写入浏览量、点赞数等状态。页面可能被公开缓存，缓存命中时不会执行渲染回调；写入还会让模板渲染产生难以追踪的副作用。此类功能应注册主题 POST 路由，再由前端按需调用。
+
+## 主题路由
+
+主题可通过 `Theme.Routes` 注册前台路由。核心会按每次请求的当前启用主题分派，切换主题后旧主题路由立即失效；WAF 的 URL 索引也会识别当前主题路由。路径应使用主题命名空间，避免与核心、插件或其他主题冲突：
+
+```go
+Routes: []plugin.Route{{
+    Method:                http.MethodPost,
+    Pattern:               "/action/theme/example/settings",
+    InvalidatesPublicData: true,
+    Handler: func(rt *plugin.Runtime, w http.ResponseWriter, r *http.Request) {
+        if rt.ValidateCSRF == nil || !rt.ValidateCSRF(r, "public") {
+            http.Error(w, "forbidden", http.StatusForbidden)
+            return
+        }
+        // 校验内容是否公开后再执行主题自己的业务逻辑。
+    },
+}},
+```
+
+模板数据 `.CSRF` 是 `public` 用途的令牌。公开写入路由必须校验 CSRF、请求方法、目标内容状态和业务权限；`X-Requested-With` 只能用于区分交互方式，不能替代安全校验。主题路由处理器收到的 Runtime 已绑定当前主题，可使用字段、内容查询、语言和命名服务等通用能力。
+
+`InvalidatesPublicData` 默认为 `false`。路由会改变页面正文、URL 或公开列表时应设为 `true`；浏览量、点赞等高频计数通常保持 `false`，允许页面按 WAF 配置的 TTL 自然过期，否则每次计数都会清空全部公开页面缓存。
 
 ## 调用插件服务
 

@@ -659,6 +659,82 @@
     window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => applyTheme());
   }
 
+  function initLikeButton() {
+    const actions = document.querySelector(".post-actions");
+    const btn = actions?.querySelector("[data-like-btn]");
+    if (!actions || !btn || btn.dataset.likeBound) return;
+    btn.dataset.likeBound = "1";
+    const cid = actions.dataset.postCid;
+    const csrf = actions.dataset.csrf;
+    const countEl = btn.querySelector("[data-like-count]");
+    if (!cid || !csrf) return;
+    const storageKey = "gopherink-liked:" + cid;
+    try {
+      if (localStorage.getItem(storageKey)) {
+        btn.classList.add("is-liked");
+        btn.querySelector("mdui-icon")?.setAttribute("name", "favorite");
+      }
+    } catch (err) { /* ignore */ }
+    btn.addEventListener("click", async () => {
+      if (btn.dataset.likeSubmitting === "1") return;
+      try {
+        if (localStorage.getItem(storageKey)) return;
+      } catch (err) { /* ignore */ }
+      btn.dataset.likeSubmitting = "1";
+      try {
+        const body = new FormData();
+        body.append("cid", cid);
+        body.append("_csrf", csrf);
+        const response = await fetch("/action/theme/default/like", {
+          method: "POST",
+          body: body,
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (countEl && typeof payload.likes === "number") {
+          countEl.textContent = payload.likes;
+        }
+        btn.classList.add("is-liked");
+        btn.querySelector("mdui-icon")?.setAttribute("name", "favorite");
+        try { localStorage.setItem(storageKey, "1"); } catch (err) { /* ignore */ }
+      } finally {
+        btn.dataset.likeSubmitting = "0";
+      }
+    });
+  }
+
+  async function initViewCounter() {
+    const metrics = document.querySelector("[data-content-metrics]");
+    if (!metrics || metrics.dataset.viewCounted === "1") return;
+    const cid = metrics.dataset.postCid;
+    const csrf = metrics.dataset.csrf;
+    if (!cid || !csrf) return;
+    metrics.dataset.viewCounted = "1";
+    try {
+      const body = new FormData();
+      body.append("cid", cid);
+      body.append("_csrf", csrf);
+      const response = await fetch("/action/theme/default/view", {
+        method: "POST",
+        body: body,
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const countEl = document.querySelector("[data-view-count]");
+      if (countEl && typeof payload.views === "number") {
+        countEl.textContent = payload.views;
+      }
+    } catch (err) {
+      // View counting must not interrupt reading when the request is unavailable.
+    }
+  }
+
   function afterLoad() {
     applyTheme();
     refreshSearch();
@@ -672,6 +748,8 @@
     initCommentSubmit();
     initCommentReply();
     initCommentAvatarPreview();
+    initViewCounter();
+    initLikeButton();
     initInfiniteScroll();
     refreshBackTop();
     closeDrawer();

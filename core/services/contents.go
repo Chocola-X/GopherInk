@@ -1058,6 +1058,90 @@ func fieldMapValue(field models.Field) any {
 	return field.StrValue
 }
 
+func (s *ContentService) IncrementFieldInt(ctx context.Context, cid int64, name string, delta int64) (int64, error) {
+	ctx = WithWriter(ctx)
+	name = strings.TrimSpace(name)
+	if name == "" || !validFieldName.MatchString(name) {
+		return 0, fmt.Errorf("invalid custom field name %q", name)
+	}
+	if s.db.Dialect() == models.DialectMySQL {
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO gb_fields (cid, name, type, strValue, intValue, floatValue)
+			VALUES (?, ?, 'int', '', ?, 0)
+			ON DUPLICATE KEY UPDATE
+				type = 'int', strValue = '', intValue = COALESCE(intValue, 0) + VALUES(intValue), floatValue = 0
+		`, cid, name, delta)
+		if err != nil {
+			return 0, err
+		}
+		var value int64
+		err = s.db.QueryRowContext(ctx, `SELECT COALESCE(intValue, 0) FROM gb_fields WHERE cid = ? AND name = ?`, cid, name).Scan(&value)
+		return value, err
+	}
+	query := `
+		INSERT INTO gb_fields (cid, name, type, strValue, intValue, floatValue)
+		VALUES (?, ?, 'int', '', ?, 0)
+		ON CONFLICT(cid, name) DO UPDATE SET
+			type = 'int', strValue = '', intValue = COALESCE(gb_fields.intValue, 0) + excluded.intValue, floatValue = 0
+		RETURNING intValue
+	`
+	var value int64
+	err := s.db.QueryRowContext(ctx, query, cid, name, delta).Scan(&value)
+	return value, err
+}
+
+func (s *ContentService) SetField(ctx context.Context, cid int64, field SaveFieldInput) error {
+	ctx = WithWriter(ctx)
+	field.Name = strings.TrimSpace(field.Name)
+	if field.Name == "" || !validFieldName.MatchString(field.Name) {
+		return fmt.Errorf("invalid custom field name %q", field.Name)
+	}
+	field.Type = normalizeFieldType(field.Type)
+	switch field.Type {
+	case "int":
+		field.StrValue = ""
+		field.FloatValue = 0
+	case "float":
+		field.StrValue = ""
+		field.IntValue = 0
+	case "json":
+		if !json.Valid([]byte(field.StrValue)) {
+			return fmt.Errorf("invalid JSON value for custom field %q", field.Name)
+		}
+		field.IntValue = 0
+		field.FloatValue = 0
+	default:
+		field.IntValue = 0
+		field.FloatValue = 0
+	}
+	if s.db.Dialect() == models.DialectMySQL {
+		_, err := s.db.ExecContext(ctx, `
+			INSERT INTO gb_fields (cid, name, type, strValue, intValue, floatValue)
+			VALUES (?, ?, ?, ?, ?, ?)
+			ON DUPLICATE KEY UPDATE
+				type = VALUES(type), strValue = VALUES(strValue), intValue = VALUES(intValue), floatValue = VALUES(floatValue)
+		`, cid, field.Name, field.Type, field.StrValue, field.IntValue, field.FloatValue)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO gb_fields (cid, name, type, strValue, intValue, floatValue)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(cid, name) DO UPDATE SET
+			type = excluded.type, strValue = excluded.strValue, intValue = excluded.intValue, floatValue = excluded.floatValue
+	`, cid, field.Name, field.Type, field.StrValue, field.IntValue, field.FloatValue)
+	return err
+}
+
+func (s *ContentService) DeleteField(ctx context.Context, cid int64, name string) error {
+	ctx = WithWriter(ctx)
+	name = strings.TrimSpace(name)
+	if name == "" || !validFieldName.MatchString(name) {
+		return fmt.Errorf("invalid custom field name %q", name)
+	}
+	_, err := s.db.ExecContext(ctx, `DELETE FROM gb_fields WHERE cid = ? AND name = ?`, cid, name)
+	return err
+}
+
 func (s *ContentService) AllFields(ctx context.Context) ([]models.Field, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT fid, cid, COALESCE(name,''), type, COALESCE(strValue,''), intValue, floatValue

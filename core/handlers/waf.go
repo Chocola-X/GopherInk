@@ -165,9 +165,10 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			http.Error(sw, "too many XML-RPC requests", http.StatusTooManyRequests)
 			return
 		}
-		if cfg.URLIndexEnabled && m.pluginRouteMayHandle(r) {
+		extensionHandled, extensionInvalidates := m.extensionRouteMayHandle(r)
+		if extensionHandled {
 			next.ServeHTTP(sw, r)
-			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			if extensionInvalidates && r.Method != http.MethodGet && r.Method != http.MethodHead {
 				m.invalidatePublicData()
 			}
 			return
@@ -225,7 +226,7 @@ func (m *wafManager) authenticatedAdminBackendRequest(r *http.Request) bool {
 	return ok && roleRank(user.Role) >= roleRank("administrator")
 }
 
-func (m *wafManager) pluginRouteMayHandle(r *http.Request) bool {
+func (m *wafManager) extensionRouteMayHandle(r *http.Request) (bool, bool) {
 	for _, route := range m.app.Plugins.Routes() {
 		if route.Plugin != "" && !m.app.Plugins.IsActive(route.Plugin) {
 			continue
@@ -233,19 +234,30 @@ func (m *wafManager) pluginRouteMayHandle(r *http.Request) bool {
 		if route.Method != "" && route.Method != r.Method {
 			continue
 		}
-		pattern := cleanIndexPath(route.Pattern)
-		requestPath := cleanIndexPath(r.URL.Path)
-		if strings.HasSuffix(route.Pattern, "/") {
-			if requestPath == pattern || strings.HasPrefix(requestPath, strings.TrimRight(pattern, "/")+"/") {
-				return true
-			}
-			continue
-		}
-		if requestPath == pattern {
-			return true
+		if extensionRouteMatches(route.Pattern, r.URL.Path) {
+			return true, true
 		}
 	}
-	return false
+	if theme, ok := m.app.activeTheme(r.Context()); ok {
+		for _, route := range theme.Routes {
+			if route.Method != "" && route.Method != r.Method {
+				continue
+			}
+			if extensionRouteMatches(route.Pattern, r.URL.Path) {
+				return true, route.InvalidatesPublicData
+			}
+		}
+	}
+	return false, false
+}
+
+func extensionRouteMatches(pattern, requestPath string) bool {
+	cleanPattern := cleanIndexPath(pattern)
+	cleanRequest := cleanIndexPath(requestPath)
+	if strings.HasSuffix(pattern, "/") {
+		return cleanRequest == cleanPattern || strings.HasPrefix(cleanRequest, strings.TrimRight(cleanPattern, "/")+"/")
+	}
+	return cleanRequest == cleanPattern
 }
 
 func isBackendPath(value string) bool {
@@ -353,6 +365,13 @@ func (m *wafManager) refreshPublicIndex(ctx context.Context, cfg wafConfig, now 
 		}
 		if route.Method == "" || route.Method == http.MethodGet {
 			add(route.Pattern)
+		}
+	}
+	if theme, ok := m.app.activeTheme(ctx); ok {
+		for _, route := range theme.Routes {
+			if route.Method == "" || route.Method == http.MethodGet {
+				add(route.Pattern)
+			}
 		}
 	}
 	add(m.app.postsIndexPath(ctx))

@@ -58,6 +58,10 @@ func init() {
 		HandleAdminPageAction: handleFriendAdminPageAction,
 		EnrichComments:        friendEnrichComments,
 		AdjustData:            adjustDefaultThemeData,
+		Routes: []plugin.Route{
+			{Method: "POST", Pattern: "/action/theme/default/view", Handler: handleView},
+			{Method: "POST", Pattern: "/action/theme/default/like", Handler: handleLike},
+		},
 		Funcs: template.FuncMap{
 			"themeValue":      themeValue,
 			"themeInt":        themeInt,
@@ -67,6 +71,28 @@ func init() {
 			"readingTimeI18n": readingTimeI18n,
 			"daysSince":       daysSince,
 			"staleDays":       staleDays,
+			"staleNoticeText": staleNoticeText,
+			"fieldInt": func(fields map[string]any, name string) int {
+				if fields == nil {
+					return 0
+				}
+				value, ok := fields[name]
+				if !ok || value == nil {
+					return 0
+				}
+				switch v := value.(type) {
+				case int64:
+					return int(v)
+				case int:
+					return v
+				case string:
+					n, _ := strconv.Atoi(strings.TrimSpace(v))
+					return n
+				default:
+					n, _ := strconv.Atoi(strings.TrimSpace(fmt.Sprint(v)))
+					return n
+				}
+			},
 			"fieldString": func(fields map[string]any, name string) string {
 				if fields == nil {
 					return ""
@@ -106,6 +132,7 @@ func init() {
 			{Name: "enable_back_to_top", Label: "Show back-to-top button", Group: "Sidebar and Navigation", Type: plugin.FieldCheckbox, Default: "1"},
 			{Name: "show_stale_notice", Label: "Show stale post notice", Group: "Post Display", Type: plugin.FieldCheckbox, Default: "1", Description: "Show notice when post modified time exceeds configured days", Wide: true},
 			{Name: "stale_notice_days", Label: "Stale notice days", Group: "Post Display", Type: plugin.FieldNumber, Default: "30", Description: "Calculated from post modified time", Min: "1", Max: "3650", Step: "1", Required: true, ShowWhenField: "show_stale_notice", ShowWhenValue: "1", Wide: true},
+			{Name: "stale_notice_text", Label: "Stale notice text", Group: "Post Display", Type: plugin.FieldTextarea, Description: "Use {days} as placeholder for days since last modification; leave blank for default text", ShowWhenField: "show_stale_notice", ShowWhenValue: "1", Wide: true},
 			{Name: "footer_html", Label: "Footer HTML", Group: "Footer", Type: plugin.FieldTextarea, Description: "Blank shows Powered by GopherInk", Wide: true},
 		},
 		ContentFields: []plugin.FieldSchema{
@@ -135,6 +162,8 @@ func init() {
 			},
 			{Name: "cover", Label: "Post/Page cover image", Group: "Theme Display", Type: plugin.FieldImage, Description: "Enter image URL; blank follows theme fallback; supports {random}", ForTypes: []string{"post", "page"}, Wide: true},
 			{Name: "remark", Label: "No-cover card note", Group: "Theme Display", Type: plugin.FieldText, Description: "Only shown in no-cover post cards", ForTypes: []string{"post", "page"}, Wide: true},
+			{Name: "views", Label: "Views", Group: "Theme Display", Type: plugin.FieldNumber, Default: "0", Description: "Managed automatically by the theme on each visit", ReadOnly: true, ForTypes: []string{"post", "page"}},
+			{Name: "likes", Label: "Likes", Group: "Theme Display", Type: plugin.FieldNumber, Default: "0", Description: "Managed automatically by the theme like button", ReadOnly: true, ForTypes: []string{"post", "page"}},
 		},
 	})
 }
@@ -241,4 +270,13 @@ func stripHTMLLike(text string) string {
 		}
 	}
 	return b.String()
+}
+
+func staleNoticeText(values map[string]string, lang string, days int) template.HTML {
+	custom := strings.TrimSpace(themeValue(values, "stale_notice_text"))
+	if custom != "" {
+		custom = strings.ReplaceAll(custom, "{days}", strconv.Itoa(days))
+		return template.HTML(custom)
+	}
+	return template.HTML(fmt.Sprintf("%s %d %s", defaultThemeT(lang, "Note: this post was last modified"), days, defaultThemeT(lang, "days ago. Some information may be outdated.")))
 }

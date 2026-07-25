@@ -310,9 +310,9 @@ func friendPageTargetMatches(content models.Content, value string) bool {
 }
 
 func adjustDefaultThemeData(ctx context.Context, data map[string]any) error {
+	content, ok := data["Post"].(models.Content)
 	config, _ := data["ThemeConfig"].(map[string]string)
 	links, _ := decodeFriendLinks(config[friendLinksKey])
-	content, ok := data["Post"].(models.Content)
 	if !ok || content.Type != models.ContentTypePage || !friendPageTargetMatches(content, config[friendPageTargetKey]) {
 		return nil
 	}
