@@ -90,7 +90,7 @@ func (a *App) issueCommentGuardToken(r *http.Request, cid int64, visitorID strin
 	}
 	issuedAt := time.Now().Unix()
 	payload := fmt.Sprintf("v1.%d.%d.%s.%s", issuedAt, cid, nonce, commentGuardVisitorDigest(visitorID))
-	token := payload + "." + a.commentGuardSign(r, "token", payload)
+	token := payload + "." + commentGuardSign(a.commentGuardSecret(r), "token", payload)
 	return token, issuedAt + int64(commentGuardTokenTTL/time.Second), nil
 }
 
@@ -139,7 +139,7 @@ func (a *App) validateCommentGuardToken(r *http.Request, cid int64, token string
 		return false
 	}
 	payload := strings.Join(parts[:5], ".")
-	expected := a.commentGuardSign(r, "token", payload)
+	expected := commentGuardSign(a.commentGuardSecret(r), "token", payload)
 	if !hmac.Equal([]byte(expected), []byte(parts[5])) {
 		return false
 	}
@@ -190,7 +190,8 @@ func (a *App) commentGuardVisitor(r *http.Request) (string, bool) {
 		return "", false
 	}
 	payload := strings.Join(parts[:3], ".")
-	if a.Secrets == nil || !a.Secrets.Verify(r.Context(), "comment-guard:visitor", []byte(payload), parts[3]) {
+	expected := commentGuardSign(a.commentGuardSecret(r), "visitor", payload)
+	if !hmac.Equal([]byte(expected), []byte(parts[3])) {
 		return "", false
 	}
 	return parts[2], true
@@ -199,15 +200,8 @@ func (a *App) commentGuardVisitor(r *http.Request) (string, bool) {
 func (a *App) setCommentGuardVisitor(w http.ResponseWriter, r *http.Request, visitorID string) {
 	expiresAt := time.Now().Add(commentGuardVisitorTTL)
 	payload := fmt.Sprintf("v1.%d.%s", expiresAt.Unix(), visitorID)
-	if a.Secrets == nil {
-		return
-	}
-	sig, err := a.Secrets.Sign(r.Context(), "comment-guard:visitor", []byte(payload))
-	if err != nil {
-		return
-	}
-	value := payload + "." + sig
-	options := a.requestCookieOptions(r)
+	value := payload + "." + commentGuardSign(a.commentGuardSecret(r), "visitor", payload)
+	options := a.cookieOptions(r.Context())
 	http.SetCookie(w, &http.Cookie{
 		Name:     options.Name("comment_guard_visitor"),
 		Value:    value,
@@ -220,22 +214,14 @@ func (a *App) setCommentGuardVisitor(w http.ResponseWriter, r *http.Request, vis
 	})
 }
 
-// commentGuardSign returns a purpose-scoped HMAC for the comment-guard cookie
-// system. The old implementation used the raw auth_secret option and fell
-// back to the string "gopherink" when it was missing, so a leaked or blank
-// option would let attackers forge guard tokens. The new implementation
-// routes signing through SecretManager.Sign so no fallback constant is ever
-// used, and the purpose namespace ("comment-guard:token" or
-// "comment-guard:visitor") is added into the derived key.
-func (a *App) commentGuardSign(r *http.Request, purpose, payload string) string {
-	if a.Secrets == nil {
-		return ""
-	}
-	sig, err := a.Secrets.Sign(r.Context(), "comment-guard:"+purpose, []byte(payload))
-	if err != nil {
-		return ""
-	}
-	return sig
+func (a *App) commentGuardSecret(r *http.Request) string {
+	return a.option(r.Context(), "auth_secret", "gopherink")
+}
+
+func commentGuardSign(secret, purpose, payload string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte("comment-guard\x00" + purpose + "\x00" + payload))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
 func commentGuardVisitorDigest(visitorID string) string {

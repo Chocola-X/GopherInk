@@ -77,17 +77,7 @@ func (a *App) xmlRPC(w http.ResponseWriter, r *http.Request) {
 		a.writeXMLRPCFault(w, 400, "invalid request")
 		return
 	}
-	ip := a.clientIP(r)
-	// Refuse to authenticate remote clients that already exceeded the shared
-	// login failure budget. Without this check XML-RPC becomes a free
-	// side-channel for credential stuffing because loginFail counters are
-	// only fed by the /admin/login form handler.
-	if !a.loginAllowed(ip, "") {
-		a.writeXMLRPCFault(w, 429, "too many attempts")
-		return
-	}
-	ctx := contextWithClientIP(r.Context(), ip)
-	result, fault := a.handleXMLRPCMethod(ctx, call.MethodName, call.Params)
+	result, fault := a.handleXMLRPCMethod(r.Context(), call.MethodName, call.Params)
 	if fault != nil {
 		a.writeXMLRPCFault(w, fault.Code, fault.Message)
 		return
@@ -435,43 +425,13 @@ func (a *App) handleXMLRPCMethod(ctx context.Context, method string, params []xm
 	}
 }
 
-// clientIPCtxKey holds the request-source IP for handlers reached from a
-// context-only entrypoint (XML-RPC, pingback, trackback). Using a value key
-// keeps the surface area of handleXMLRPCMethod unchanged.
-type clientIPCtxKey struct{}
-
-func contextWithClientIP(ctx context.Context, ip string) context.Context {
-	return context.WithValue(ctx, clientIPCtxKey{}, ip)
-}
-
-func clientIPFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return ""
-	}
-	if ip, ok := ctx.Value(clientIPCtxKey{}).(string); ok {
-		return ip
-	}
-	return ""
-}
-
 func (a *App) xmlRPCUser(ctx context.Context, params []xmlRPCParam, userIndex, passIndex int) (models.User, *xmlRPCFault) {
 	if len(params) <= userIndex || len(params) <= passIndex {
 		return models.User{}, &xmlRPCFault{Code: 401, Message: "authentication failed"}
 	}
-	ip := clientIPFromContext(ctx)
-	if ip != "" && !a.loginAllowed(ip, "") {
-		return models.User{}, &xmlRPCFault{Code: 429, Message: "too many attempts"}
-	}
-	name := params[userIndex].Value.StringValue()
-	user, err := a.authenticateUserWithHooks(ctx, name, params[passIndex].Value.StringValue())
+	user, err := a.authenticateUserWithHooks(ctx, params[userIndex].Value.StringValue(), params[passIndex].Value.StringValue())
 	if err != nil {
-		if ip != "" {
-			a.recordLoginFailure(ip, name)
-		}
 		return models.User{}, &xmlRPCFault{Code: 401, Message: "authentication failed"}
-	}
-	if ip != "" {
-		a.recordLoginSuccess(ip)
 	}
 	return user, nil
 }

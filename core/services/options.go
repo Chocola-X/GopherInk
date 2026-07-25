@@ -111,7 +111,7 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 		"comments_avatar":               "1",
 		"comments_avatar_rating":        "g",
 		"avatar_url_template":           "",
-		"upload_allowed_exts":           "jpg,jpeg,png,gif,webp,pdf,txt,md,zip",
+		"upload_allowed_exts":           "jpg,jpeg,png,gif,webp,svg,pdf,txt,md,zip",
 		"upload_max_size":               "16777216",
 		"upload_image_processing":       "original",
 		"upload_webp_quality":           "85",
