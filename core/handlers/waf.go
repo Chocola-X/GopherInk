@@ -903,9 +903,60 @@ func writeSecurityHeaders(header http.Header, r *http.Request, hstsEnabled bool)
 	header.Set("X-Frame-Options", "DENY")
 	header.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	header.Set("X-XSS-Protection", "0")
+	// A conservative default CSP. The template layer may override it for the
+	// admin console by setting a header before invoking the handler chain.
+	if header.Get("Content-Security-Policy") == "" {
+		header.Set("Content-Security-Policy",
+			"default-src 'self'; "+
+				"img-src 'self' data: https:; "+
+				"media-src 'self' https:; "+
+				"font-src 'self' data: https:; "+
+				"style-src 'self' 'unsafe-inline' https:; "+
+				"script-src 'self' 'unsafe-inline' https:; "+
+				"frame-ancestors 'none'; "+
+				"object-src 'none'; "+
+				"base-uri 'self'; "+
+				"form-action 'self'")
+	}
 	if hstsEnabled && r != nil && r.TLS != nil {
 		header.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 	}
+}
+
+// secureUploadsHandler is the wrapper for `/uploads/*`. The goal is to keep
+// the on-disk upload directory servable as static content while making sure
+// that a file that slipped past the upload allowlist cannot execute in the
+// browser. It sets `X-Content-Type-Options: nosniff`, forces every response
+// through a script-free CSP, and rewrites `Content-Disposition` to attachment
+// for anything that is not a plain image or media file.
+func secureUploadsHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'none'; img-src 'self' data:; media-src 'self'; sandbox; frame-ancestors 'none'")
+		if !uploadInline(r.URL.Path) {
+			w.Header().Set("Content-Disposition", "attachment")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// uploadInline decides whether a given upload path may be rendered inline.
+// We intentionally keep this list narrow: bitmap images, video, audio, PDF.
+// Anything else (SVG, HTML, XML, JSON, TXT, unknown) is served as a download
+// so a browser cannot execute it as script.
+func uploadInline(pathValue string) bool {
+	ext := strings.ToLower(strings.TrimPrefix(path.Ext(pathValue), "."))
+	switch ext {
+	case "jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "ico":
+		return true
+	case "mp4", "webm", "ogg", "mp3", "wav", "flac":
+		return true
+	case "pdf":
+		return true
+	}
+	return false
 }
 
 func copyHeaders(dst, src http.Header) {

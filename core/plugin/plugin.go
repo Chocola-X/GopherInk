@@ -635,6 +635,10 @@ const (
 	HookImageProcess            = "image.process"
 	HookAutosaveBeforeSave      = "autosave.before_save"
 	HookAutosaveAfterSave       = "autosave.after_save"
+	HookContentShortcode        = "content.shortcode"
+	HookMailBeforeSend          = "mail.before_send"
+	HookMailAfterSend           = "mail.after_send"
+	HookRouteLanguageNegotiate  = "route.language_negotiate"
 )
 
 type ContentSavePayload struct {
@@ -1040,6 +1044,80 @@ type AutosavePayload struct {
 	ContentID int64
 	Input     any
 	Result    any
+	Handled   bool
+}
+
+// ShortcodePayload is emitted for each recognised [name attr="value"]body[/name]
+// block during content rendering. A plugin may return HTML in Output and set
+// Handled=true to replace the block; otherwise the original literal is left in
+// place. Attrs/Body/Name are untrusted — the core sanitizes Output under the
+// caller's trust level so a shortcode handler can never leak raw <script>.
+type ShortcodePayload struct {
+	Content PublicContent
+	Name    string
+	Attrs   map[string]string
+	Body    string
+	Output  template.HTML
+	Handled bool
+}
+
+// MailAddress is one recipient or sender pair. The mail dispatcher rejects
+// CRLF in either field at the edge to defend against SMTP header injection.
+type MailAddress struct {
+	Name    string
+	Address string
+}
+
+// MailAttachment carries one inlined attachment. Filename must not contain
+// path separators; the dispatcher treats it as a base name only.
+type MailAttachment struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+	Inline      bool
+	ContentID   string
+}
+
+// MailMessage is the neutral, transport-agnostic envelope that flows through
+// mail.before_send / mail.after_send and Runtime.SendMail. Source identifies
+// the origin ("comment", "user.password_reset", ...) so audit plugins can
+// filter by intent.
+type MailMessage struct {
+	Source      string
+	From        MailAddress
+	ReplyTo     []MailAddress
+	To          []MailAddress
+	CC          []MailAddress
+	BCC         []MailAddress
+	Subject     string
+	Text        string
+	HTML        string
+	Headers     map[string]string
+	Attachments []MailAttachment
+	Meta        map[string]any
+}
+
+// MailPayload is delivered to mail.before_send and mail.after_send. Handlers
+// may replace Message, set Cancelled to drop delivery, or set Handled to
+// take responsibility for the delivery so the core dispatcher skips SMTP.
+// After delivery the same struct is used to report the outcome via Err.
+type MailPayload struct {
+	Message   MailMessage
+	Cancelled bool
+	Handled   bool
+	Result    string
+	Err       error
+}
+
+// LanguageNegotiatePayload lets plugins override request-scoped language
+// selection. Available seeds from i18n.SupportedLanguages; a plugin may set
+// Language and Handled=true to force a specific locale for the request.
+type LanguageNegotiatePayload struct {
+	Request   *http.Request
+	Default   string
+	Available []string
+	Preferred []string
+	Language  string
 	Handled   bool
 }
 
