@@ -116,6 +116,7 @@ func (a *App) Handler() http.Handler {
 	mux.Handle("/admin/assets/", http.StripPrefix("/admin/assets/", http.FileServer(http.FS(adminAssets))))
 
 	mux.HandleFunc("/theme/", a.themeStatic)
+	mux.HandleFunc("/plugin/", a.pluginStatic)
 	if a.UploadDir != "" {
 		mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(a.UploadDir))))
 	}
@@ -389,6 +390,7 @@ func requestHeaderMap(r *http.Request) map[string]string {
 func requestPathIsStatic(pathValue string) bool {
 	return strings.HasPrefix(pathValue, "/admin/assets/") ||
 		strings.HasPrefix(pathValue, "/theme/") ||
+		strings.HasPrefix(pathValue, "/plugin/") ||
 		strings.HasPrefix(pathValue, "/uploads/") ||
 		strings.HasPrefix(pathValue, "/favicon") ||
 		strings.HasPrefix(pathValue, "/robots.txt")
@@ -8132,6 +8134,7 @@ func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, d
 		"fieldValue":             fieldValue,
 		"schemaValue":            schemaValue,
 		"schemaChecked":          schemaChecked,
+		"schemaSelected":         schemaSelected,
 		"schemaOptionsAreColors": schemaOptionsAreColors,
 		"schemaFieldClass":       schemaFieldClass,
 		"adminAvatarURL": func(mail string, size int) string {
@@ -8435,6 +8438,12 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	funcs["remember"] = func(field string) string {
 		return a.rememberedCommentField(r, field)
 	}
+	funcs["pluginActive"] = func(name string) bool {
+		return a.pluginActive(name)
+	}
+	funcs["pluginURL"] = func(name string) string {
+		return a.pluginURLForRuntime(r.Context(), name)
+	}
 	tmpl, err := template.New("base.html").Funcs(funcs).ParseFS(theme.Templates, "templates/base.html", "templates/"+page)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -8488,6 +8497,12 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	} else if head, ok := out.(string); ok {
 		data["FrontendHead"] = template.HTML(head)
 	} else if next, ok := out.(plugin.FrontendHTMLPayload); ok {
+		// Honor a replacement Data map so plugins can filter head options
+		// (Typecho's Widget\Archive->headerOptions equivalent), not just
+		// mutate the map in place.
+		if next.Data != nil {
+			data = next.Data
+		}
 		data["FrontendHead"] = next.HTML
 	}
 	footerPayload := plugin.FrontendHTMLPayload{Location: "footer", Data: data}
@@ -8497,6 +8512,9 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	} else if footer, ok := out.(string); ok {
 		data["FrontendFooter"] = template.HTML(footer)
 	} else if next, ok := out.(plugin.FrontendHTMLPayload); ok {
+		if next.Data != nil {
+			data = next.Data
+		}
 		data["FrontendFooter"] = next.HTML
 	}
 	w.WriteHeader(status)
@@ -8540,6 +8558,35 @@ func (a *App) themeStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.StripPrefix("/theme/"+name+"/", http.FileServer(http.FS(theme.Static))).ServeHTTP(w, r)
+}
+
+func (a *App) pluginStatic(w http.ResponseWriter, r *http.Request) {
+	rel := strings.TrimPrefix(r.URL.Path, "/plugin/")
+	name, filePath, ok := strings.Cut(rel, "/")
+	if !ok || strings.TrimSpace(name) == "" || strings.TrimSpace(filePath) == "" || strings.Contains(name, "..") {
+		http.NotFound(w, r)
+		return
+	}
+	if !a.Plugins.IsActive(name) {
+		http.NotFound(w, r)
+		return
+	}
+	p, ok := a.Plugins.Plugin(name)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	provider, ok := p.(plugin.StaticProvider)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	static := provider.PluginStatic()
+	if static == nil {
+		http.NotFound(w, r)
+		return
+	}
+	http.StripPrefix("/plugin/"+name+"/", http.FileServer(http.FS(static))).ServeHTTP(w, r)
 }
 
 func (a *App) enrichData(ctx context.Context, data map[string]any) {
@@ -9524,7 +9571,7 @@ func validatePermalinkOptions(r *http.Request) error {
 		if pattern == "/" || !strings.Contains(pattern, "{") {
 			return fmt.Errorf("%s must include at least one variable", label)
 		}
-		for _, reserved := range []string{"/admin", "/uploads", "/theme", "/feed.xml", "/atom.xml", "/comments", "/comment", "/search", "/archive", "/author", "/preview"} {
+		for _, reserved := range []string{"/admin", "/uploads", "/theme", "/plugin", "/feed.xml", "/atom.xml", "/comments", "/comment", "/search", "/archive", "/author", "/preview"} {
 			if pattern == reserved || strings.HasPrefix(pattern, reserved+"/") {
 				return fmt.Errorf("%s conflicts with built-in path %s", label, reserved)
 			}
@@ -9623,6 +9670,18 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		AttachmentMeta:           a.attachmentMetaPlugin,
 		ActiveTheme:              a.activeThemeName,
 		ContentRenderMode:        a.contentRenderModePlugin,
+		PluginActive:             a.pluginActive,
+		PluginURL:                a.pluginURLForRuntime,
+		RenderContent:            a.renderContentPlugin,
+		Excerpt:                  a.excerpt,
+		FeedURL:                  a.feedURLPlugin,
+		CommentsFeedURL:          a.commentsFeedURLPlugin,
+		XMLRPCURL:                a.xmlrpcURLPlugin,
+		LoginURL:                 a.loginURLPlugin,
+		RegisterURL:              a.registerURLPlugin,
+		LogoutURL:                a.logoutURLPlugin,
+		ProfileURL:               a.profileURLPlugin,
+		ThemeURL:                 a.themeURLPlugin,
 	}
 	runtime.DispatchHook = func(ctx context.Context, name string, payload any) (plugin.HookDispatch, error) {
 		return a.Plugins.DispatchActive(plugin.ContextWithRuntime(ctx, runtime), name, payload)
@@ -10039,21 +10098,45 @@ func (a *App) addUserUniqueErrors(ctx context.Context, errs *validate.Errors, na
 }
 
 func valuesFromSchema(r *http.Request, schema []plugin.FieldSchema) map[string]string {
+	_ = r.ParseForm()
 	out := make(map[string]string, len(schema))
 	for _, field := range schema {
-		if field.Type == plugin.FieldCheckbox {
+		switch {
+		case field.Type.IsBoolean():
 			if r.FormValue(field.Name) == "1" {
 				out[field.Name] = "1"
 			} else {
 				out[field.Name] = "0"
 			}
 			continue
+		case field.Type.IsMultiValue():
+			out[field.Name] = plugin.JoinMultiValue(schemaAllowedValues(field, r.Form[field.Name]))
+			continue
 		}
 		value := strings.TrimSpace(r.FormValue(field.Name))
-		if field.Type == plugin.FieldNumber {
+		if field.Type == plugin.FieldNumber || field.Type == plugin.FieldSlider {
 			value = normalizeSchemaNumber(value, field)
 		}
 		out[field.Name] = value
+	}
+	return out
+}
+
+// schemaAllowedValues keeps only submitted values that appear in the field's
+// declared options, guarding multi-value fields against injected tokens.
+func schemaAllowedValues(field plugin.FieldSchema, submitted []string) []string {
+	if len(field.Options) == 0 {
+		return submitted
+	}
+	allowed := make(map[string]bool, len(field.Options))
+	for _, opt := range field.Options {
+		allowed[opt.Value] = true
+	}
+	out := make([]string, 0, len(submitted))
+	for _, v := range submitted {
+		if allowed[strings.TrimSpace(v)] {
+			out = append(out, strings.TrimSpace(v))
+		}
 	}
 	return out
 }
@@ -10101,7 +10184,7 @@ func schemaValidationMessages(errs map[string]string) []string {
 
 func normalizeSchemaValues(schema []plugin.FieldSchema, values map[string]string) {
 	for _, field := range schema {
-		if field.Type != plugin.FieldNumber {
+		if field.Type != plugin.FieldNumber && field.Type != plugin.FieldSlider {
 			continue
 		}
 		if value, ok := values[field.Name]; ok {
@@ -10209,9 +10292,9 @@ func schemaFieldClass(field plugin.FieldSchema) string {
 	classes := []string{"schema-field"}
 	wide := field.Wide
 	switch field.Type {
-	case plugin.FieldTextarea, plugin.FieldImage:
+	case plugin.FieldTextarea, plugin.FieldImage, plugin.FieldMultiSelect, plugin.FieldMultiCheckbox:
 		wide = true
-	case plugin.FieldCheckbox, plugin.FieldRadio, plugin.FieldSelect:
+	case plugin.FieldCheckbox, plugin.FieldRadio, plugin.FieldSelect, plugin.FieldSwitch:
 		classes = append(classes, "schema-choice-field")
 	}
 	if wide {
@@ -10222,6 +10305,17 @@ func schemaFieldClass(field plugin.FieldSchema) string {
 
 func schemaChecked(values map[string]string, name string) bool {
 	return checked(schemaValue(values, name))
+}
+
+// schemaSelected reports whether value is among the newline-joined selections
+// stored for a multi-select or multi-checkbox field.
+func schemaSelected(values map[string]string, name, value string) bool {
+	for _, selected := range plugin.SplitMultiValue(schemaValue(values, name)) {
+		if selected == value {
+			return true
+		}
+	}
+	return false
 }
 
 func schemaOptionsAreColors(options []plugin.FieldOption) bool {
@@ -11146,6 +11240,7 @@ func (a *App) commentToPublic(comment models.Comment) plugin.PublicComment {
 		Author: comment.Author, AuthorID: comment.AuthorID, OwnerID: comment.OwnerID,
 		Mail: comment.Mail, URL: comment.URL, IP: comment.IP, Agent: comment.Agent,
 		Text: comment.Text, Type: comment.Type, Status: comment.Status, Parent: comment.Parent,
+		Title: comment.Title, Slug: comment.Slug, ContentType: comment.ContentType,
 	}
 }
 
@@ -11399,7 +11494,8 @@ func (a *App) attachmentMetaPlugin(ctx context.Context, cid int64) (plugin.Attac
 	}
 	meta := a.attachmentMeta(ctx, item)
 	return plugin.AttachmentMetaInfo{
-		URL: meta.URL, MIME: meta.MIME, Size: meta.Size,
+		Name: meta.Name, Description: meta.Description, URL: meta.URL,
+		MIME: meta.MIME, Size: meta.Size, IsImage: meta.IsImage,
 		Width: meta.Width, Height: meta.Height,
 	}, nil
 }
@@ -11443,4 +11539,83 @@ func (a *App) activeThemeName(ctx context.Context) string {
 
 func (a *App) contentRenderModePlugin(ctx context.Context) string {
 	return a.option(ctx, "content_render_mode", "markdown")
+}
+
+// pluginActive reports whether a named plugin is currently activated.
+func (a *App) pluginActive(name string) bool {
+	if strings.TrimSpace(name) == "" {
+		return false
+	}
+	return a.Plugins.IsActive(name)
+}
+
+// pluginURLForRuntime returns the public base path for an extension's bundled
+// static assets served under /plugin/<name>/. An empty owner resolves to the
+// calling extension (from the runtime in context).
+func (a *App) pluginURLForRuntime(ctx context.Context, owner string) string {
+	owner = strings.TrimSpace(owner)
+	if owner == "" {
+		if rt, ok := plugin.RuntimeFromContext(ctx); ok && rt != nil {
+			owner = strings.TrimSpace(rt.Owner)
+		}
+	}
+	if owner == "" {
+		return ""
+	}
+	base := a.siteURLPlugin(ctx)
+	return base + "/plugin/" + owner
+}
+
+// renderContentPlugin renders any content by CID through the same pipeline the
+// frontend uses, so extensions can display rendered snippets of other posts.
+func (a *App) renderContentPlugin(ctx context.Context, cid int64) (template.HTML, error) {
+	if cid <= 0 {
+		return "", sql.ErrNoRows
+	}
+	content, err := a.Contents.ByID(ctx, cid)
+	if err != nil {
+		return "", err
+	}
+	return a.renderContentHTML(ctx, content, map[string]any{})
+}
+
+func (a *App) feedURLPlugin(ctx context.Context) string {
+	return a.siteURLPlugin(ctx) + "/feed.xml"
+}
+
+func (a *App) commentsFeedURLPlugin(ctx context.Context) string {
+	return a.siteURLPlugin(ctx) + "/comments/feed.xml"
+}
+
+func (a *App) xmlrpcURLPlugin(ctx context.Context) string {
+	return a.siteURLPlugin(ctx) + "/xmlrpc.php"
+}
+
+func (a *App) loginURLPlugin(ctx context.Context) string {
+	return a.adminURLPlugin(ctx) + "/login"
+}
+
+func (a *App) registerURLPlugin(ctx context.Context) string {
+	return a.siteURLPlugin(ctx) + "/register"
+}
+
+func (a *App) logoutURLPlugin(ctx context.Context) string {
+	return a.adminURLPlugin(ctx) + "/logout"
+}
+
+func (a *App) profileURLPlugin(ctx context.Context) string {
+	return a.adminURLPlugin(ctx) + "/profile"
+}
+
+func (a *App) themeURLPlugin(ctx context.Context, name, file string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = a.activeThemeName(ctx)
+	}
+	base := a.siteURLPlugin(ctx) + "/theme/" + name
+	file = strings.TrimSpace(file)
+	if file == "" {
+		return base
+	}
+	return base + "/" + strings.TrimPrefix(file, "/")
 }

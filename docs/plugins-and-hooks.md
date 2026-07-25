@@ -158,6 +158,13 @@ GopherInk 参考 Typecho 的插件能力，但不会完全照搬“插件直接�
 | `AvatarURL(ctx, email, size)` | 根据邮箱生成头像 URL，自动应用站点自定义头像地址、哈希和尺寸设置 |
 | `Language(ctx)` | 读取当前 CMS 语言设置，返回规范化语言码，例如 `zh-CN` 或 `en-US` |
 | `GetSiteURL(ctx)` / `GetAdminURL(ctx)` | 读取站点和后台入口 URL |
+| `FeedURL(ctx)` / `CommentsFeedURL(ctx)` / `XMLRPCURL(ctx)` | 读取核心定义的订阅源、评论订阅源和 XML-RPC 入口 URL，避免硬编码路由形态 |
+| `LoginURL(ctx)` / `RegisterURL(ctx)` / `LogoutURL(ctx)` / `ProfileURL(ctx)` | 读取登录、注册、登出和个人资料入口 URL |
+| `ThemeURL(ctx, name, file)` | 生成主题静态资源 URL；`name` 留空时使用当前启用主题，`file` 留空时返回主题资源根 |
+| `PluginURL(ctx, owner)` | 生成插件静态资源基址（`/plugin/<name>/`）；`owner` 留空时返回当前插件自身资源基址 |
+| `PluginActive(name)` | 判断指定插件是否处于启用状态，等价 Typecho 的 `Plugin::export()['activated']` 查询 |
+| `RenderContent(ctx, cid)` | 按前端同一渲染管线返回任意内容的 HTML，供推荐、摘要、摘录等场景复用 |
+| `Excerpt(ctx, text, limit)` | 生成受 `content.excerpt` 钩子影响的摘要，`limit` 为最大字符数 |
 | `ClientIP(r)` | 按站点反向代理信任策略取得访客 IP |
 | `CurrentUser(r)` | 从当前请求读取已登录用户的精简信息 |
 | `CSRFToken(r, purpose)` / `ValidateCSRF(r, purpose)` | 为插件或主题公开路由签发、校验指定用途的 CSRF 令牌 |
@@ -189,7 +196,7 @@ GopherInk 参考 Typecho 的插件能力，但不会完全照搬“插件直接�
 | `ActiveTheme(ctx)` | 读取当前启用主题技术名称 |
 | `ContentRenderMode(ctx)` | 读取当前正文渲染模式 |
 
-`PublicContent`、`PublicUser`、`PublicComment` 和 `PublicMeta` 是供插件使用的精简结构，不等同于核心模型。`PublicContent` 包含标题、正文、状态、作者、密码标记、评论数、评论/引用/Feed 开关、模板、父级、排序和草稿归属等常用字段。`ListContents` 可通过 `CID`、`Slug`、`SlugID`、`Type`、`Status` 等条件表达单项读取或列表读取；公开插件路由必须检查 `Type`、`Status` 并建立自己的授权边界，不能把“返回 PublicContent”理解成“已经确认公开”。需要核心服务模型的钩子 payload 会明确携带当前具体类型。
+`PublicContent`、`PublicUser`、`PublicComment` 和 `PublicMeta` 是供插件使用的精简结构，不等同于核心模型。`PublicContent` 包含标题、正文、状态、作者、密码标记、评论数、评论/引用/Feed 开关、模板、父级、排序和草稿归属等常用字段。`PublicComment` 除评论正文、作者、状态和层级外，还包含 `Title`、`Slug`、`ContentType`：对 trackback/pingback 类型评论，`Title` 为来源文章标题，是通知类插件的关键信息。`ListContents` 可通过 `CID`、`Slug`、`SlugID`、`Type`、`Status` 等条件表达单项读取或列表读取；公开插件路由必须检查 `Type`、`Status` 并建立自己的授权边界，不能把“返回 PublicContent”理解成“已经确认公开”。需要核心服务模型的钩子 payload 会明确携带当前具体类型。
 
 `Language(ctx)` 只暴露核心当前语言状态，不接管插件翻译。插件可以按该语言码选择自己的文案；不支持的语言如何回落由插件决定。原生 Schema 配置页会优先调用插件的 `Translate(lang, key)` 翻译 `Label`、`Description`、选项文本、页签文本、动作文本和插件通知；插件没有实现 `Translator` 时，核心原样显示插件注册时提供的文案。复杂插件设置页可以在自己的渲染逻辑中直接读取 `Runtime.Language(ctx)`。
 
@@ -753,7 +760,7 @@ return plugin.StopHook(payload), nil
 | `HookAutosaveBeforeSave` | `autosave.before_save` | `AutosavePayload` | 自动保存前 |
 | `HookAutosaveAfterSave` | `autosave.after_save` | `AutosavePayload` | 自动保存后 |
 
-Head/Footer 当前兼容旧插件返回 `string`，但新插件应返回 `FrontendHTMLPayload`。最终 HTML 会转换为 `template.HTML`，插件必须保证内容可信。
+Head/Footer 当前兼容旧插件返回 `string`，但新插件应返回 `FrontendHTMLPayload`。最终 HTML 会转换为 `template.HTML`，插件必须保证内容可信。`FrontendHTMLPayload.Data` 是即将传给主题模板的数据字典：插件既可以就地修改其中的键，也可以返回替换后的 `Data`，核心会把它写回模板数据。这等价于 Typecho 的 `headerOptions` 过滤，SEO 插件可借此改写 `SeoImage`、`CurrentURL`、`FeedPath` 等 head 相关数据，无需另设钩子。
 
 `request.before` 返回 `RequestPayload{Handled:true}` 时核心不再进入路由，直接使用 `Status`、`ContentType`、`ResponseHeaders` 和 `Body` 输出响应；输出后仍会触发 `request.after`，方便统计插件记录完整生命周期。请求钩子位于 WAF 之后，不能用于绕过入口防护。`Headers` 是请求头副本，访客统计插件不要无差别保存 Cookie、Authorization 等敏感头。
 
@@ -1138,6 +1145,22 @@ func countView(rt *plugin.Runtime, w http.ResponseWriter, r *http.Request) {
 ```
 
 公开计数接口仍应考虑 WAF、去重和滥用；插件数据库只解决数据隔离或表隔离，不验证一次访问的真实性。
+
+## 插件静态资源
+
+插件可以像主题一样附带前端静态资源（JS/CSS/图片），实现 `StaticProvider` 即可，核心会把返回的文件系统挂载到 `/plugin/<插件名>/`：
+
+```go
+//go:embed assets/*
+var assetFS embed.FS
+
+func (Plugin) PluginStatic() fs.FS {
+    static, _ := fs.Sub(assetFS, "assets")
+    return static
+}
+```
+
+启用插件后，`assets/app.js` 会在 `/plugin/<插件名>/app.js` 提供。资源路径只对已启用插件可用，且不允许 `..` 穿越。需要在钩子或路由中拼出可用 URL 时使用 `Runtime.PluginURL(ctx, "")`（空串表示当前插件），主题模板中使用 `{{pluginURL "插件名" "app.js"}}`。这等价于 Typecho 的 `$options->pluginUrl`，避免插件把资源硬塞进 `frontend.head`/`frontend.footer` 或另开路由流式输出。
 
 ## 插件数据库
 

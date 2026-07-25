@@ -329,8 +329,11 @@ form?.addEventListener("submit", async (event) => {
 主题通过 `ConfigSchema` 声明设置，保存为 `theme:<name>` JSON。支持字段类型：
 
 ```text
-text, password, textarea, radio, checkbox, select, number, color, image
+text, password, textarea, radio, checkbox, select, number, color, image,
+switch, slider, date, time, datetime, multiselect, multicheckbox
 ```
+
+`switch` 与 `checkbox` 一样保存 `1`/`0`；`slider` 绑定 `Min`/`Max`/`Step` 保存数值；`date`、`time`、`datetime` 保存控件原始值（`YYYY-MM-DD`、`HH:MM`、`YYYY-MM-DDTHH:MM`）。`multiselect`、`multicheckbox` 保存多个选中值，以换行连接；读取时用 `plugin.SplitMultiValue(value)` 还原为切片，只有出现在 `Options` 中的值会被保存。`ReadOnly` 字段会以只读或禁用形式渲染，提交时忽略其表单值。这些类型统一渲染为对应的 MDUI 组件，保持后台风格一致，插件和主题一般无需自定义 HTML。
 
 示例：
 
@@ -523,8 +526,12 @@ Routes: []plugin.Route{{
 主题模板可以调用已启用插件通过 `RegisterService` 公开的命名服务。核心保留两个模板函数：
 
 - `pluginServiceAvailable "name"`：服务存在且所属插件已启用时返回 `true`。
+- `pluginActive "plugin-name"`：判断指定插件是否已启用，等价 Typecho 的 `Typecho_Plugin::export()['activated']` 检查；主题可据此决定是否渲染依赖该插件的区块。
 - `pluginCall "name" arg...`：调用服务并返回结构化结果；失败会终止模板渲染。
 - `pluginConfig "plugin-name"`：读取指定插件的站点配置，返回 `map[string]string`；插件不存在、未配置或读取失败时返回空 map。
+- `pluginURL "plugin-name"`：返回该插件静态资源的公开基址（`/plugin/<插件名>`）；插件未提供静态资源时挂载点为空，仍会返回该基址字符串。
+- `pluginActive "plugin-name"`：判断指定插件当前是否已启用，等价 Typecho 主题读取 `Typecho_Plugin::export()['activated']`。适合在调用插件服务前做特性检测。
+- `pluginURL "plugin-name"`：返回该插件静态资源的公开基地址（`/plugin/<插件名>`）。插件需实现 `PluginStatic() fs.FS` 才会挂载资源。
 
 以友情链接插件提供的 `links.list` 为例：
 
@@ -563,6 +570,8 @@ Routes: []plugin.Route{{
 ```
 
 不输出这些字段会让依赖前端脚本或样式注入的插件失效。
+
+`frontend.head` 和 `frontend.footer` 的 payload 携带只读的模板数据 `Data`。插件既可以只追加 HTML，也可以在钩子中修改 `Data` 里的字段（如 canonical、SEO 图、Feed 路径等），核心会在派发后把返回 payload 的 `Data` 写回模板数据。这等价于 Typecho 的 `headerOptions` 过滤能力，让 SEO 类插件无需新增钩子即可改写 head 选项。
 
 ## PJAX 注意事项
 

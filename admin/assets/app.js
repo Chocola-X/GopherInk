@@ -1153,7 +1153,8 @@
       }
 
       function sourceValue() {
-        if ((source.tagName || "").toLowerCase() === "mdui-checkbox") {
+        var tag = (source.tagName || "").toLowerCase();
+        if (tag === "mdui-checkbox" || tag === "mdui-switch") {
           return source.checked ? (source.value || "1") : "0";
         }
         return source.value == null ? "" : String(source.value);
@@ -1163,7 +1164,7 @@
         var visible = sourceValue() === (field.dataset.schemaShowValue || "");
         field.hidden = !visible;
         var required = visible && field.dataset.schemaRequired === "1";
-        query(field, "mdui-text-field, mdui-select, mdui-radio-group, mdui-checkbox").forEach(function (control) {
+        query(field, "mdui-text-field, mdui-select, mdui-radio-group, mdui-checkbox, mdui-switch, mdui-slider").forEach(function (control) {
           control.required = required;
           control.toggleAttribute("required", required);
         });

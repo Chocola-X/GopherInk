@@ -1,16 +1,16 @@
 {{define "schema_field"}}
 <div class="{{schemaFieldClass .Field}}" data-schema-field data-schema-required="{{if .Field.Required}}1{{else}}0{{end}}" {{if .Field.ShowWhenField}}data-schema-show-field="{{.Field.ShowWhenField}}" data-schema-show-value="{{.Field.ShowWhenValue}}"{{end}} {{if not .Visible}}hidden{{end}}>
   {{if eq .Field.Type "textarea"}}
-    <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" rows="7" autosize {{if and .Field.Required .Visible}}required{{end}}>{{schemaValue .Values .Field.Name}}</mdui-text-field>
+    <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" rows="7" autosize {{if .Field.ReadOnly}}readonly{{end}} {{if and .Field.Required .Visible}}required{{end}}>{{schemaValue .Values .Field.Name}}</mdui-text-field>
     {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{else if eq .Field.Type "password"}}
-    <mdui-text-field type="password" name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    <mdui-text-field type="password" name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if .Field.ReadOnly}}readonly{{end}} {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
     {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{else if eq .Field.Type "number"}}
-    <mdui-text-field type="number" {{if .Field.Min}}min="{{.Field.Min}}"{{end}} {{if .Field.Max}}max="{{.Field.Max}}"{{end}} {{if .Field.Step}}step="{{.Field.Step}}"{{end}} name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    <mdui-text-field type="number" {{if .Field.Min}}min="{{.Field.Min}}"{{end}} {{if .Field.Max}}max="{{.Field.Max}}"{{end}} {{if .Field.Step}}step="{{.Field.Step}}"{{end}} name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if .Field.ReadOnly}}readonly{{end}} {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
     {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{else if eq .Field.Type "color"}}
-    <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" placeholder="#RRGGBB" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" placeholder="#RRGGBB" {{if .Field.ReadOnly}}readonly{{end}} {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
     {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{else if eq .Field.Type "image"}}
     <div class="schema-image-field">
@@ -25,7 +25,42 @@
     </div>
   {{else if eq .Field.Type "checkbox"}}
     <div class="schema-option-field">
-      <mdui-checkbox name="{{.Field.Name}}" value="1" {{if schemaChecked .Values .Field.Name}}checked{{end}}>{{call .Translate .Field.Label}}</mdui-checkbox>
+      <mdui-checkbox name="{{.Field.Name}}" value="1" {{if schemaChecked .Values .Field.Name}}checked{{end}} {{if .Field.ReadOnly}}disabled{{end}}>{{call .Translate .Field.Label}}</mdui-checkbox>
+      {{if .Field.Description}}<span class="muted">{{call .Translate .Field.Description}}</span>{{end}}
+    </div>
+  {{else if eq .Field.Type "switch"}}
+    <div class="schema-option-field">
+      <label class="schema-switch-label"><mdui-switch name="{{.Field.Name}}" value="1" {{if schemaChecked .Values .Field.Name}}checked{{end}} {{if .Field.ReadOnly}}disabled{{end}}></mdui-switch><span>{{call .Translate .Field.Label}}</span></label>
+      {{if .Field.Description}}<span class="muted">{{call .Translate .Field.Description}}</span>{{end}}
+    </div>
+  {{else if eq .Field.Type "slider"}}
+    <div class="schema-option-field">
+      <span class="muted">{{call .Translate .Field.Label}}</span>
+      <mdui-slider name="{{.Field.Name}}" {{if .Field.Min}}min="{{.Field.Min}}"{{end}} {{if .Field.Max}}max="{{.Field.Max}}"{{end}} {{if .Field.Step}}step="{{.Field.Step}}"{{end}} value="{{schemaValue .Values .Field.Name}}" {{if .Field.ReadOnly}}disabled{{end}}></mdui-slider>
+      {{if .Field.Description}}<span class="muted">{{call .Translate .Field.Description}}</span>{{end}}
+    </div>
+  {{else if eq .Field.Type "date"}}
+    <mdui-text-field type="date" name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if .Field.ReadOnly}}readonly{{end}} {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
+  {{else if eq .Field.Type "time"}}
+    <mdui-text-field type="time" name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if .Field.ReadOnly}}readonly{{end}} {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
+  {{else if eq .Field.Type "datetime"}}
+    <mdui-text-field type="datetime-local" name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if .Field.ReadOnly}}readonly{{end}} {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
+  {{else if eq .Field.Type "multicheckbox"}}
+    <div class="schema-option-field">
+      <span class="muted">{{call .Translate .Field.Label}}</span>
+      {{$tr := .Translate}}{{$vals := .Values}}{{$name := .Field.Name}}{{$ro := .Field.ReadOnly}}
+      {{range .Field.Options}}<mdui-checkbox name="{{$name}}" value="{{.Value}}" {{if schemaSelected $vals $name .Value}}checked{{end}} {{if $ro}}disabled{{end}}>{{call $tr .Label}}</mdui-checkbox>{{end}}
+      {{if .Field.Description}}<span class="muted">{{call .Translate .Field.Description}}</span>{{end}}
+    </div>
+  {{else if eq .Field.Type "multiselect"}}
+    <div class="schema-option-field">
+      <mdui-select name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" multiple {{if .Field.ReadOnly}}disabled{{end}} {{if and .Field.Required .Visible}}required{{end}}>
+        {{$tr := .Translate}}{{$vals := .Values}}{{$name := .Field.Name}}
+        {{range .Field.Options}}<mdui-menu-item value="{{.Value}}" {{if schemaSelected $vals $name .Value}}selected{{end}}>{{call $tr .Label}}</mdui-menu-item>{{end}}
+      </mdui-select>
       {{if .Field.Description}}<span class="muted">{{call .Translate .Field.Description}}</span>{{end}}
     </div>
   {{else if eq .Field.Type "radio"}}
@@ -38,7 +73,7 @@
     </div>
   {{else if eq .Field.Type "select"}}
     <div class="schema-option-field">
-      <mdui-select name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}>
+      <mdui-select name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if .Field.ReadOnly}}disabled{{end}} {{if and .Field.Required .Visible}}required{{end}}>
         {{if schemaOptionsAreColors .Field.Options}}
           {{$tr := .Translate}}{{range .Field.Options}}<mdui-menu-item value="{{.Value}}"><span class="schema-color-option"><span class="schema-color-chip" style="--swatch: {{.Value}}"></span>{{call $tr .Label}} · {{.Value}}</span></mdui-menu-item>{{end}}
         {{else}}
@@ -48,7 +83,7 @@
       {{if .Field.Description}}<span class="muted">{{call .Translate .Field.Description}}</span>{{end}}
     </div>
   {{else}}
-    <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
+    <mdui-text-field name="{{.Field.Name}}" label="{{call .Translate .Field.Label}}" value="{{schemaValue .Values .Field.Name}}" {{if .Field.ReadOnly}}readonly{{end}} {{if and .Field.Required .Visible}}required{{end}}></mdui-text-field>
     {{if .Field.Description}}<span class="muted schema-field-description">{{call .Translate .Field.Description}}</span>{{end}}
   {{end}}
 </div>

@@ -63,6 +63,12 @@ type PublicComment struct {
 	Type    string
 	Status  string
 	Parent  int64
+	// Title, Slug and ContentType carry the source metadata that trackback and
+	// pingback comments store; for a normal comment Title/Slug are empty and
+	// ContentType mirrors the parent content type.
+	Title       string
+	Slug        string
+	ContentType string
 }
 
 type PublicMeta struct {
@@ -104,11 +110,14 @@ type PublicArchivePeriod struct {
 }
 
 type AttachmentMetaInfo struct {
-	URL    string
-	MIME   string
-	Size   int64
-	Width  int
-	Height int
+	Name        string
+	Description string
+	URL         string
+	MIME        string
+	Size        int64
+	IsImage     bool
+	Width       int
+	Height      int
 }
 
 type WAFStatistics struct {
@@ -277,6 +286,30 @@ type Runtime struct {
 	AttachmentMeta           func(context.Context, int64) (AttachmentMetaInfo, error)
 	ActiveTheme              func(context.Context) string
 	ContentRenderMode        func(context.Context) string
+	// PluginActive reports whether a named plugin is currently activated,
+	// equivalent to Typecho's Plugin::export()['activated'] lookup.
+	PluginActive func(string) bool
+	// PluginURL returns the public base URL for a plugin's bundled static
+	// assets (served under /plugin/<name>/). When owner is empty the calling
+	// plugin's own asset base is returned.
+	PluginURL func(ctx context.Context, owner string) string
+	// RenderContent returns the rendered HTML of any content by CID, applying
+	// the same markdown/autop pipeline and render hooks the frontend uses.
+	RenderContent func(context.Context, int64) (template.HTML, error)
+	// Excerpt returns a plain-text/HTML excerpt of the given text, honoring the
+	// content.excerpt hooks. limit is the maximum rune length.
+	Excerpt func(ctx context.Context, text string, limit int) string
+	// FeedURL, CommentsFeedURL, XMLRPCURL, LoginURL, RegisterURL, LogoutURL,
+	// ProfileURL and ThemeURL expose core-defined route shapes so extensions
+	// need not hardcode them. ThemeURL(name, file) resolves a theme asset URL.
+	FeedURL         func(context.Context) string
+	CommentsFeedURL func(context.Context) string
+	XMLRPCURL       func(context.Context) string
+	LoginURL        func(context.Context) string
+	RegisterURL     func(context.Context) string
+	LogoutURL       func(context.Context) string
+	ProfileURL      func(context.Context) string
+	ThemeURL        func(ctx context.Context, name, file string) string
 }
 
 type runtimeContextKey struct{}
@@ -1105,6 +1138,19 @@ const (
 	FieldNumber   FieldType = "number"
 	FieldColor    FieldType = "color"
 	FieldImage    FieldType = "image"
+	// FieldSwitch renders an MDUI switch; the stored value is "1"/"0" like a checkbox.
+	FieldSwitch FieldType = "switch"
+	// FieldSlider renders an MDUI slider bound to Min/Max/Step; the stored value is numeric.
+	FieldSlider FieldType = "slider"
+	// FieldDate, FieldTime and FieldDatetime render native date/time pickers; the
+	// stored value is the raw control value (YYYY-MM-DD, HH:MM, or YYYY-MM-DDTHH:MM).
+	FieldDate     FieldType = "date"
+	FieldTime     FieldType = "time"
+	FieldDatetime FieldType = "datetime"
+	// FieldMultiSelect and FieldMultiCheckbox store multiple selected values joined
+	// by newlines, mirroring Typecho's Checkbox->multiMode()/multi-select forms.
+	FieldMultiSelect   FieldType = "multiselect"
+	FieldMultiCheckbox FieldType = "multicheckbox"
 )
 
 type FieldOption struct {
@@ -1132,6 +1178,43 @@ type FieldSchema struct {
 	// Translate is attached while core collects theme and plugin content
 	// fields, keeping extension-owned labels out of the core translation table.
 	Translate func(string) string
+}
+
+// IsMultiValueField reports whether a field type stores several selected values.
+func (t FieldType) IsMultiValue() bool {
+	return t == FieldMultiSelect || t == FieldMultiCheckbox
+}
+
+// IsBooleanField reports whether a field type stores a "1"/"0" boolean value.
+func (t FieldType) IsBoolean() bool {
+	return t == FieldCheckbox || t == FieldSwitch
+}
+
+// SplitMultiValue decodes a stored multi-value field back into its values.
+// Multi-value fields persist as newline-joined tokens.
+func SplitMultiValue(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, "\n")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+// JoinMultiValue encodes selected values for a multi-value field.
+func JoinMultiValue(values []string) string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if trimmed := strings.TrimSpace(v); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 type PluginInfo struct {
@@ -1168,6 +1251,14 @@ type ConfigProvider interface {
 
 type PersonalConfigProvider interface {
 	PersonalConfigSchema() []FieldSchema
+}
+
+// StaticProvider lets a plugin ship bundled front-end assets (JS/CSS/images).
+// Core serves the returned filesystem at /plugin/<name>/ and exposes the base
+// URL through Runtime.PluginURL and the pluginURL template function, mirroring
+// the theme Static mechanism and Typecho's pluginUrl option.
+type StaticProvider interface {
+	PluginStatic() fs.FS
 }
 
 // Translator lets an extension localize its own labels and messages.
