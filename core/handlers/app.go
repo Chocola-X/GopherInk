@@ -3088,7 +3088,11 @@ func (a *App) adminPluginAction(w http.ResponseWriter, r *http.Request, name, ac
 		return
 	}
 
-	notice, err := provider.HandleAdminAction(r.Context(), a.pluginRuntime().WithOwner(name), actionName)
+	actionRuntime := a.pluginRuntime().WithOwner(name)
+	// Carry the owner-scoped runtime in the context so actions can call runtime
+	// capabilities that resolve the owner from context (OpenPluginDB, PluginDataDir).
+	actionCtx := plugin.ContextWithRuntime(r.Context(), actionRuntime)
+	notice, err := provider.HandleAdminAction(actionCtx, actionRuntime, actionName)
 	lang := a.language(r.Context())
 	extensionT := func(key string) string { return pluginText(p, lang, key) }
 	if err != nil {
@@ -3375,7 +3379,8 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 	if !personal {
 		if provider, ok := p.(plugin.AdminNoticeProvider); ok {
 			noticeProvider = func(ctx context.Context, values map[string]string) []plugin.AdminNotice {
-				return provider.AdminNotices(ctx, a.pluginRuntime().WithOwner(name), copyStringMap(values))
+				runtime := a.pluginRuntime().WithOwner(name)
+				return provider.AdminNotices(plugin.ContextWithRuntime(ctx, runtime), runtime, copyStringMap(values))
 			}
 		}
 		if provider, ok := p.(plugin.AdminActionProvider); ok {
@@ -3408,7 +3413,8 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 		},
 		Handler: func(ctx context.Context, values map[string]string, isInit bool) error {
 			if handler, ok := p.(plugin.ConfigHandler); ok {
-				return handler.HandleConfig(ctx, a.pluginRuntime().WithOwner(name), copyStringMap(values), isInit)
+				runtime := a.pluginRuntime().WithOwner(name)
+				return handler.HandleConfig(plugin.ContextWithRuntime(ctx, runtime), runtime, copyStringMap(values), isInit)
 			}
 			return nil
 		},
@@ -3431,6 +3437,10 @@ func (a *App) adminPluginPage(w http.ResponseWriter, r *http.Request, name strin
 	}
 	pageURL := "/admin/plugins/" + neturl.PathEscape(name) + "/config?tab=" + neturl.QueryEscape(page.Name)
 	runtime := a.pluginRuntime().WithOwner(name)
+	// Carry the owner-scoped runtime in the context so native pages can call
+	// runtime capabilities that resolve the owner from context (OpenPluginDB,
+	// PluginDBDialect, PluginDataDir). This mirrors route and hook dispatch.
+	r = r.WithContext(plugin.ContextWithRuntime(r.Context(), runtime))
 	lang := a.language(r.Context())
 	extensionT := func(key string) string { return pluginText(p, lang, key) }
 
@@ -3547,7 +3557,8 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 			if theme.AdminNotices == nil {
 				return nil
 			}
-			return theme.AdminNotices(ctx, a.pluginRuntime().WithComponent("theme", name), copyStringMap(values))
+			themeRuntime := a.pluginRuntime().WithComponent("theme", name)
+			return theme.AdminNotices(plugin.ContextWithRuntime(ctx, themeRuntime), themeRuntime, copyStringMap(values))
 		},
 		ThemeName:  name,
 		ThemePages: adminPages,
@@ -3560,7 +3571,8 @@ func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name stri
 		},
 		Handler: func(ctx context.Context, values map[string]string, isInit bool) error {
 			if theme.ConfigHandler != nil {
-				return theme.ConfigHandler(ctx, a.pluginRuntime().WithComponent("theme", name), copyStringMap(values), isInit)
+				runtime := a.pluginRuntime().WithComponent("theme", name)
+				return theme.ConfigHandler(plugin.ContextWithRuntime(ctx, runtime), runtime, copyStringMap(values), isInit)
 			}
 			return nil
 		},
@@ -3583,6 +3595,10 @@ func (a *App) adminThemePage(w http.ResponseWriter, r *http.Request, name string
 	}
 	pageURL := "/admin/themes/" + neturl.PathEscape(name) + "/config?tab=" + neturl.QueryEscape(page.Name)
 	runtime := a.pluginRuntime().WithComponent("theme", name)
+	// Carry the owner-scoped runtime in the request context so RenderAdminPage and
+	// HandleAdminPageAction can use runtime helpers (OpenPluginDB, dialect, etc.)
+	// that resolve the owner from context, matching every other dispatch site.
+	r = r.WithContext(plugin.ContextWithRuntime(r.Context(), runtime))
 	lang := a.language(r.Context())
 	extensionT := func(key string) string { return themeText(theme, lang, key) }
 
@@ -9682,6 +9698,7 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		LogoutURL:                a.logoutURLPlugin,
 		ProfileURL:               a.profileURLPlugin,
 		ThemeURL:                 a.themeURLPlugin,
+		PluginDataDir:            a.pluginDataDirForRuntime,
 	}
 	runtime.DispatchHook = func(ctx context.Context, name string, payload any) (plugin.HookDispatch, error) {
 		return a.Plugins.DispatchActive(plugin.ContextWithRuntime(ctx, runtime), name, payload)
@@ -9716,6 +9733,33 @@ func (a *App) extensionSQLitePath(owner, filename string) (string, error) {
 		return "", err
 	}
 	return filepath.Join(a.DataDir, "extensions", cleanOwner, file), nil
+}
+
+// pluginDataDirForRuntime returns the on-disk directory an extension owns for
+// side files (swappable databases, caches, imported data). It reuses the same
+// per-owner extensions directory that separate plugin SQLite databases live in,
+// so a plugin can keep a replaceable IP database or similar next to its data.
+// The directory is created on demand. The owner is taken from the runtime in
+// context, matching OpenPluginDB.
+func (a *App) pluginDataDirForRuntime(ctx context.Context) (string, error) {
+	rt, ok := plugin.RuntimeFromContext(ctx)
+	if !ok || rt == nil {
+		return "", plugin.ErrRuntimeUnavailable
+	}
+	owner := strings.TrimSpace(rt.Owner)
+	if owner == "" {
+		return "", errors.New("plugin runtime owner is empty")
+	}
+	ownerID := extensionDatabaseOwner(rt.OwnerKind, owner)
+	cleanOwner, err := safeExtensionPathName(ownerID)
+	if err != nil {
+		return "", fmt.Errorf("extension name is invalid: %w", err)
+	}
+	dir := filepath.Join(a.DataDir, "extensions", cleanOwner)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 func (a *App) extensionSQLiteSize(owner, filename string) (int64, error) {

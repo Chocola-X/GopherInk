@@ -179,6 +179,7 @@ GopherInk 参考 Typecho 的插件能力，但不会完全照搬“插件直接�
 | `CallService(ctx, name, args...)` | 调用已启用插件提供的唯一命名服务并取得结果 |
 | `NotifyAdmin(w, r, notices...)` | 写入一次性后台提示，供重定向后的页面展示 |
 | `OpenPluginDatabase(ctx)` | 打开当前插件数据库，按后台选择返回独立 SQLite 或主库连接 |
+| `PluginDataDir(ctx)` | 返回当前插件在数据目录下的私有目录 `data/extensions/<owner>/`，用于存放可更换的附属文件（如离线 IP 库）；目录会自动创建 |
 | `PluginDBDialect(ctx)` | 返回当前插件数据库方言：`sqlite`、`mysql` 或 `postgres` |
 | `DatabaseTableName(table)` | 根据当前插件名生成核心实际创建的表名 |
 | `RebindSQL(ctx, query)` | 将 `?` 占位符改写为当前插件数据库方言需要的形式 |
@@ -415,6 +416,8 @@ func (Plugin) HandleAdminPageAction(ctx context.Context, rt *plugin.Runtime, pag
 ```
 
 `ConfigPatch` 只会合并到当前插件自己的配置，不会覆盖未列出的字段。页面返回的 HTML 来自已编译插件，属于可信代码；核心不会清洗它。插件必须转义数据库内容、请求参数和用户可编辑模板，不能直接把这些内容转换为 `template.HTML`。需要预览用户提供的 HTML 或 JavaScript 时，应使用不带 `allow-same-origin` 的沙箱 iframe，不能直接插入后台 DOM。
+
+`RenderAdminPage`、`HandleAdminPageAction`、`HandleAdminAction`、`ConfigHandler` 和 `AdminNotices` 收到的 `ctx` 已经携带当前扩展的运行时，因此可以在页面里直接调用按上下文解析归属的能力，例如 `rt.OpenPluginDatabase(ctx)`、`rt.PluginDBDialect(ctx)`、`rt.PluginDataDir(ctx)` 和 `rt.DatabaseTableName(...)`。若要在后台请求之外（例如自建 goroutine）调用这些能力，需用 `plugin.ContextWithRuntime(ctx, rt)` 重新注入运行时。这样带独立数据库的插件就能把统计面板、数据管理动作直接放进原生页签，用沙箱 iframe 渲染图表，不必另开路由。
 
 ## 后台提示信息
 

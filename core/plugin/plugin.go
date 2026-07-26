@@ -310,6 +310,11 @@ type Runtime struct {
 	LogoutURL       func(context.Context) string
 	ProfileURL      func(context.Context) string
 	ThemeURL        func(ctx context.Context, name, file string) string
+	// PluginDataDir returns and creates a private on-disk directory for the
+	// calling extension under the data directory, for swappable side files such
+	// as an IP database that should not be bundled into the binary. It mirrors
+	// the theme ThemeEditableDir capability for plugins.
+	PluginDataDir func(context.Context) (string, error)
 }
 
 type runtimeContextKey struct{}
