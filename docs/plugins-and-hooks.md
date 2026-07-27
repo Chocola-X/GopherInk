@@ -392,7 +392,9 @@ func (Plugin) RenderAdminPage(ctx context.Context, rt *plugin.Runtime, page stri
     if page != "templates" {
         return "", fmt.Errorf("unknown page %q", page)
     }
-    // rc.Config 是当前插件配置的副本，rc.CSRF 用于页面内 POST 表单。
+    // rc.Config 是当前插件配置的副本，rc.CSRF 用于页面内 POST 表单，
+    // rc.Query 是当前请求的查询参数（等价 url.Values），可用于分页、
+    // 日期筛选等需要读取 GET 参数的原生页面；用 rc.QueryValue(key) 取单值。
     return renderTemplates(rc.Config, rc.CSRF)
 }
 ```

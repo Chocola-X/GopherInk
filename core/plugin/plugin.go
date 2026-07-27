@@ -1113,6 +1113,10 @@ type AdminPage struct {
 type AdminPageRenderContext struct {
 	CSRF   string
 	Config map[string]string
+	// Query carries the GET query parameters of the page request (same shape as
+	// url.Values), so native pages can support pagination, filtering and other
+	// stateful views through their own ?key=value links without a custom route.
+	Query map[string][]string
 }
 
 type AdminPageActionResult struct {

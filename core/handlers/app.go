@@ -3498,6 +3498,7 @@ func (a *App) adminPluginPage(w http.ResponseWriter, r *http.Request, name strin
 	content, err := provider.RenderAdminPage(r.Context(), runtime, page.Name, plugin.AdminPageRenderContext{
 		CSRF:   a.csrfToken(r),
 		Config: copyStringMap(values),
+		Query:  copyFormValues(r.URL.Query()),
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -3655,6 +3656,7 @@ func (a *App) adminThemePage(w http.ResponseWriter, r *http.Request, name string
 	content, err := theme.RenderAdminPage(r.Context(), runtime, page.Name, plugin.AdminPageRenderContext{
 		CSRF:   a.csrfToken(r),
 		Config: copyStringMap(values),
+		Query:  copyFormValues(r.URL.Query()),
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
