@@ -8581,29 +8581,36 @@ func (a *App) themeStatic(w http.ResponseWriter, r *http.Request) {
 func (a *App) pluginStatic(w http.ResponseWriter, r *http.Request) {
 	rel := strings.TrimPrefix(r.URL.Path, "/plugin/")
 	name, filePath, ok := strings.Cut(rel, "/")
+	w.Header().Set("X-Dbg-Probe", fmt.Sprintf("enter rel=%q name=%q file=%q ok=%v", rel, name, filePath, ok))
 	if !ok || strings.TrimSpace(name) == "" || strings.TrimSpace(filePath) == "" || strings.Contains(name, "..") {
+		w.Header().Set("X-Dbg-Branch", "cut")
 		http.NotFound(w, r)
 		return
 	}
 	if !a.Plugins.IsActive(name) {
+		w.Header().Set("X-Dbg-Branch", "inactive")
 		http.NotFound(w, r)
 		return
 	}
 	p, ok := a.Plugins.Plugin(name)
 	if !ok {
+		w.Header().Set("X-Dbg-Branch", "notfound")
 		http.NotFound(w, r)
 		return
 	}
 	provider, ok := p.(plugin.StaticProvider)
 	if !ok {
+		w.Header().Set("X-Dbg-Branch", "notprovider")
 		http.NotFound(w, r)
 		return
 	}
 	static := provider.PluginStatic()
 	if static == nil {
+		w.Header().Set("X-Dbg-Branch", "nilfs")
 		http.NotFound(w, r)
 		return
 	}
+	w.Header().Set("X-Dbg-Branch", "serve")
 	http.StripPrefix("/plugin/"+name+"/", http.FileServer(http.FS(static))).ServeHTTP(w, r)
 }
 

@@ -977,7 +977,7 @@ func requestRatePolicy(r *http.Request, cfg wafConfig) (string, bool, time.Durat
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/uploads/"):
 		return "upload", cfg.UploadRateEnabled, cfg.UploadRateWindow, cfg.UploadRateLimit
-	case strings.HasPrefix(r.URL.Path, "/admin/assets/"), strings.HasPrefix(r.URL.Path, "/theme/"):
+	case requestPathIsStatic(r.URL.Path):
 		return "static", cfg.StaticRateEnabled, cfg.StaticRateWindow, cfg.StaticRateLimit
 	default:
 		return "dynamic", cfg.DynamicRateEnabled, cfg.DynamicRateWindow, cfg.DynamicRateLimit
@@ -995,9 +995,7 @@ func isPublicHTMLPath(value string) bool {
 	switch {
 	case strings.HasPrefix(value, "/admin"):
 		return false
-	case strings.HasPrefix(value, "/theme/"), strings.HasPrefix(value, "/uploads/"):
-		return false
-	case strings.HasPrefix(value, "/admin/assets/"):
+	case requestPathIsStatic(value):
 		return false
 	case value == "/comment" || value == "/comment/guard" || value == "/register" || value == "/install":
 		return false
