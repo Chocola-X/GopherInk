@@ -92,6 +92,8 @@ type wafCacheEntry struct {
 	ExpiresAt time.Time
 }
 
+const themeNotFoundCacheKey = "GET __gopherink_theme_404__"
+
 func newWAFManager(app *App) *wafManager {
 	return &wafManager{
 		app:         app,
@@ -193,7 +195,7 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 					http.Error(sw, "forbidden", http.StatusForbidden)
 					return
 				}
-				http.NotFound(sw, r)
+				m.serveThemeNotFound(sw, r, cfg, now)
 				return
 			}
 		}
@@ -228,6 +230,25 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			m.invalidatePublicData()
 		}
 	})
+}
+
+func (m *wafManager) serveThemeNotFound(w http.ResponseWriter, r *http.Request, cfg wafConfig, now time.Time) {
+	if cfg.CacheEnabled {
+		if entry, ok := m.cachedResponse(themeNotFoundCacheKey, now); ok {
+			copyHeaders(w.Header(), entry.Header)
+			w.WriteHeader(entry.Status)
+			if r.Method != http.MethodHead {
+				_, _ = w.Write(entry.Body)
+			}
+			return
+		}
+	}
+	recorder := newWAFResponseRecorder(w)
+	m.app.renderThemeNotFound(recorder, r)
+	recorder.flush()
+	if cfg.CacheEnabled && recorder.status == http.StatusNotFound && len(recorder.body.Bytes()) > 0 {
+		m.storeCachedResponse(themeNotFoundCacheKey, recorder.status, recorder.header, recorder.body.Bytes(), cfg, now)
+	}
 }
 
 func (m *wafManager) authenticatedAdminBackendRequest(r *http.Request) bool {

@@ -5238,7 +5238,7 @@ func (a *App) frontDynamic(w http.ResponseWriter, r *http.Request) {
 	if a.dispatchRequestFallback(w, r) {
 		return
 	}
-	http.NotFound(w, r)
+	a.renderThemeNotFound(w, r)
 }
 
 func (a *App) frontPost(w http.ResponseWriter, r *http.Request) {
@@ -5252,7 +5252,7 @@ func (a *App) frontPost(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			a.renderThemeStatus(w, r, "404.html", map[string]any{}, http.StatusNotFound)
+			a.renderThemeNotFound(w, r)
 			return
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -5344,7 +5344,7 @@ func (a *App) frontPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err != nil {
-		a.renderThemeStatus(w, r, "404.html", map[string]any{}, http.StatusNotFound)
+		a.renderThemeNotFound(w, r)
 		return
 	}
 	if a.redirectCanonical(w, r, a.contentURL(r.Context(), pageData)) {
@@ -5456,7 +5456,7 @@ func (a *App) frontCategory(w http.ResponseWriter, r *http.Request) {
 	}
 	meta, err := a.Metas.BySlug(r.Context(), "category", path.Base(strings.TrimSuffix(r.URL.Path, "/")))
 	if err != nil {
-		a.renderThemeStatus(w, r, "404.html", map[string]any{}, http.StatusNotFound)
+		a.renderThemeNotFound(w, r)
 		return
 	}
 	canonical := a.metaURL(r.Context(), meta)
@@ -5473,7 +5473,7 @@ func (a *App) frontTag(w http.ResponseWriter, r *http.Request) {
 	}
 	meta, err := a.Metas.BySlug(r.Context(), "tag", path.Base(strings.TrimSuffix(r.URL.Path, "/")))
 	if err != nil {
-		a.renderThemeStatus(w, r, "404.html", map[string]any{}, http.StatusNotFound)
+		a.renderThemeNotFound(w, r)
 		return
 	}
 	canonical := "/tag/" + meta.Slug
@@ -5486,12 +5486,12 @@ func (a *App) frontTag(w http.ResponseWriter, r *http.Request) {
 func (a *App) frontAuthor(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(path.Base(strings.TrimSuffix(r.URL.Path, "/")), 10, 64)
 	if err != nil || id <= 0 {
-		http.NotFound(w, r)
+		a.renderThemeNotFound(w, r)
 		return
 	}
 	user, err := a.Users.ByID(r.Context(), id)
 	if err != nil {
-		a.renderThemeStatus(w, r, "404.html", map[string]any{}, http.StatusNotFound)
+		a.renderThemeNotFound(w, r)
 		return
 	}
 	name := user.ScreenName
@@ -5541,12 +5541,12 @@ func (a *App) frontSearch(w http.ResponseWriter, r *http.Request) {
 func (a *App) frontArchive(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/archive/"), "/"), "/")
 	if len(parts) == 0 || parts[0] == "" {
-		http.NotFound(w, r)
+		a.renderThemeNotFound(w, r)
 		return
 	}
 	year, err := strconv.Atoi(parts[0])
 	if err != nil || year < 1970 {
-		http.NotFound(w, r)
+		a.renderThemeNotFound(w, r)
 		return
 	}
 	query := services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Year: year}
@@ -8360,6 +8360,26 @@ func (a *App) renderTheme(w http.ResponseWriter, r *http.Request, page string, d
 	a.renderThemeStatus(w, r, page, data, http.StatusOK)
 }
 
+// renderThemeNotFound lets the active theme own public HTML 404 responses.
+// Non-HTML endpoints keep using http.NotFound at their handlers.
+func (a *App) renderThemeNotFound(w http.ResponseWriter, r *http.Request) {
+	theme, ok := a.activeTheme(r.Context())
+	if !ok || theme.Templates == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := fs.Stat(theme.Templates, "templates/404.html"); err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	lang := a.language(r.Context())
+	a.renderThemeStatus(w, r, "404.html", map[string]any{
+		"Title":       themeText(theme, lang, "Not Found"),
+		"ArchiveType": "404",
+		"NotFound":    true,
+	}, http.StatusNotFound)
+}
+
 func (a *App) renderContentHTML(ctx context.Context, content models.Content, data map[string]any) (template.HTML, error) {
 	payload := plugin.ContentRenderPayload{Content: content, Data: data}
 	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookContentBeforeRender, payload); err != nil {
@@ -8547,12 +8567,19 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	data["CommentGuardEnabled"] = theme.Capabilities.CommentGuard
 	data["CommentGuardEndpoint"] = "/comment/guard"
 	if site, ok := data["Site"].(map[string]string); ok {
-		canonicalPath := r.URL.Path
-		if pathValue, ok := data["CanonicalPath"].(string); ok && pathValue != "" {
-			canonicalPath = pathValue
+		canonicalPath := ""
+		if notFound, _ := data["NotFound"].(bool); !notFound {
+			canonicalPath = r.URL.Path
+			if pathValue, ok := data["CanonicalPath"].(string); ok && pathValue != "" {
+				canonicalPath = pathValue
+			}
 		}
 		baseURL := strings.TrimRight(site["base_url"], "/")
-		data["CurrentURL"] = baseURL + canonicalPath
+		if canonicalPath != "" {
+			data["CurrentURL"] = baseURL + canonicalPath
+		} else {
+			delete(data, "CurrentURL")
+		}
 		if _, ok := data["SeoImage"]; !ok {
 			if post, ok := data["Post"].(models.Content); ok {
 				if imageURL := firstContentImage(post.Text); imageURL != "" {

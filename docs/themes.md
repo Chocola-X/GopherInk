@@ -295,6 +295,10 @@ form?.addEventListener("submit", async (event) => {
 
 目标模板通常定义供基础模板调用的 block。可直接参考 `themes/default/templates/` 的 `base.html`、`index.html`、`post.html` 和 `404.html`。
 
+`templates/404.html` 用于当前主题的公开 HTML 错误页。文章、独立页面、分类、标签、作者、归档和未匹配的前台路径不存在时，核心都会用该模板渲染响应，并保持 HTTP 状态码为 `404`。模板会收到常规站点及主题数据，另外提供 `Title`、`ArchiveType`（值为 `404`）和 `NotFound`。404 响应不会生成指向不存在地址的 canonical URL。主题未提供该文件时，核心安全回落到简洁的纯文本 404；后台、API 和缺失的静态资源不会套用前台主题。
+
+WAF 公开 URL 索引提前判定随机路径不存在时，也会进入同一个主题 404 出口，同时保留非法路径计数与封禁逻辑。开启公开响应缓存时，这类匿名随机路径会共享一份短 TTL 的主题 404 响应，因此主题不应在 404 模板中展示请求路径或执行额外内容查询。
+
 模板函数若返回 `template.HTML`，输入必须是可信内容。默认主题的 `safeHTML` 仅用于已经过服务端或插件明确处理的 HTML，不应直接包裹查询参数、评论原文等访客输入。
 
 核心还提供 `isArchiveType` 模板函数，用于判断当前归档类型，作用接近 Typecho 的 `$this->is()`：
