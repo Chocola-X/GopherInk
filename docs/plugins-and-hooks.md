@@ -423,6 +423,8 @@ func (Plugin) HandleAdminPageAction(ctx context.Context, rt *plugin.Runtime, pag
 
 `RenderAdminPage`、`HandleAdminPageAction`、`HandleAdminAction`、`ConfigHandler` 和 `AdminNotices` 收到的 `ctx` 已经携带当前扩展的运行时，因此可以在页面里直接调用按上下文解析归属的能力，例如 `rt.OpenPluginDatabase(ctx)`、`rt.PluginDBDialect(ctx)`、`rt.PluginDataDir(ctx)` 和 `rt.DatabaseTableName(...)`。若要在后台请求之外（例如自建 goroutine）调用这些能力，需用 `plugin.ContextWithRuntime(ctx, rt)` 重新注入运行时。这样带独立数据库的插件就能把统计面板、数据管理动作直接放进原生页签，用沙箱 iframe 渲染图表，不必另开路由。
 
+`OpenPluginDatabase` 返回由核心按扩展归属缓存和管理的共享连接池。插件应在每次操作时获取并复用返回值，但不得调用 `db.Close()`；插件停用、清除数据库或切换存储模式时由核心统一关闭连接。独立 SQLite 模式限制为单连接，以避免高频请求钩子产生写锁竞争；合并模式返回主数据库连接，同样不得由插件关闭。
+
 ## 后台提示信息
 
 后台扩展提示使用 `plugin.AdminNotice`。`Type` 支持 `NoticeInfo`、`NoticeSuccess`、`NoticeWarning` 和 `NoticeError`；`Mode` 支持：

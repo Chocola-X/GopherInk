@@ -3289,6 +3289,7 @@ func (a *App) adminPluginDatabaseMode(w http.ResponseWriter, r *http.Request, na
 		a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
 		return
 	}
+	a.closePrimaryExtensionDatabase("plugin", name)
 	if a.Plugins.IsActive(name) {
 		if err := a.initializePluginDatabase(r.Context(), name, p); err != nil {
 			a.flashRedirect(w, r, "/admin/plugins", http.StatusSeeOther, flashNotice{Type: plugin.NoticeError, Mode: plugin.NoticeSnackbar, Message: err.Error()})
@@ -3332,6 +3333,7 @@ func (a *App) adminPluginToggle(w http.ResponseWriter, r *http.Request, name str
 			}
 		}
 		delete(active, name)
+		a.closePrimaryExtensionDatabase("plugin", name)
 	}
 	if err := a.saveActivePluginSet(r.Context(), active); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -9917,6 +9919,22 @@ func (a *App) clearExtensionSQLite(ctx context.Context, owner, filename string) 
 	return nil
 }
 
+func (a *App) closePrimaryExtensionDatabase(kind, owner string) {
+	ownerID := extensionDatabaseOwner(kind, owner)
+	dbPath, err := a.extensionSQLitePath(ownerID, strings.TrimSpace(owner)+".db")
+	if err != nil {
+		return
+	}
+	key := filepath.Clean(dbPath)
+	a.extensionDBMu.Lock()
+	db := a.extensionDBs[key]
+	delete(a.extensionDBs, key)
+	a.extensionDBMu.Unlock()
+	if db != nil {
+		_ = db.Close()
+	}
+}
+
 func safeExtensionPathName(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" || value == "." || value == ".." {
@@ -11269,13 +11287,22 @@ func (a *App) openPluginDBForRuntime(ctx context.Context) (*sql.DB, error) {
 			return nil, err
 		}
 		dbPath := filepath.Join(dir, owner+".db")
+		key := filepath.Clean(dbPath)
+		a.extensionDBMu.Lock()
+		defer a.extensionDBMu.Unlock()
+		if db := a.extensionDBs[key]; db != nil {
+			return db, nil
+		}
 		db, err := sql.Open("sqlite3", dbPath+"?_journal_mode=WAL")
 		if err != nil {
 			return nil, err
 		}
-		a.extensionDBMu.Lock()
-		a.extensionDBs[ownerID] = db
-		a.extensionDBMu.Unlock()
+		// The core owns and shares one pool per extension database. Limiting
+		// separate SQLite databases to one connection also avoids write-lock
+		// contention between concurrent request hooks.
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+		a.extensionDBs[key] = db
 		return db, nil
 	}
 }
