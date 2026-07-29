@@ -75,6 +75,8 @@ type contextKey string
 
 const currentUserKey contextKey = "currentUser"
 
+type requestFallbackContextKey struct{}
+
 func New(contents *services.ContentService, metas *services.MetaService, comments *services.CommentService, users *services.UserService, options *services.OptionService, plugins *plugin.Manager) *App {
 	dataDir := os.Getenv("GOPHERINK_DATA_DIR")
 	if dataDir == "" {
@@ -265,21 +267,24 @@ func (a *App) Handler() http.Handler {
 	if a.WAF == nil {
 		a.WAF = newWAFManager(a)
 	}
-	withRuntime := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := plugin.ContextWithRuntime(r.Context(), runtime)
+	routed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		recorder := &statusResponseWriter{ResponseWriter: w}
 		start := time.Now()
-		if handled, err := a.dispatchRequestBefore(recorder, r.WithContext(ctx)); handled || err != nil {
+		if handled, err := a.dispatchRequestBefore(recorder, r); handled || err != nil {
 			if err != nil {
 				http.Error(recorder, err.Error(), http.StatusInternalServerError)
 			}
 			a.dispatchRequestAfter(r, recorder, time.Since(start))
 			return
 		}
-		mux.ServeHTTP(recorder, r.WithContext(ctx))
+		mux.ServeHTTP(recorder, r)
 		a.dispatchRequestAfter(r, recorder, time.Since(start))
 	})
-	return a.WAF.wrap(withRuntime)
+	secured := a.WAF.wrap(routed)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := plugin.ContextWithRuntime(r.Context(), runtime)
+		secured.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 type statusResponseWriter struct {
@@ -323,21 +328,61 @@ func (a *App) dispatchRequestBefore(w http.ResponseWriter, r *http.Request) (boo
 	if !ok || !next.Handled {
 		return false, nil
 	}
-	for name, value := range next.ResponseHeaders {
+	writeRequestPayloadResponse(w, next)
+	return true, nil
+}
+
+func (a *App) resolveRequestFallback(r *http.Request) (plugin.RequestPayload, bool, error) {
+	if a.Plugins == nil || !a.Plugins.HasActiveHook(plugin.HookRequestFallback) {
+		return plugin.RequestPayload{}, false, nil
+	}
+	payload := a.requestPayload(r)
+	ctx := r.Context()
+	if _, ok := plugin.RuntimeFromContext(ctx); !ok {
+		ctx = plugin.ContextWithRuntime(ctx, a.pluginRuntime())
+	}
+	out, err := a.Plugins.ApplyActive(ctx, plugin.HookRequestFallback, payload)
+	if err != nil {
+		return plugin.RequestPayload{}, false, err
+	}
+	next, ok := out.(plugin.RequestPayload)
+	return next, ok && next.Handled, nil
+}
+
+func (a *App) dispatchRequestFallback(w http.ResponseWriter, r *http.Request) bool {
+	payload, ok := r.Context().Value(requestFallbackContextKey{}).(plugin.RequestPayload)
+	if !ok || !payload.Handled {
+		var err error
+		payload, ok, err = a.resolveRequestFallback(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return true
+		}
+	}
+	if !ok || !payload.Handled {
+		return false
+	}
+	writeRequestPayloadResponse(w, payload)
+	return true
+}
+
+func writeRequestPayloadResponse(w http.ResponseWriter, payload plugin.RequestPayload) {
+	for name, value := range payload.ResponseHeaders {
 		if strings.TrimSpace(name) != "" {
 			w.Header().Set(name, value)
 		}
 	}
-	if strings.TrimSpace(next.ContentType) != "" {
-		w.Header().Set("Content-Type", next.ContentType)
+	if strings.TrimSpace(payload.ContentType) != "" {
+		w.Header().Set("Content-Type", payload.ContentType)
 	}
-	status := next.Status
+	status := payload.Status
 	if status < 100 {
 		status = http.StatusOK
 	}
 	w.WriteHeader(status)
-	_, _ = io.WriteString(w, next.Body)
-	return true, nil
+	if !strings.EqualFold(payload.Method, http.MethodHead) {
+		_, _ = io.WriteString(w, payload.Body)
+	}
 }
 
 func (a *App) dispatchRequestAfter(r *http.Request, recorder *statusResponseWriter, duration time.Duration) {
@@ -3149,6 +3194,9 @@ func (a *App) pluginViews(ctx context.Context) []pluginView {
 		if provider, ok := p.(plugin.ConfigProvider); ok && len(provider.ConfigSchema()) > 0 {
 			view.HasConfig = true
 		}
+		if provider, ok := p.(plugin.AdminPageProvider); ok && len(normalizeAdminPages(provider.AdminPages())) > 0 {
+			view.HasConfig = true
+		}
 		if provider, ok := p.(plugin.PersonalConfigProvider); ok && len(provider.PersonalConfigSchema()) > 0 {
 			view.HasPersonal = true
 		}
@@ -3368,7 +3416,12 @@ func (a *App) adminPluginConfig(w http.ResponseWriter, r *http.Request, name str
 		userID, _ = a.currentUserID(r)
 	} else {
 		provider, ok := p.(plugin.ConfigProvider)
-		if !ok {
+		if !ok || len(provider.ConfigSchema()) == 0 {
+			if len(adminPages) > 0 {
+				target := "/admin/plugins/" + neturl.PathEscape(name) + "/config?tab=" + neturl.QueryEscape(adminPages[0].Name)
+				http.Redirect(w, r, target, http.StatusSeeOther)
+				return
+			}
 			http.NotFound(w, r)
 			return
 		}
@@ -3510,8 +3563,13 @@ func (a *App) adminPluginPage(w http.ResponseWriter, r *http.Request, name strin
 	}
 	a.renderAdmin(w, r, "plugin_page.html", map[string]any{
 		"Title": extensionT(title), "Description": extensionT(page.Description), "BackURL": "/admin/plugins",
-		"PluginName": name, "PluginPages": pages, "PluginPage": page, "PluginPageHTML": content, "ExtensionT": extensionT,
+		"PluginName": name, "PluginHasSettings": pluginHasSettings(p), "PluginPages": pages, "PluginPage": page, "PluginPageHTML": content, "ExtensionT": extensionT,
 	})
+}
+
+func pluginHasSettings(p plugin.Plugin) bool {
+	provider, ok := p.(plugin.ConfigProvider)
+	return ok && len(provider.ConfigSchema()) > 0
 }
 
 func (a *App) adminThemeConfig(w http.ResponseWriter, r *http.Request, name string) {
@@ -5175,6 +5233,9 @@ func (a *App) frontDynamic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.tryPrettyArchive(w, r) {
+		return
+	}
+	if a.dispatchRequestFallback(w, r) {
 		return
 	}
 	http.NotFound(w, r)

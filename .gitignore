@@ -11,3 +11,5 @@ GopherInk-Tools/
 plugins/*
 !plugins/sitemap/
 !plugins/sitemap/**
+!plugins/virtual-files/
+!plugins/virtual-files/**

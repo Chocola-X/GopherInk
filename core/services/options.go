@@ -173,7 +173,7 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 		"waf_state_max_entries":         "100000",
 		"waf_log_max_entries":           "1000",
 		"plugin_db_default_mode":        "sqlite",
-		"active_plugins":                `["sitemap"]`,
+		"active_plugins":                `["sitemap","virtual-files"]`,
 		"schema_version":                "1",
 	}
 	for key, value := range defaults {

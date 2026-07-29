@@ -28,6 +28,17 @@ func (sitemapPlugin) Description() string {
 	return "Generate /sitemap.xml for published content."
 }
 
+func (sitemapPlugin) Info() plugin.PluginInfo {
+	return plugin.PluginInfo{
+		Name:             "sitemap",
+		Version:          "0.5.0",
+		Author:           "GopherInk",
+		Description:      "Generate /sitemap.xml for published content.",
+		Homepage:         "https://gopherink.nekopara.uk",
+		RequireGopherInk: "0.5.0",
+	}
+}
+
 func (sitemapPlugin) Translate(lang, key string) string {
 	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(lang)), "zh") {
 		switch key {

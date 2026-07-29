@@ -17,7 +17,7 @@
 - **界面个性化** — 默认主题和管理后台分别支持 MDUI 2 动态配色、自定义桌面/移动端背景，以及卡片、输入框、顶栏、侧边栏和背景遮罩透明度调节
 - **编辑草稿机制** — 已发布内容的修改先保存为草稿，发布时合并回原文，自动保存可按需开关
 - **修订版本** — 发布内容更新前自动保存旧版本快照，也支持手动保存快照，可随时回滚
-- **插件/主题系统** — 钩子驱动的插件架构（82 个预定义钩子点），支持主题配置、自定义字段、模板函数扩展
+- **插件/主题系统** — 钩子驱动的插件架构（80+ 个预定义钩子点），支持主题配置、自定义字段、模板函数扩展
 - **兼容性 API** — XML-RPC（MetaWeblog/WordPress/Blogger）、Pingback、Trackback、RSD
 - **WAF 安全防护** — 内置 Web 应用防火墙，IP 限速、登录暴力破解防护、无效路径封禁、页面缓存、安全响应头、反向代理 IP 信任
 - **图片处理** — 上传自动转 WebP（无损/有损可选）、缩略图生成、GIF 动画转 WebP
@@ -27,6 +27,7 @@
 - **Markdown 渲染** — 基于 Goldmark，支持 GFM 扩展（表格、任务列表、删除线等）
 - **RSS/Atom 订阅** — 文章和评论的 RSS/Atom Feed
 - **Sitemap** — 内置 Sitemap 插件
+- **验证文件管理** — 内置虚拟文件插件，后台维护 Robots、SEO 和域名所有权验证文本，已有路由始终优先
 - **单二进制部署** — 前后台模板与静态资源通过 `embed.FS` 嵌入，无需额外分发前端依赖文件
 
 插件优先级、接管信号，以及内容、评论、附件的生命周期和字段扩展接口见 [插件与钩子开发](docs/plugins-and-hooks.md)。架构、配置、主题、安全和兼容接口等开发说明见 [开发文档目录](docs/README.md)。
@@ -167,7 +168,7 @@ GopherInk/
 │   ├── orchestration/       # 服务编排层
 │   │   └── write.go         # 内容/评论写入钩子调度与递归防护
 │   ├── plugin/              # 插件/主题管理器与钩子系统
-│   │   └── plugin.go        # Plugin 接口、Manager、Runtime、82 个钩子常量
+│   │   └── plugin.go        # Plugin 接口、Manager、Runtime、80+ 个钩子常量
 │   ├── services/            # 业务服务层
 │   │   ├── contents.go      # 内容 CRUD、草稿、修订、slugID、搜索、附件
 │   │   ├── comments.go      # 评论管理
@@ -184,7 +185,8 @@ GopherInk/
 │   ├── render/              # Markdown/纯文本/HTML 渲染
 │   └── slug/                # URL slug 生成
 ├── plugins/                 # 内置插件
-│   └── sitemap/             # Sitemap 生成插件
+│   ├── sitemap/             # Sitemap 生成插件
+│   └── virtual-files/       # SEO/域名验证虚拟文本文件
 ├── themes/                  # 内置主题
 │   └── default/             # Default Theme（MDUI2）
 │       ├── theme.go         # 主题注册、配置 Schema、模板函数

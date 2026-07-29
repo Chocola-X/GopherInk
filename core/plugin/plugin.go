@@ -639,6 +639,7 @@ const (
 	HookAttachmentURL           = "attachment.url"
 	HookAttachmentData          = "attachment.data"
 	HookRequestBefore           = "request.before"
+	HookRequestFallback         = "request.fallback"
 	HookRequestAfter            = "request.after"
 	HookUserLoginBefore         = "user.login_before"
 	HookUserLoginAuthenticated  = "user.login_authenticated"

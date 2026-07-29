@@ -176,6 +176,18 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 		if cfg.URLIndexEnabled && shouldCheckPublicURLIndex(r) {
 			exists, err := m.publicURLExists(r.Context(), r.URL.Path, cfg, now)
 			if err == nil && !exists {
+				fallback, handled, fallbackErr := m.app.resolveRequestFallback(r)
+				if fallbackErr != nil {
+					m.logEvent(cfg, "request fallback check failed for IP %s on %s: %v", ip, r.URL.Path, fallbackErr)
+					http.Error(sw, "internal server error", http.StatusInternalServerError)
+					return
+				}
+				if handled {
+					exists = true
+					r = r.WithContext(context.WithValue(r.Context(), requestFallbackContextKey{}, fallback))
+				}
+			}
+			if err == nil && !exists {
 				if cfg.InvalidPathEnabled && m.recordInvalidPath(ip, cfg, now) {
 					m.logEvent(cfg, "invalid path ban triggered for IP %s on %s", ip, r.URL.Path)
 					http.Error(sw, "forbidden", http.StatusForbidden)

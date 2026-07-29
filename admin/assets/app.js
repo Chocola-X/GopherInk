@@ -1596,6 +1596,7 @@
 
     copyShellState(doc);
     replaceChildren(currentMain, nextMain);
+    activatePageScripts(currentMain);
     updateDocumentMeta(doc);
     updateHistory(finalURL, options);
     if (options && options.preserveMainScroll) {
@@ -1927,6 +1928,21 @@
     }
     Array.prototype.slice.call(source.childNodes).forEach(function (node) {
       target.appendChild(document.importNode(node, true));
+    });
+  }
+
+  function activatePageScripts(root) {
+    query(root, "script").forEach(function (script) {
+      var type = (script.getAttribute("type") || "").trim().toLowerCase();
+      if (type && type !== "text/javascript" && type !== "application/javascript" && type !== "module") {
+        return;
+      }
+      var replacement = document.createElement("script");
+      Array.prototype.slice.call(script.attributes).forEach(function (attr) {
+        replacement.setAttribute(attr.name, attr.value);
+      });
+      replacement.textContent = script.textContent;
+      script.parentNode.replaceChild(replacement, script);
     });
   }
 

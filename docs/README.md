@@ -14,9 +14,9 @@
 | [评论与用户](comments-and-users.md) | 评论审核、访客身份、未审核评论自可见、用户角色、会话与头像 |
 | [附件与图片处理](media-and-images.md) | 附件目录、绑定和删除策略、上传安全、WebP、缩略图及素材管理 |
 | [主题开发](themes.md) | 主题注册、模板、静态资源、配置项、自定义字段和前端钩子 |
-| [插件与钩子开发](plugins-and-hooks.md) | 插件注册、启停、配置、路由、后台菜单、82 个内置钩子和完整示例 |
+| [插件与钩子开发](plugins-and-hooks.md) | 插件注册、启停、配置、路由、后台菜单、80+ 个内置钩子和完整示例 |
 | [安全与 WAF](security-and-waf.md) | WAF 请求链、限流、封禁、缓存、URL 索引、反向代理信任和安全边界 |
-| [兼容接口与订阅](compatibility-apis.md) | RSS/Atom、Sitemap、XML-RPC、Pingback、Trackback、RSD 和外发通知 |
+| [兼容接口与订阅](compatibility-apis.md) | RSS/Atom、Sitemap、虚拟验证文件、XML-RPC、Pingback、Trackback、RSD 和外发通知 |
 
 ## 阅读建议
 

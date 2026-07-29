@@ -399,7 +399,9 @@ func (Plugin) RenderAdminPage(ctx context.Context, rt *plugin.Runtime, page stri
 }
 ```
 
-页面 `Name` 遵循与设置动作相同的命名限制。插件设置页会自动出现“设置”和扩展页签，示例页面地址为 `/admin/plugins/example/config?tab=templates`。
+页面 `Name` 遵循与设置动作相同的命名限制，示例页面地址为 `/admin/plugins/example/config?tab=templates`。同时实现 `ConfigProvider` 时，插件配置页会显示“设置”和扩展页签；只实现 `AdminPageProvider` 时，插件列表中的管理入口会直接跳转到首个扩展页。仅有一个扩展页时不再显示多余的页签导航，适合虚拟文件管理这类完全由卡片操作组成的插件。
+
+扩展页返回的可执行 `<script>` 会在完整加载和后台 PJAX 切换后执行；`application/json` 等非执行脚本不会被激活。初始化代码仍应通过页面根节点的 `data-*` 标记保证幂等，并把事件限制在自己的页面容器内。复杂或可复用脚本建议注册为插件静态路由后通过 `src` 引入。
 
 需要保存页面内容时，再实现 `AdminPageActionProvider`：
 
@@ -740,6 +742,7 @@ return plugin.StopHook(payload), nil
 |---|---|---|---|
 | `HookAdminMenu` | `admin.menu` | `[]plugin.AdminMenuItem` | 过滤最终后台插件菜单 |
 | `HookRequestBefore` | `request.before` | `RequestPayload` | WAF 放行后、路由处理前同步调用，可观察或短路响应 |
+| `HookRequestFallback` | `request.fallback` | `RequestPayload` | 所有已注册路由和动态固定链接均未匹配时提供后备响应 |
 | `HookRequestAfter` | `request.after` | `RequestPayload` | 路由响应完成后异步通知，适合访问统计 |
 | `HookFrontendHead` | `frontend.head` | `FrontendHTMLPayload` | 过滤 head HTML |
 | `HookFrontendFooter` | `frontend.footer` | `FrontendHTMLPayload` | 过滤 body 底部 HTML |
@@ -768,6 +771,24 @@ return plugin.StopHook(payload), nil
 Head/Footer 当前兼容旧插件返回 `string`，但新插件应返回 `FrontendHTMLPayload`。最终 HTML 会转换为 `template.HTML`，插件必须保证内容可信。`FrontendHTMLPayload.Data` 是即将传给主题模板的数据字典：插件既可以就地修改其中的键，也可以返回替换后的 `Data`，核心会把它写回模板数据。这等价于 Typecho 的 `headerOptions` 过滤，SEO 插件可借此改写 `SeoImage`、`CurrentURL`、`FeedPath` 等 head 相关数据，无需另设钩子。
 
 `request.before` 返回 `RequestPayload{Handled:true}` 时核心不再进入路由，直接使用 `Status`、`ContentType`、`ResponseHeaders` 和 `Body` 输出响应；输出后仍会触发 `request.after`，方便统计插件记录完整生命周期。请求钩子位于 WAF 之后，不能用于绕过入口防护。`Headers` 是请求头副本，访客统计插件不要无差别保存 Cookie、Authorization 等敏感头。
+
+`request.fallback` 适合虚拟验证文件、自定义 404 回落接口等不能提前注册确定路径的功能。核心只会在标准 `ServeMux` 已选择动态前台入口，且首页、文章索引、动态固定链接、分类归档规则都未命中后使用它；后台、附件、主题资源、插件路由和其他已注册前缀仍然优先。启用公开 URL 索引时，WAF 会先调用同一钩子确认路径是否存在，并把已经解析的 payload 随请求传递给后备处理器，不会重复执行钩子。处理器应只响应明确拥有的路径，并至少设置 `Handled`、`Status`、`ContentType` 和 `Body`：
+
+```go
+func fallback(ctx context.Context, rt *plugin.Runtime, value any) (any, error) {
+    payload, ok := value.(plugin.RequestPayload)
+    if !ok || payload.Method != http.MethodGet || payload.Path != "/verify.txt" {
+        return value, nil
+    }
+    payload.Handled = true
+    payload.Status = http.StatusOK
+    payload.ContentType = "text/plain; charset=utf-8"
+    payload.Body = "verification-token"
+    return plugin.HookControl{Payload: payload, Stop: true}, nil
+}
+```
+
+后备响应仍会经过 WAF 的 IP 封禁、请求频率、公开缓存等策略。匹配后应使用 `HookControl{Stop:true}`，避免后续同类钩子覆盖已经确定的响应；未匹配时必须原样返回 payload。不要用 `request.before` 实现同一需求，否则会在正常路由之前截获请求并可能覆盖核心或其他扩展页面。
 
 ### 用户和认证
 
