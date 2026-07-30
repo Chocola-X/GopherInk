@@ -30,7 +30,8 @@ themes/example/
 │   ├── post.html
 │   └── 404.html
 └── static/
-    └── theme.css
+    ├── theme.css
+    └── screenshot.webp
 ```
 
 注册示例：
@@ -58,6 +59,7 @@ func init() {
         Version:      "0.1.0",
         Author:       "Example Author",
         Description:  "Example theme.",
+        Screenshot:   "/theme/example/screenshot.webp",
         TemplateList: []string{"index.html", "post.html", "404.html"},
         Templates:    themeFS,
         Static:       staticFS,
@@ -84,7 +86,33 @@ func tr(lang, key string) string {
 }
 ```
 
-把主题目录放入 `themes/` 后执行 `make build` 或 `go run ./cmd/gopherink-builder -o gopherink` 即可参与构建，不需要手动修改 `cmd/gopherink/plugins.go`。
+把主题目录放入 `themes/` 后执行 `make build` 或 `go run ./cmd/gopherink-builder -o gopherink` 即可参与构建，不需要手动维护主题导入文件。
+
+## 后台主题列表封面
+
+`Theme.Screenshot` 是后台“主题”列表的信息卡片封面，属于主题注册元信息，不是 `ConfigSchema` 中由管理员填写的主题设置。该字段完全可选：
+
+- 留空时，后台显示不带图片的单栏主题信息卡片。
+- 设置后，桌面端在卡片左侧显示封面、右侧显示名称和介绍；窄屏设备会自动改为上下排列。
+- 核心直接把该值作为 `<img src>` 使用，不会上传、复制、代理或自动查找图片。
+
+嵌入式主题推荐把图片放入注册给 `Theme.Static` 的文件系统，并使用主题静态资源路由：
+
+```go
+staticFS, _ := fs.Sub(themeFS, "static")
+
+plugin.RegisterTheme(plugin.Theme{
+    Name:       "example",
+    Screenshot: "/theme/example/screenshot.webp",
+    Static:     staticFS,
+    Embedded:   true,
+    // 其他字段省略。
+})
+```
+
+这里的 `example` 必须与 `Theme.Name` 一致；`screenshot.webp` 必须位于 `Theme.Static` 的根目录。也可以填写浏览器可访问的完整 HTTPS URL，但本地化资源不会依赖第三方服务，也不会在管理员打开主题列表时向外部图片服务器发送请求。
+
+后台使用 `object-fit: contain` 完整展示图片。建议采用 16:9 的 WebP、PNG 或 JPEG，例如 1280x720；封面应以整体界面预览为主，避免依赖很小的文字表达信息。URL 无效时浏览器会显示加载失败，核心不会回落到自动生成的封面。
 
 ## 主题设置提示
 
@@ -118,7 +146,7 @@ plugin.RegisterTheme(plugin.Theme{
 | `Name` | 技术名称和配置键 |
 | `DisplayName` | 后台展示名称 |
 | `Version`、`Author`、`Description`、`Homepage` | 主题元信息 |
-| `Screenshot` | 主题预览图标识/地址 |
+| `Screenshot` | 可选的后台主题列表封面 URL；推荐使用 `/theme/{Name}/...` 指向 `Static` 内的本地资源 |
 | `TemplateList` | 后台可选模板名称 |
 | `Templates` | 包含模板的 `fs.FS` |
 | `Static` | 静态资源 `fs.FS` |

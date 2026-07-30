@@ -29,7 +29,7 @@
 
 | 领域 | 主要代码 |
 |---|---|
-| 启动、CLI 与依赖组装 | `cmd/gopherink/main.go`、`cmd/gopherink/runtime_config.go`、`cmd/gopherink/user_commands.go`、`cmd/gopherink/plugins.go`、`cmd/gopherink-builder/` |
+| 启动、CLI 与依赖组装 | `cmd/gopherink/main.go`、`cmd/gopherink/runtime_config.go`、`cmd/gopherink/user_commands.go`、`cmd/gopherink-builder/` |
 | HTTP 和后台 | `core/handlers/app.go` |
 | 评论守卫 | `core/handlers/comment_guard.go` |
 | WAF | `core/handlers/waf.go` |

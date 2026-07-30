@@ -612,6 +612,7 @@ type Plugin interface {
 
 - 自定义模板（`html/template`）
 - 静态资源（`embed.FS` 或外部目录）
+- 可选的后台主题列表封面（`Theme.Screenshot`）
 - 配置 Schema（`FieldSchema`，后台自动生成设置表单）
 - 自定义字段定义（可限定 `post`/`page` 类型）
 - 核心评论守卫协议（主题声明后由核心强制校验）
