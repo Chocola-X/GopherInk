@@ -55,24 +55,24 @@ type storedConfig struct {
 }
 
 type config struct {
-	Addr          string
-	ListenHost    string
-	ListenPort    int
-	AllowedCIDRs  []string
-	TLSEnabled    bool
-	TLSCertFile   string
-	TLSKeyFile    string
-	DataDir       string
-	UploadDir     string
-	DBDriver      string
-	DBDSN         string
-	DBReadDSN     string
-	DBWriteDSN    string
-	AdminUser     string
-	AdminPassword string
-	AdminMail     string
-	WebInstall    bool
-	AdminExplicit bool
+	Addr                  string
+	ListenHost            string
+	ListenPort            int
+	AllowedCIDRs          []string
+	TLSEnabled            bool
+	TLSCertFile           string
+	TLSKeyFile            string
+	DataDir               string
+	UploadDir             string
+	DBDriver              string
+	DBDSN                 string
+	DBReadDSN             string
+	DBWriteDSN            string
+	AdminUser             string
+	AdminPassword         string
+	AdminMail             string
+	WebInstall            bool
+	AdminPasswordExplicit bool
 }
 
 type runtimeFlags struct {
@@ -469,28 +469,26 @@ func loadConfig(args []string, interactive bool) (config, error) {
 		return config{}, errors.New("数据库连接信息不能为空")
 	}
 
-	_, adminUserSet := os.LookupEnv("GOPHERINK_ADMIN_USER")
 	_, adminPasswordSet := os.LookupEnv("GOPHERINK_ADMIN_PASSWORD")
-	_, adminMailSet := os.LookupEnv("GOPHERINK_ADMIN_MAIL")
 	return config{
-		Addr:          net.JoinHostPort(parsed.Settings.Listen.Host, strconv.Itoa(parsed.Settings.Listen.Port)),
-		ListenHost:    parsed.Settings.Listen.Host,
-		ListenPort:    parsed.Settings.Listen.Port,
-		AllowedCIDRs:  append([]string(nil), parsed.Settings.Listen.AllowedCIDRs...),
-		TLSEnabled:    parsed.Settings.TLS.Enabled,
-		TLSCertFile:   parsed.Settings.TLS.CertFile,
-		TLSKeyFile:    parsed.Settings.TLS.KeyFile,
-		DataDir:       dataDir(),
-		UploadDir:     parsed.Settings.UploadDir,
-		DBDriver:      parsed.Settings.Database.Type,
-		DBDSN:         dsn,
-		DBReadDSN:     parsed.DBReadDSN,
-		DBWriteDSN:    parsed.DBWriteDSN,
-		AdminUser:     env("GOPHERINK_ADMIN_USER", "admin"),
-		AdminPassword: env("GOPHERINK_ADMIN_PASSWORD", "admin123"),
-		AdminMail:     env("GOPHERINK_ADMIN_MAIL", "admin@example.com"),
-		WebInstall:    envBool("GOPHERINK_WEB_INSTALL", true),
-		AdminExplicit: adminUserSet || adminPasswordSet || adminMailSet,
+		Addr:                  net.JoinHostPort(parsed.Settings.Listen.Host, strconv.Itoa(parsed.Settings.Listen.Port)),
+		ListenHost:            parsed.Settings.Listen.Host,
+		ListenPort:            parsed.Settings.Listen.Port,
+		AllowedCIDRs:          append([]string(nil), parsed.Settings.Listen.AllowedCIDRs...),
+		TLSEnabled:            parsed.Settings.TLS.Enabled,
+		TLSCertFile:           parsed.Settings.TLS.CertFile,
+		TLSKeyFile:            parsed.Settings.TLS.KeyFile,
+		DataDir:               dataDir(),
+		UploadDir:             parsed.Settings.UploadDir,
+		DBDriver:              parsed.Settings.Database.Type,
+		DBDSN:                 dsn,
+		DBReadDSN:             parsed.DBReadDSN,
+		DBWriteDSN:            parsed.DBWriteDSN,
+		AdminUser:             env("GOPHERINK_ADMIN_USER", "admin"),
+		AdminPassword:         env("GOPHERINK_ADMIN_PASSWORD", ""),
+		AdminMail:             env("GOPHERINK_ADMIN_MAIL", "admin@example.com"),
+		WebInstall:            envBool("GOPHERINK_WEB_INSTALL", true),
+		AdminPasswordExplicit: adminPasswordSet,
 	}, nil
 }
 

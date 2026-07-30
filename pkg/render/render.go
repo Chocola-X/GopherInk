@@ -55,12 +55,15 @@ func ContentHTML(input, mode string) template.HTML {
 }
 
 func Excerpt(input string, n int) string {
+	if n <= 0 {
+		return ""
+	}
 	input = stripMarkdown(input)
 	text := strings.Join(strings.Fields(input), " ")
-	if len([]rune(text)) <= n {
+	runes := []rune(text)
+	if len(runes) <= n {
 		return text
 	}
-	runes := []rune(text)
 	return string(runes[:n]) + "..."
 }
 

@@ -41,7 +41,13 @@ func New(cfg Config) (*Client, error) {
 	if cfg.MaxBody <= 0 {
 		cfg.MaxBody = 1 << 20
 	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if cfg.Retries < 0 {
+		cfg.Retries = 0
+	}
+	if cfg.Retries > 10 {
+		cfg.Retries = 10
+	}
+	transport := defaultTransport()
 	if cfg.Proxy != "" {
 		proxyURL, err := url.Parse(cfg.Proxy)
 		if err != nil {
@@ -79,6 +85,9 @@ func (c *Client) GetText(ctx context.Context, rawURL string) (string, error) {
 	var body string
 	attempts := c.retries + 1
 	for i := 0; i < attempts; i++ {
+		if err := waitForRetry(ctx, i); err != nil {
+			return "", err
+		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
 			return "", err
@@ -132,6 +141,9 @@ func (c *Client) post(ctx context.Context, rawURL, contentType, body string) err
 	var last error
 	attempts := c.retries + 1
 	for i := 0; i < attempts; i++ {
+		if err := waitForRetry(ctx, i); err != nil {
+			return err
+		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewBufferString(body))
 		if err != nil {
 			return err
@@ -157,6 +169,32 @@ func (c *Client) post(ctx context.Context, rawURL, contentType, body string) err
 		}
 	}
 	return last
+}
+
+func defaultTransport() *http.Transport {
+	if transport, ok := http.DefaultTransport.(*http.Transport); ok {
+		return transport.Clone()
+	}
+	return &http.Transport{Proxy: http.ProxyFromEnvironment}
+}
+
+func waitForRetry(ctx context.Context, attempt int) error {
+	if attempt <= 0 {
+		return nil
+	}
+	shift := attempt - 1
+	if shift > 4 {
+		shift = 4
+	}
+	delay := 100 * time.Millisecond * time.Duration(1<<shift)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (c *Client) checkURL(ctx context.Context, rawURL string) error {

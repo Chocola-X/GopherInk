@@ -56,6 +56,42 @@ func (s *CommentService) ListFiltered(ctx context.Context, status, keywords stri
 }
 
 func (s *CommentService) ListPage(ctx context.Context, query CommentQuery) ([]models.Comment, error) {
+	where, args := buildCommentWhere(query)
+	sqlQuery := `
+		SELECT cm.coid, cm.cid, cm.created, COALESCE(cm.author,''), cm.authorId, cm.ownerId, COALESCE(cm.mail,''), COALESCE(cm.url,''), COALESCE(cm.ip,''), COALESCE(cm.agent,''), COALESCE(cm.text,''), cm.type, cm.status, cm.parent,
+			COALESCE(c.title,''), COALESCE(c.slug,''), COALESCE(c.type,'')
+		FROM gb_comments cm LEFT JOIN gb_contents c ON c.cid = cm.cid
+		WHERE ` + strings.Join(where, " AND ") + `
+		ORDER BY cm.created DESC, cm.coid DESC`
+	if query.Limit > 0 {
+		sqlQuery += ` LIMIT ? OFFSET ?`
+		args = append(args, query.Limit, query.Offset)
+	}
+	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var comments []models.Comment
+	for rows.Next() {
+		var c models.Comment
+		if err := rows.Scan(&c.COID, &c.CID, &c.Created, &c.Author, &c.AuthorID, &c.OwnerID, &c.Mail, &c.URL, &c.IP, &c.Agent, &c.Text, &c.Type, &c.Status, &c.Parent, &c.Title, &c.Slug, &c.ContentType); err != nil {
+			return nil, err
+		}
+		comments = append(comments, c)
+	}
+	return comments, rows.Err()
+}
+
+func (s *CommentService) CountFiltered(ctx context.Context, query CommentQuery) (int64, error) {
+	where, args := buildCommentWhere(query)
+	var count int64
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_comments cm WHERE `+strings.Join(where, " AND "), args...).Scan(&count)
+	return count, err
+}
+
+func buildCommentWhere(query CommentQuery) ([]string, []any) {
 	status := query.Status
 	if status == "" {
 		status = "approved"
@@ -63,8 +99,8 @@ func (s *CommentService) ListPage(ctx context.Context, query CommentQuery) ([]mo
 	var args []any
 	var where []string
 	if status != "all" {
-		args = append(args, status)
 		where = append(where, "cm.status = ?")
+		args = append(args, status)
 	}
 	if query.COID > 0 {
 		where = append(where, "cm.coid = ?")
@@ -102,83 +138,7 @@ func (s *CommentService) ListPage(ctx context.Context, query CommentQuery) ([]mo
 	if len(where) == 0 {
 		where = append(where, "1 = 1")
 	}
-	sqlQuery := `
-		SELECT cm.coid, cm.cid, cm.created, COALESCE(cm.author,''), cm.authorId, cm.ownerId, COALESCE(cm.mail,''), COALESCE(cm.url,''), COALESCE(cm.ip,''), COALESCE(cm.agent,''), COALESCE(cm.text,''), cm.type, cm.status, cm.parent,
-			COALESCE(c.title,''), COALESCE(c.slug,''), COALESCE(c.type,'')
-		FROM gb_comments cm LEFT JOIN gb_contents c ON c.cid = cm.cid
-		WHERE ` + strings.Join(where, " AND ") + `
-		ORDER BY cm.created DESC, cm.coid DESC`
-	if query.Limit > 0 {
-		sqlQuery += ` LIMIT ? OFFSET ?`
-		args = append(args, query.Limit, query.Offset)
-	}
-	rows, err := s.db.QueryContext(ctx, sqlQuery, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var comments []models.Comment
-	for rows.Next() {
-		var c models.Comment
-		if err := rows.Scan(&c.COID, &c.CID, &c.Created, &c.Author, &c.AuthorID, &c.OwnerID, &c.Mail, &c.URL, &c.IP, &c.Agent, &c.Text, &c.Type, &c.Status, &c.Parent, &c.Title, &c.Slug, &c.ContentType); err != nil {
-			return nil, err
-		}
-		comments = append(comments, c)
-	}
-	return comments, rows.Err()
-}
-
-func (s *CommentService) CountFiltered(ctx context.Context, query CommentQuery) (int64, error) {
-	status := query.Status
-	if status == "" {
-		status = "approved"
-	}
-	var args []any
-	var where []string
-	if status != "all" {
-		where = append(where, "status = ?")
-		args = append(args, status)
-	}
-	if query.COID > 0 {
-		where = append(where, "coid = ?")
-		args = append(args, query.COID)
-	}
-	if query.CID > 0 {
-		where = append(where, "cid = ?")
-		args = append(args, query.CID)
-	}
-	if query.AuthorID > 0 {
-		where = append(where, "authorId = ?")
-		args = append(args, query.AuthorID)
-	}
-	if query.OwnerID > 0 {
-		where = append(where, "ownerId = ?")
-		args = append(args, query.OwnerID)
-	}
-	if query.Mail != "" {
-		where = append(where, "mail = ?")
-		args = append(args, query.Mail)
-	}
-	if query.IP != "" {
-		where = append(where, "ip = ?")
-		args = append(args, query.IP)
-	}
-	if query.Type != "" && query.Type != "all" {
-		where = append(where, "type = ?")
-		args = append(args, query.Type)
-	}
-	if query.Keywords != "" {
-		where = append(where, "(author LIKE ? OR mail LIKE ? OR text LIKE ?)")
-		kw := "%" + query.Keywords + "%"
-		args = append(args, kw, kw, kw)
-	}
-	if len(where) == 0 {
-		where = append(where, "1 = 1")
-	}
-	var count int64
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_comments WHERE `+strings.Join(where, " AND "), args...).Scan(&count)
-	return count, err
+	return where, args
 }
 
 func (s *CommentService) ExistsByURLType(ctx context.Context, cid int64, commentURL, typ string) (bool, error) {

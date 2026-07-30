@@ -17,6 +17,8 @@ go run ./cmd/gopherink-builder -o gopherink
 
 默认使用 HTTP 监听 `0.0.0.0:8086`，SQLite 数据库位于 `data/gopherink.db`。首次在交互式终端启动且没有配置文件、默认数据库或外部启动参数时，程序依次询问数据库、上传目录、绑定地址、是否启用 HTTPS、端口和允许网段，并把结果写入 `data/config.json`。HTTPS 默认不启用；选择启用后端口默认变为 `443`，并继续询问证书链和私钥路径。数据库连接成功后才会创建 Schema，然后进入浏览器 Web 安装流程设置站点资料和管理员。
 
+进程收到 `SIGINT` 或 `SIGTERM` 后会停止接受新连接，并给予现有请求最多 10 秒完成时间；超时后才强制关闭服务，适合由 systemd、Docker 等进程管理器平滑重启。
+
 终端启动配置与后台设置完全分离：
 
 - `data/config.json`：数据库连接、上传文件系统位置、HTTP/HTTPS 监听、TLS 文件路径和客户端网段，只由启动层读取。
@@ -124,13 +126,13 @@ go run ./cmd/gopherink-builder -o gopherink
 | `GOPHERINK_DB_PASSWORD` | 外部数据库密码 | 空 |
 | `GOPHERINK_SQLITE_PATH` | SQLite 文件位置 | `<GOPHERINK_DATA_DIR>/gopherink.db` |
 | `GOPHERINK_ADMIN_USER` | 初始管理员用户名 | `admin` |
-| `GOPHERINK_ADMIN_PASSWORD` | 初始管理员密码 | `admin123` |
+| `GOPHERINK_ADMIN_PASSWORD` | 初始管理员密码；禁用 Web 安装时必须设置，至少 6 个字符 | 未设置 |
 | `GOPHERINK_ADMIN_MAIL` | 初始管理员邮箱 | `admin@example.com` |
 | `GOPHERINK_WEB_INSTALL` | 空库时启用浏览器安装向导 | `true` |
 | `GOPHERINK_DATA_DIR` | 数据目录 | `data` |
 | `GOPHERINK_UPLOAD_DIR` | 附件文件系统根目录 | `<GOPHERINK_DATA_DIR>/uploads` |
 
-生产环境必须显式设置初始管理员密码，或通过安装向导立即改为强密码。不要继续使用示例默认凭据。
+默认通过 Web 安装向导创建管理员。禁用安装向导或使用环境变量自动初始化管理员时，必须显式设置至少 6 个字符的初始密码；缺失或过短时程序会拒绝创建账户并退出。
 
 ## 内置 HTTPS/TLS
 

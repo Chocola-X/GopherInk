@@ -1,6 +1,9 @@
 package i18n
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 const (
 	DefaultLanguage  = "en-US"
@@ -58,6 +61,7 @@ func SupportedLanguages() []string {
 			result = append(result, lang)
 		}
 	}
+	sort.Strings(result[1:])
 	return result
 }
 

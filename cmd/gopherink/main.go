@@ -11,9 +11,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Chocola-X/GopherInk/core/handlers"
@@ -93,7 +95,7 @@ func serve(cfg config) error {
 	defaultAdminReady := false
 	if shouldCreateDefaultAdmin(userCount, cfg) {
 		if err := users.EnsureDefaultAdmin(setupCtx, cfg.AdminUser, cfg.AdminPassword, cfg.AdminMail); err != nil {
-			return err
+			return fmt.Errorf("create initial administrator: %w; set GOPHERINK_ADMIN_PASSWORD or enable the web installer", err)
 		}
 		defaultAdminReady = true
 	} else if userCount == 0 {
@@ -127,23 +129,48 @@ func serve(cfg config) error {
 		Handler:   handler,
 		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 	}
-	var serveErr error
-	if cfg.TLSEnabled {
-		serveErr = server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
-	} else {
-		serveErr = server.ListenAndServe()
-	}
-	if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-		return serveErr
-	}
-	return nil
+	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return serveHTTPServer(shutdownContext, server, cfg)
 }
 
 func shouldCreateDefaultAdmin(userCount int, cfg config) bool {
 	if userCount > 0 {
 		return false
 	}
-	return !cfg.WebInstall || cfg.AdminExplicit
+	return !cfg.WebInstall || cfg.AdminPasswordExplicit
+}
+
+func serveHTTPServer(ctx context.Context, server *http.Server, cfg config) error {
+	serveErrors := make(chan error, 1)
+	go func() {
+		if cfg.TLSEnabled {
+			serveErrors <- server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+			return
+		}
+		serveErrors <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serveErrors:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	case <-ctx.Done():
+		log.Printf("shutdown signal received; waiting for active requests")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			_ = server.Close()
+			return fmt.Errorf("graceful shutdown: %w", err)
+		}
+		err := <-serveErrors
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	}
 }
 
 func openDB(cfg config) (*sql.DB, error) {
@@ -276,6 +303,10 @@ func printUsage() {
   GOPHERINK_SQLITE_PATH             SQLite 文件位置
   GOPHERINK_UPLOAD_DIR              上传目录
   GOPHERINK_DATA_DIR                数据根目录，默认 data
+  GOPHERINK_ADMIN_USER              初始管理员用户名，默认 admin
+  GOPHERINK_ADMIN_PASSWORD          初始管理员密码；禁用 Web 安装时必须设置
+  GOPHERINK_ADMIN_MAIL              初始管理员邮箱
+  GOPHERINK_WEB_INSTALL             空库时启用 Web 安装向导，默认 true
 
 示例
   gopherink -p 8848

@@ -163,9 +163,11 @@ func (a *App) validateCommentGuardToken(r *http.Request, cid int64, token string
 	if a.commentGuardUsed == nil {
 		a.commentGuardUsed = make(map[string]time.Time)
 	}
-	for usedKey, expiresAt := range a.commentGuardUsed {
-		if !expiresAt.After(now) {
-			delete(a.commentGuardUsed, usedKey)
+	if len(a.commentGuardUsed) >= commentGuardMaxUsed {
+		for usedKey, expiresAt := range a.commentGuardUsed {
+			if !expiresAt.After(now) {
+				delete(a.commentGuardUsed, usedKey)
+			}
 		}
 	}
 	if _, used := a.commentGuardUsed[key]; used {

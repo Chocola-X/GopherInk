@@ -1203,7 +1203,7 @@ func (s *ContentService) saveRevisionTxLike(ctx context.Context, db execer, c mo
 	if limit <= 0 {
 		return nil
 	}
-	_, _ = db.ExecContext(ctx, `
+	_, err = db.ExecContext(ctx, `
 		DELETE FROM gb_revisions
 		WHERE cid = ? AND rid NOT IN (
 			SELECT rid FROM (
@@ -1211,7 +1211,7 @@ func (s *ContentService) saveRevisionTxLike(ctx context.Context, db execer, c mo
 			) AS kept_revisions
 		)
 	`, c.CID, c.CID, limit)
-	return nil
+	return err
 }
 
 func (s *ContentService) Revisions(ctx context.Context, cid int64) ([]models.Revision, error) {

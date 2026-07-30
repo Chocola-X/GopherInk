@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Chocola-X/GopherInk/core/models"
 	"github.com/Chocola-X/GopherInk/core/plugin"
@@ -40,6 +41,13 @@ func (s *UserService) EnsureDefaultAdmin(ctx context.Context, name, password, ma
 	}
 	if count > 0 {
 		return nil
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("initial administrator username is required")
+	}
+	if utf8.RuneCountInString(password) < 6 {
+		return errors.New("initial administrator password must contain at least 6 characters")
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -145,29 +153,7 @@ func (s *UserService) List(ctx context.Context, keywords string) ([]models.User,
 }
 
 func (s *UserService) ListFiltered(ctx context.Context, query plugin.PublicUserQuery) ([]models.User, error) {
-	args := []any{}
-	var where []string
-	if query.UID > 0 {
-		where = append(where, "uid = ?")
-		args = append(args, query.UID)
-	}
-	if query.Name != "" {
-		where = append(where, "name = ?")
-		args = append(args, query.Name)
-	}
-	if query.Mail != "" {
-		where = append(where, "mail = ?")
-		args = append(args, query.Mail)
-	}
-	if query.Role != "" && query.Role != "all" {
-		where = append(where, "role = ?")
-		args = append(args, query.Role)
-	}
-	if query.Keywords != "" {
-		where = append(where, "(name LIKE ? OR screenName LIKE ? OR mail LIKE ?)")
-		kw := "%" + query.Keywords + "%"
-		args = append(args, kw, kw, kw)
-	}
+	where, args := buildUserWhere(query)
 	whereSQL := ""
 	if len(where) > 0 {
 		whereSQL = "WHERE " + strings.Join(where, " AND ")
@@ -197,6 +183,17 @@ func (s *UserService) ListFiltered(ctx context.Context, query plugin.PublicUserQ
 }
 
 func (s *UserService) CountFiltered(ctx context.Context, query plugin.PublicUserQuery) (int64, error) {
+	where, args := buildUserWhere(query)
+	whereSQL := ""
+	if len(where) > 0 {
+		whereSQL = "WHERE " + strings.Join(where, " AND ")
+	}
+	var total int64
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_users `+whereSQL, args...).Scan(&total)
+	return total, err
+}
+
+func buildUserWhere(query plugin.PublicUserQuery) ([]string, []any) {
 	args := []any{}
 	var where []string
 	if query.UID > 0 {
@@ -220,13 +217,7 @@ func (s *UserService) CountFiltered(ctx context.Context, query plugin.PublicUser
 		kw := "%" + query.Keywords + "%"
 		args = append(args, kw, kw, kw)
 	}
-	whereSQL := ""
-	if len(where) > 0 {
-		whereSQL = "WHERE " + strings.Join(where, " AND ")
-	}
-	var total int64
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_users `+whereSQL, args...).Scan(&total)
-	return total, err
+	return where, args
 }
 
 func (s *UserService) Save(ctx context.Context, input SaveUserInput, id int64) (int64, error) {

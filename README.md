@@ -104,7 +104,7 @@ printf 'new-password\n' | ./gopherink user reset-password --id 1 --password-stdi
 | `GOPHERINK_DB_NAME` / `GOPHERINK_DB_USER` / `GOPHERINK_DB_PASSWORD` | 外部数据库名称和凭据 | `gopherink` / 空 |
 | `GOPHERINK_SQLITE_PATH` | SQLite 文件位置 | `<GOPHERINK_DATA_DIR>/gopherink.db` |
 | `GOPHERINK_ADMIN_USER` | 初始管理员用户名 | `admin` |
-| `GOPHERINK_ADMIN_PASSWORD` | 初始管理员密码 | `admin123` |
+| `GOPHERINK_ADMIN_PASSWORD` | 初始管理员密码；禁用 Web 安装时必须设置，至少 6 个字符 | 未设置 |
 | `GOPHERINK_ADMIN_MAIL` | 初始管理员邮箱 | `admin@example.com` |
 | `GOPHERINK_WEB_INSTALL` | 启用 Web 安装向导 | `true` |
 | `GOPHERINK_DATA_DIR` | 数据、默认 SQLite、WAF 日志和默认上传目录的根目录 | `data` |
