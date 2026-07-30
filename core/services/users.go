@@ -29,8 +29,8 @@ type SaveUserInput struct {
 	Role       string
 }
 
-func NewUserService(db any) *UserService {
-	return &UserService{db: WrapDB(db)}
+func NewUserService(db DB) *UserService {
+	return &UserService{db: db}
 }
 
 func (s *UserService) EnsureDefaultAdmin(ctx context.Context, name, password, mail string) error {

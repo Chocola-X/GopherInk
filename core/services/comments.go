@@ -43,8 +43,8 @@ type CommentQuery struct {
 	Offset   int
 }
 
-func NewCommentService(db any) *CommentService {
-	return &CommentService{db: WrapDB(db)}
+func NewCommentService(db DB) *CommentService {
+	return &CommentService{db: db}
 }
 
 func (s *CommentService) List(ctx context.Context, status, keywords string, cid int64) ([]models.Comment, error) {

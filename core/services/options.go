@@ -14,8 +14,8 @@ type OptionService struct {
 	db DB
 }
 
-func NewOptionService(db any) *OptionService {
-	return &OptionService{db: WrapDB(db)}
+func NewOptionService(db DB) *OptionService {
+	return &OptionService{db: db}
 }
 
 func (s *OptionService) Get(ctx context.Context, name string) (string, error) {

@@ -24,8 +24,8 @@ type SaveMetaInput struct {
 	Parent      int64
 }
 
-func NewMetaService(db any) *MetaService {
-	return &MetaService{db: WrapDB(db)}
+func NewMetaService(db DB) *MetaService {
+	return &MetaService{db: db}
 }
 
 func (s *MetaService) List(ctx context.Context, typ string) ([]models.Meta, error) {

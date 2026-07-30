@@ -23,6 +23,11 @@ type DB interface {
 	RawWriter() *sql.DB
 }
 
+var (
+	_ DB = (*SQLDB)(nil)
+	_ DB = (*DBRouter)(nil)
+)
+
 type SQLDB struct {
 	db      *sql.DB
 	dialect models.Dialect
@@ -30,17 +35,6 @@ type SQLDB struct {
 
 func NewSQLDB(db *sql.DB, driver string) *SQLDB {
 	return &SQLDB{db: db, dialect: models.NormalizeDialect(driver)}
-}
-
-func WrapDB(db any) DB {
-	switch v := db.(type) {
-	case DB:
-		return v
-	case *sql.DB:
-		return NewSQLDB(v, "sqlite")
-	default:
-		return nil
-	}
 }
 
 func (d *SQLDB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {

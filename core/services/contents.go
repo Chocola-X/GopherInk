@@ -80,8 +80,8 @@ type SaveFieldInput struct {
 	FloatValue float64
 }
 
-func NewContentService(db any) *ContentService {
-	service := &ContentService{db: WrapDB(db)}
+func NewContentService(db DB) *ContentService {
+	service := &ContentService{db: db}
 	service.revisionEnabled.Store(true)
 	service.revisionLimit.Store(20)
 	return service
