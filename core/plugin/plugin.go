@@ -15,6 +15,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Chocola-X/GopherInk/pkg/safeid"
+	"github.com/Chocola-X/GopherInk/pkg/sqlutil"
 )
 
 const GopherInkVersion = "0.5.0"
@@ -376,33 +379,7 @@ func runtimeDatabaseOwner(kind, owner string) string {
 }
 
 func DatabaseTableName(owner, name string) string {
-	return "plugin_" + safeDatabaseIdentifier(owner) + "_" + safeDatabaseIdentifier(name)
-}
-
-func safeDatabaseIdentifier(value string) string {
-	value = strings.TrimSpace(strings.ToLower(value))
-	var sb strings.Builder
-	lastUnderscore := false
-	for _, r := range value {
-		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_'
-		if !ok {
-			if !lastUnderscore {
-				sb.WriteByte('_')
-				lastUnderscore = true
-			}
-			continue
-		}
-		sb.WriteRune(r)
-		lastUnderscore = false
-	}
-	out := strings.Trim(sb.String(), "_")
-	if out == "" {
-		out = "ext"
-	}
-	if out[0] >= '0' && out[0] <= '9' {
-		out = "x_" + out
-	}
-	return out
+	return "plugin_" + safeid.SQL(owner) + "_" + safeid.SQL(name)
 }
 
 func (r *Runtime) DatabaseTableName(table string) string {
@@ -417,35 +394,7 @@ func (r *Runtime) DatabaseTableName(table string) string {
 }
 
 func RebindSQL(dialect, query string) string {
-	if dialect != "postgres" && dialect != "postgresql" && dialect != "pgx" {
-		return query
-	}
-	var sb strings.Builder
-	arg := 1
-	for _, r := range query {
-		if r == '?' {
-			sb.WriteByte('$')
-			sb.WriteString(intString(arg))
-			arg++
-			continue
-		}
-		sb.WriteRune(r)
-	}
-	return sb.String()
-}
-
-func intString(value int) string {
-	if value == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for value > 0 {
-		i--
-		buf[i] = byte('0' + value%10)
-		value /= 10
-	}
-	return string(buf[i:])
+	return sqlutil.Rebind(dialect, query)
 }
 
 func (r *Runtime) RebindSQL(ctx context.Context, query string) string {

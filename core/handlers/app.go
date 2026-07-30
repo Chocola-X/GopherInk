@@ -7519,28 +7519,19 @@ func (a *App) importBackupPayload(ctx context.Context, payload backupData, secti
 }
 
 func txUpsertOption(ctx context.Context, tx *sql.Tx, dialect models.Dialect, name, value string) error {
-	if dialect == models.DialectPostgres {
-		_, err := tx.ExecContext(ctx, `INSERT INTO gb_options (name, "user", value) VALUES ($1, 0, $2) ON CONFLICT(name, "user") DO UPDATE SET value = EXCLUDED.value`, name, value)
-		return err
-	}
-	_, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO gb_options (name, user, value) VALUES (?, 0, ?)`, name, value)
-	if err == nil {
-		return nil
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)`, name, value)
+	_, err := tx.ExecContext(ctx, models.UpsertOptionSQL(dialect), name, 0, value)
 	return err
 }
 
 func txInsertIgnore(ctx context.Context, tx *sql.Tx, dialect models.Dialect, sqliteStmt, mysqlStmt, postgresStmt string, args ...any) error {
-	if dialect == models.DialectPostgres {
-		_, err := tx.ExecContext(ctx, models.Rebind(dialect, postgresStmt), args...)
-		return err
+	statement := sqliteStmt
+	switch dialect {
+	case models.DialectMySQL:
+		statement = mysqlStmt
+	case models.DialectPostgres:
+		statement = postgresStmt
 	}
-	_, err := tx.ExecContext(ctx, sqliteStmt, args...)
-	if err == nil {
-		return nil
-	}
-	_, err = tx.ExecContext(ctx, mysqlStmt, args...)
+	_, err := tx.ExecContext(ctx, models.Rebind(dialect, statement), args...)
 	return err
 }
 

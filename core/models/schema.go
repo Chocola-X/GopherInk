@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Chocola-X/GopherInk/core/plugin"
+	"github.com/Chocola-X/GopherInk/pkg/safeid"
 )
 
 const CurrentSchemaVersion = 1
@@ -309,32 +310,6 @@ func PluginTableName(owner, name string) string {
 	return plugin.DatabaseTableName(owner, name)
 }
 
-func safePluginIdentifier(value string) string {
-	value = strings.TrimSpace(strings.ToLower(value))
-	var sb strings.Builder
-	lastUnderscore := false
-	for _, r := range value {
-		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_'
-		if !ok {
-			if !lastUnderscore {
-				sb.WriteByte('_')
-				lastUnderscore = true
-			}
-			continue
-		}
-		sb.WriteRune(r)
-		lastUnderscore = false
-	}
-	out := strings.Trim(sb.String(), "_")
-	if out == "" {
-		return "ext"
-	}
-	if out[0] >= '0' && out[0] <= '9' {
-		out = "x_" + out
-	}
-	return out
-}
-
 func buildCreateTableSQL(dialect string, tableName string, table plugin.TableDefinition) string {
 	var sb strings.Builder
 	switch Dialect(dialect) {
@@ -348,7 +323,7 @@ func buildCreateTableSQL(dialect string, tableName string, table plugin.TableDef
 	for _, col := range table.Columns {
 		cols = append(cols, buildColumnDef(dialect, col))
 		if col.Primary && !col.AutoInc {
-			pkCols = append(pkCols, safePluginIdentifier(col.Name))
+			pkCols = append(pkCols, safeid.SQL(col.Name))
 		}
 	}
 	if len(pkCols) > 0 {
@@ -365,7 +340,7 @@ func buildCreateTableSQL(dialect string, tableName string, table plugin.TableDef
 
 func buildColumnDef(dialect string, col plugin.ColumnDefinition) string {
 	var sb strings.Builder
-	sb.WriteString(safePluginIdentifier(col.Name) + " ")
+	sb.WriteString(safeid.SQL(col.Name) + " ")
 	sb.WriteString(columnTypeSQL(dialect, col))
 	if !col.Nullable {
 		sb.WriteString(" NOT NULL")
@@ -451,10 +426,10 @@ func columnTypeSQL(dialect string, col plugin.ColumnDefinition) string {
 }
 
 func buildCreateIndexSQL(dialect string, tableName string, idx plugin.IndexDefinition) string {
-	idxName := fmt.Sprintf("idx_%s_%s", tableName, safePluginIdentifier(idx.Name))
+	idxName := fmt.Sprintf("idx_%s_%s", tableName, safeid.SQL(idx.Name))
 	indexCols := make([]string, 0, len(idx.Columns))
 	for _, column := range idx.Columns {
-		indexCols = append(indexCols, safePluginIdentifier(column))
+		indexCols = append(indexCols, safeid.SQL(column))
 	}
 	cols := strings.Join(indexCols, ", ")
 	if idx.Unique {

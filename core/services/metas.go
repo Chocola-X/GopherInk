@@ -330,7 +330,7 @@ func (s *MetaService) Merge(ctx context.Context, targetID int64, sourceIDs []int
 			return err
 		}
 		for _, cid := range contentIDs {
-			if err := insertRelationshipTx(ctx, tx, s.db.Dialect(), cid, targetID); err != nil {
+			if err := insertRelationship(ctx, tx, s.db.Dialect(), cid, targetID); err != nil {
 				return err
 			}
 		}
@@ -485,7 +485,7 @@ func (s *MetaService) validateParent(ctx context.Context, typ string, id, parent
 	return nil
 }
 
-func insertRelationshipTx(ctx context.Context, tx *sql.Tx, dialect models.Dialect, cid, mid int64) error {
+func insertRelationship(ctx context.Context, db execer, dialect models.Dialect, cid, mid int64) error {
 	var query string
 	switch dialect {
 	case models.DialectPostgres:
@@ -495,7 +495,7 @@ func insertRelationshipTx(ctx context.Context, tx *sql.Tx, dialect models.Dialec
 	default:
 		query = `INSERT OR IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`
 	}
-	_, err := txExec(ctx, tx, dialect, query, cid, mid)
+	_, err := db.ExecContext(ctx, models.Rebind(dialect, query), cid, mid)
 	return err
 }
 

@@ -1,8 +1,9 @@
 package models
 
 import (
-	"fmt"
 	"strings"
+
+	"github.com/Chocola-X/GopherInk/pkg/sqlutil"
 )
 
 type Dialect string
@@ -25,20 +26,7 @@ func NormalizeDialect(driver string) Dialect {
 }
 
 func Rebind(d Dialect, query string) string {
-	if d != DialectPostgres {
-		return query
-	}
-	var b strings.Builder
-	index := 1
-	for i := 0; i < len(query); i++ {
-		if query[i] == '?' {
-			b.WriteString(fmt.Sprintf("$%d", index))
-			index++
-			continue
-		}
-		b.WriteByte(query[i])
-	}
-	return b.String()
+	return sqlutil.Rebind(string(d), query)
 }
 
 func UpsertOptionSQL(d Dialect) string {

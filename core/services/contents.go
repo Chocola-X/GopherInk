@@ -1418,14 +1418,8 @@ func (s *ContentService) syncRelationshipsTxLike(ctx context.Context, db execer,
 					return err
 				}
 				affected = append(affected, mid)
-				if s.db.Dialect() == models.DialectPostgres {
-					if _, err := db.ExecContext(ctx, `INSERT INTO gb_relationships (cid, mid) VALUES (?, ?) ON CONFLICT (cid, mid) DO NOTHING`, cid, mid); err != nil {
-						return err
-					}
-				} else if _, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
-					if _, err = db.ExecContext(ctx, `INSERT IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
-						return err
-					}
+				if err := insertRelationship(ctx, db, s.db.Dialect(), cid, mid); err != nil {
+					return err
 				}
 			}
 		}
@@ -1439,14 +1433,8 @@ func (s *ContentService) syncRelationshipsTxLike(ctx context.Context, db execer,
 				return err
 			}
 			affected = append(affected, mid)
-			if s.db.Dialect() == models.DialectPostgres {
-				if _, err := db.ExecContext(ctx, `INSERT INTO gb_relationships (cid, mid) VALUES (?, ?) ON CONFLICT (cid, mid) DO NOTHING`, cid, mid); err != nil {
-					return err
-				}
-			} else if _, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
-				if _, err = db.ExecContext(ctx, `INSERT IGNORE INTO gb_relationships (cid, mid) VALUES (?, ?)`, cid, mid); err != nil {
-					return err
-				}
+			if err := insertRelationship(ctx, db, s.db.Dialect(), cid, mid); err != nil {
+				return err
 			}
 		}
 	}
