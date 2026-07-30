@@ -28,28 +28,12 @@ func InitializeSchema(ctx context.Context, db *sql.DB, driver string) error {
 			return fmt.Errorf("initialize schema: %w", err)
 		}
 	}
-	return setSchemaVersion(ctx, db, CurrentSchemaVersion)
+	return setSchemaVersion(ctx, db, NormalizeDialect(driver), CurrentSchemaVersion)
 }
 
-func setSchemaVersion(ctx context.Context, db *sql.DB, version int) error {
+func setSchemaVersion(ctx context.Context, db *sql.DB, dialect Dialect, version int) error {
 	value := strconv.Itoa(version)
-	if _, err := db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
-		ON CONFLICT(name, user) DO UPDATE SET value = excluded.value
-	`, "schema_version", value); err == nil {
-		return nil
-	}
-	_, err := db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
-		ON DUPLICATE KEY UPDATE value = VALUES(value)
-	`, "schema_version", value)
-	if err == nil {
-		return nil
-	}
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, "user", value) VALUES ($1, 0, $2)
-		ON CONFLICT(name, "user") DO UPDATE SET value = EXCLUDED.value
-	`, "schema_version", value)
+	_, err := db.ExecContext(ctx, UpsertOptionSQL(dialect), "schema_version", 0, value)
 	return err
 }
 

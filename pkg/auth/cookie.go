@@ -36,6 +36,9 @@ func SetSessionWithOptions(w http.ResponseWriter, secret string, uid int64, opti
 }
 
 func SetVersionedSessionWithOptions(w http.ResponseWriter, secret string, uid int64, version string, options CookieOptions) {
+	if secret == "" {
+		return
+	}
 	if !options.HTTPOnly {
 		options.HTTPOnly = true
 	}
@@ -95,6 +98,9 @@ type Session struct {
 }
 
 func ParseVersionedSessionWithOptions(r *http.Request, secret string, options CookieOptions) (Session, bool) {
+	if secret == "" {
+		return Session{}, false
+	}
 	cookie, err := r.Cookie(options.Name(CookieName))
 	if err != nil {
 		return Session{}, false

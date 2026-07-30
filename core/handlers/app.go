@@ -5749,7 +5749,10 @@ func (a *App) rememberUnapprovedComment(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	encoded := base64.RawURLEncoding.EncodeToString(raw)
-	secret := a.option(r.Context(), "auth_secret", "gopherink")
+	secret := a.option(r.Context(), "auth_secret", "")
+	if secret == "" {
+		return
+	}
 	value := encoded + "." + flashSign(secret, "unapproved-comment:"+encoded)
 	options := a.cookieOptions(r.Context())
 	http.SetCookie(w, &http.Cookie{Name: options.Name("unapproved_comment"), Value: value, Path: "/", MaxAge: 30 * 86400, HttpOnly: true, SameSite: options.SameSite, Secure: options.Secure})
@@ -5765,7 +5768,10 @@ func (a *App) unapprovedCommentIDs(r *http.Request) []int64 {
 	if len(parts) != 2 {
 		return nil
 	}
-	secret := a.option(r.Context(), "auth_secret", "gopherink")
+	secret := a.option(r.Context(), "auth_secret", "")
+	if secret == "" {
+		return nil
+	}
 	expected := flashSign(secret, "unapproved-comment:"+parts[0])
 	if !hmac.Equal([]byte(expected), []byte(parts[1])) {
 		return nil
@@ -7867,7 +7873,7 @@ func (a *App) csrfToken(r *http.Request) string {
 func (a *App) csrfTokenFor(r *http.Request, purpose string) string {
 	secret, _ := a.Options.Get(r.Context(), "auth_secret")
 	if secret == "" {
-		secret = "gopherink"
+		return ""
 	}
 	subject := "anon"
 	if uid, ok := a.currentUserID(r); ok {
@@ -7965,13 +7971,17 @@ func (a *App) previewURL(r *http.Request, c models.Content) string {
 	if c.CID <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("/preview/%d?token=%s", c.CID, a.previewToken(r, c))
+	token := a.previewToken(r, c)
+	if token == "" {
+		return ""
+	}
+	return fmt.Sprintf("/preview/%d?token=%s", c.CID, token)
 }
 
 func (a *App) previewToken(r *http.Request, c models.Content) string {
 	secret, _ := a.Options.Get(r.Context(), "auth_secret")
 	if secret == "" {
-		secret = "gopherink"
+		return ""
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = fmt.Fprintf(mac, "preview:%d:%d:%s", c.CID, c.Modified, c.Status)
@@ -8191,7 +8201,7 @@ func (a *App) validPreviewToken(r *http.Request, c models.Content) bool {
 		return false
 	}
 	expected := a.previewToken(r, c)
-	return hmac.Equal([]byte(token), []byte(expected))
+	return expected != "" && hmac.Equal([]byte(token), []byte(expected))
 }
 
 func (a *App) renderAdmin(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
@@ -10058,7 +10068,10 @@ func (a *App) setFlash(w http.ResponseWriter, r *http.Request, notices ...flashN
 	if err != nil {
 		return
 	}
-	secret := a.option(r.Context(), "auth_secret", "gopherink")
+	secret := a.option(r.Context(), "auth_secret", "")
+	if secret == "" {
+		return
+	}
 	value := base64.RawURLEncoding.EncodeToString(data)
 	sig := flashSign(secret, value)
 	options := a.cookieOptions(r.Context())
@@ -10183,7 +10196,10 @@ func (a *App) consumeFlash(w http.ResponseWriter, r *http.Request) []flashNotice
 	if len(parts) != 2 {
 		return nil
 	}
-	secret := a.option(r.Context(), "auth_secret", "gopherink")
+	secret := a.option(r.Context(), "auth_secret", "")
+	if secret == "" {
+		return nil
+	}
 	if !hmac.Equal([]byte(flashSign(secret, parts[0])), []byte(parts[1])) {
 		return nil
 	}

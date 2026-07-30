@@ -64,7 +64,11 @@ type wafConfig struct {
 type wafManager struct {
 	app *App
 
-	mu           sync.Mutex
+	configMu     sync.RWMutex
+	rateMu       sync.Mutex
+	banMu        sync.Mutex
+	indexMu      sync.RWMutex
+	cacheMu      sync.RWMutex
 	logMu        sync.Mutex
 	config       wafConfig
 	configLoaded time.Time
@@ -151,18 +155,18 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			return
 		}
 		if kind, enabled, window, limit := requestRatePolicy(r, cfg); enabled {
-			if !m.allowWindow(m.rates, kind+"|"+ip, window, limit, now) {
+			if !m.allowWindow(m.rates, kind+"|"+ip, window, limit, cfg.StateMaxEntries, now) {
 				m.logEvent(cfg, "%s rate limit exceeded for IP %s on %s", kind, ip, r.URL.Path)
 				http.Error(sw, "too many requests", http.StatusTooManyRequests)
 				return
 			}
 		}
-		if cfg.SearchRateEnabled && isSearchRequest(r) && !m.allowWindow(m.rates, "search|"+ip, cfg.SearchRateWindow, cfg.SearchRateLimit, now) {
+		if cfg.SearchRateEnabled && isSearchRequest(r) && !m.allowWindow(m.rates, "search|"+ip, cfg.SearchRateWindow, cfg.SearchRateLimit, cfg.StateMaxEntries, now) {
 			m.logEvent(cfg, "search rate limit exceeded for IP %s on %s", ip, r.URL.Path)
 			http.Error(sw, "too many search requests", http.StatusTooManyRequests)
 			return
 		}
-		if cfg.XMLRPCRateEnabled && isXMLRPCRequest(r) && !m.allowWindow(m.rates, "xmlrpc|"+ip, cfg.XMLRPCRateWindow, cfg.XMLRPCRateLimit, now) {
+		if cfg.XMLRPCRateEnabled && isXMLRPCRequest(r) && !m.allowWindow(m.rates, "xmlrpc|"+ip, cfg.XMLRPCRateWindow, cfg.XMLRPCRateLimit, cfg.StateMaxEntries, now) {
 			m.logEvent(cfg, "XML-RPC rate limit exceeded for IP %s on %s", ip, r.URL.Path)
 			http.Error(sw, "too many XML-RPC requests", http.StatusTooManyRequests)
 			return
@@ -217,10 +221,10 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			return
 		}
 		if cfg.AttachmentBanEnabled && isAttachmentDownloadRequest(r) && m.recordAttachmentDownload(ip, cfg, now) {
-			m.mu.Lock()
+			m.banMu.Lock()
 			m.bans[ip] = now.Add(cfg.AttachmentBan)
-			m.trimTimeMapLocked(m.bans, now, m.config.StateMaxEntries)
-			m.mu.Unlock()
+			m.trimTimeMapLocked(m.bans, now, cfg.StateMaxEntries)
+			m.banMu.Unlock()
 			m.logEvent(cfg, "attachment download ban triggered for IP %s on %s", ip, r.URL.Path)
 			http.Error(sw, "forbidden", http.StatusForbidden)
 			return
@@ -299,13 +303,13 @@ func isBackendPath(value string) bool {
 
 func (m *wafManager) currentConfig(ctx context.Context) wafConfig {
 	now := time.Now()
-	m.mu.Lock()
+	m.configMu.RLock()
 	if !m.configLoaded.IsZero() && now.Sub(m.configLoaded) < 5*time.Second {
 		cfg := m.config
-		m.mu.Unlock()
+		m.configMu.RUnlock()
 		return cfg
 	}
-	m.mu.Unlock()
+	m.configMu.RUnlock()
 
 	options, err := m.app.Options.All(ctx)
 	if err != nil {
@@ -352,26 +356,26 @@ func (m *wafManager) currentConfig(ctx context.Context) wafConfig {
 		StateMaxEntries:       boundedInt(options["waf_state_max_entries"], 100000, 1000, 1000000),
 	}
 
-	m.mu.Lock()
+	m.configMu.Lock()
 	m.config = cfg
 	m.configLoaded = now
-	m.mu.Unlock()
+	m.configMu.Unlock()
 	return cfg
 }
 
 func (m *wafManager) publicURLExists(ctx context.Context, requestPath string, cfg wafConfig, now time.Time) (bool, error) {
-	m.mu.Lock()
+	m.indexMu.RLock()
 	loaded := !m.indexLoaded.IsZero() && now.Sub(m.indexLoaded) < cfg.URLIndexTTL
-	m.mu.Unlock()
+	m.indexMu.RUnlock()
 	if !loaded {
 		if err := m.refreshPublicIndex(ctx, cfg, now); err != nil {
 			return true, err
 		}
 	}
 	clean := cleanIndexPath(requestPath)
-	m.mu.Lock()
+	m.indexMu.RLock()
 	_, ok := m.publicIndex[clean]
-	m.mu.Unlock()
+	m.indexMu.RUnlock()
 	return ok, nil
 }
 
@@ -455,35 +459,47 @@ func (m *wafManager) refreshPublicIndex(ctx context.Context, cfg wafConfig, now 
 		add(archive.URL)
 	}
 
-	m.mu.Lock()
+	m.indexMu.Lock()
 	m.publicIndex = index
 	m.indexLoaded = now
-	m.mu.Unlock()
+	m.indexMu.Unlock()
 	return nil
 }
 
 func (m *wafManager) invalidatePublicData() {
-	m.mu.Lock()
+	m.indexMu.Lock()
 	m.publicIndex = map[string]struct{}{}
 	m.indexLoaded = time.Time{}
+	m.indexMu.Unlock()
+	m.cacheMu.Lock()
 	m.cache = map[string]wafCacheEntry{}
+	m.cacheMu.Unlock()
+	m.configMu.Lock()
 	m.configLoaded = time.Time{}
-	m.mu.Unlock()
+	m.configMu.Unlock()
 }
 
 func (m *wafManager) resetRuntimeState() {
-	m.mu.Lock()
+	m.rateMu.Lock()
 	m.rates = map[string]*wafCounter{}
 	m.invalids = map[string]*wafCounter{}
 	m.attachments = map[string]*wafCounter{}
+	m.rateMu.Unlock()
+	m.banMu.Lock()
 	m.loginFails = map[string]*wafCounter{}
 	m.bans = map[string]time.Time{}
 	m.loginBans = map[string]time.Time{}
+	m.banMu.Unlock()
+	m.indexMu.Lock()
 	m.publicIndex = map[string]struct{}{}
 	m.indexLoaded = time.Time{}
+	m.indexMu.Unlock()
+	m.cacheMu.Lock()
 	m.cache = map[string]wafCacheEntry{}
+	m.cacheMu.Unlock()
+	m.configMu.Lock()
 	m.configLoaded = time.Time{}
-	m.mu.Unlock()
+	m.configMu.Unlock()
 }
 
 func (m *wafManager) logPath() string {
@@ -578,22 +594,26 @@ func splitLogLines(value string) []string {
 }
 
 func (m *wafManager) cachedResponse(key string, now time.Time) (wafCacheEntry, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.cacheMu.RLock()
 	entry, ok := m.cache[key]
+	m.cacheMu.RUnlock()
 	if !ok {
 		return wafCacheEntry{}, false
 	}
 	if now.After(entry.ExpiresAt) {
-		delete(m.cache, key)
+		m.cacheMu.Lock()
+		if current, exists := m.cache[key]; exists && now.After(current.ExpiresAt) {
+			delete(m.cache, key)
+		}
+		m.cacheMu.Unlock()
 		return wafCacheEntry{}, false
 	}
 	return entry, true
 }
 
 func (m *wafManager) storeCachedResponse(key string, status int, header http.Header, body []byte, cfg wafConfig, now time.Time) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.cacheMu.Lock()
+	defer m.cacheMu.Unlock()
 	if len(m.cache) >= cfg.PublicCacheMaxEntries {
 		var oldestKey string
 		var oldest time.Time
@@ -611,8 +631,8 @@ func (m *wafManager) storeCachedResponse(key string, status int, header http.Hea
 }
 
 func (m *wafManager) isBanned(ip string, now time.Time) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.banMu.Lock()
+	defer m.banMu.Unlock()
 	until, ok := m.bans[ip]
 	if !ok {
 		return false
@@ -634,10 +654,10 @@ func (m *wafManager) banIP(ctx context.Context, ip string, duration time.Duratio
 	}
 	cfg := m.currentConfig(ctx)
 	now := time.Now()
-	m.mu.Lock()
+	m.banMu.Lock()
 	m.bans[ip] = now.Add(duration)
 	m.trimTimeMapLocked(m.bans, now, cfg.StateMaxEntries)
-	m.mu.Unlock()
+	m.banMu.Unlock()
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		reason = "runtime WAF ban"
@@ -652,9 +672,9 @@ func (m *wafManager) unbanIP(ctx context.Context, ip string) error {
 		return fmt.Errorf("invalid IP address: %w", err)
 	}
 	cfg := m.currentConfig(ctx)
-	m.mu.Lock()
+	m.banMu.Lock()
 	delete(m.bans, ip)
-	m.mu.Unlock()
+	m.banMu.Unlock()
 	m.logEvent(cfg, "runtime WAF unbanned IP %s", ip)
 	return nil
 }
@@ -667,13 +687,17 @@ func (m *wafManager) stats(ctx context.Context) (plugin.WAFStatistics, error) {
 			return plugin.WAFStatistics{}, err
 		}
 	}
-	m.mu.Lock()
+	m.banMu.Lock()
 	m.trimTimeMapLocked(m.bans, now, cfg.StateMaxEntries)
+	bannedIPs := len(m.bans)
+	m.banMu.Unlock()
+	m.indexMu.RLock()
+	allowedPaths := len(m.publicIndex)
+	m.indexMu.RUnlock()
 	stats := plugin.WAFStatistics{
-		BannedIPs:    len(m.bans),
-		AllowedPaths: len(m.publicIndex),
+		BannedIPs:    bannedIPs,
+		AllowedPaths: allowedPaths,
 	}
-	m.mu.Unlock()
 	for _, line := range splitLogLines(m.logText(cfg.LogMaxEntries)) {
 		lower := strings.ToLower(line)
 		if strings.Contains(lower, "blocked") || strings.Contains(lower, "ban triggered") || strings.Contains(lower, "rate limit exceeded") {
@@ -724,18 +748,18 @@ func (a *App) pluginWAFStats(ctx context.Context) (plugin.WAFStatistics, error) 
 }
 
 func (m *wafManager) recordInvalidPath(ip string, cfg wafConfig, now time.Time) bool {
-	if !m.allowWindow(m.invalids, ip, cfg.InvalidPathWindow, cfg.InvalidPathLimit, now) {
-		m.mu.Lock()
+	if !m.allowWindow(m.invalids, ip, cfg.InvalidPathWindow, cfg.InvalidPathLimit, cfg.StateMaxEntries, now) {
+		m.banMu.Lock()
 		m.bans[ip] = now.Add(cfg.InvalidPathBan)
-		m.trimTimeMapLocked(m.bans, now, m.config.StateMaxEntries)
-		m.mu.Unlock()
+		m.trimTimeMapLocked(m.bans, now, cfg.StateMaxEntries)
+		m.banMu.Unlock()
 		return true
 	}
 	return false
 }
 
 func (m *wafManager) recordAttachmentDownload(ip string, cfg wafConfig, now time.Time) bool {
-	return !m.allowWindow(m.attachments, ip, cfg.AttachmentBanWindow, cfg.AttachmentBanLimit, now)
+	return !m.allowWindow(m.attachments, ip, cfg.AttachmentBanWindow, cfg.AttachmentBanLimit, cfg.StateMaxEntries, now)
 }
 
 func (m *wafManager) loginAllowed(ctx context.Context, ip string) bool {
@@ -744,8 +768,8 @@ func (m *wafManager) loginAllowed(ctx context.Context, ip string) bool {
 		return true
 	}
 	now := time.Now()
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.banMu.Lock()
+	defer m.banMu.Unlock()
 	until, ok := m.loginBans[ip]
 	if !ok {
 		return true
@@ -767,7 +791,7 @@ func (m *wafManager) recordLoginFailure(ctx context.Context, ip string) {
 	if cfg.LoginWindow <= 0 {
 		cfg.LoginWindow = time.Second
 	}
-	m.mu.Lock()
+	m.banMu.Lock()
 	counter := m.loginFails[ip]
 	if counter == nil || now.Sub(counter.Start) >= cfg.LoginWindow {
 		counter = &wafCounter{Start: now}
@@ -776,29 +800,33 @@ func (m *wafManager) recordLoginFailure(ctx context.Context, ip string) {
 	counter.Count++
 	if counter.Count >= cfg.LoginFailures {
 		m.loginBans[ip] = now.Add(cfg.LoginBan)
-		m.trimTimeMapLocked(m.loginBans, now, m.config.StateMaxEntries)
-		m.logEvent(cfg, "login ban triggered for IP %s after %d failures", ip, counter.Count)
+		m.trimTimeMapLocked(m.loginBans, now, cfg.StateMaxEntries)
 	}
-	m.mu.Unlock()
+	banned := counter.Count >= cfg.LoginFailures
+	count := counter.Count
+	m.banMu.Unlock()
+	if banned {
+		m.logEvent(cfg, "login ban triggered for IP %s after %d failures", ip, count)
+	}
 }
 
 func (m *wafManager) recordLoginSuccess(ip string) {
-	m.mu.Lock()
+	m.banMu.Lock()
 	delete(m.loginFails, ip)
 	delete(m.loginBans, ip)
-	m.mu.Unlock()
+	m.banMu.Unlock()
 }
 
-func (m *wafManager) allowWindow(store map[string]*wafCounter, key string, window time.Duration, limit int, now time.Time) bool {
+func (m *wafManager) allowWindow(store map[string]*wafCounter, key string, window time.Duration, limit, maxEntries int, now time.Time) bool {
 	if limit <= 0 {
 		return true
 	}
 	if window <= 0 {
 		window = time.Second
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.trimCounterMapLocked(store, window, now, m.config.StateMaxEntries)
+	m.rateMu.Lock()
+	defer m.rateMu.Unlock()
+	m.trimCounterMapLocked(store, window, now, maxEntries)
 	counter := store[key]
 	if counter == nil || now.Sub(counter.Start) >= window {
 		store[key] = &wafCounter{Start: now, Count: 1}

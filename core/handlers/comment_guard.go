@@ -84,13 +84,17 @@ func (a *App) activeThemeUsesCommentGuard(ctx context.Context) bool {
 }
 
 func (a *App) issueCommentGuardToken(r *http.Request, cid int64, visitorID string) (string, int64, error) {
+	secret := a.commentGuardSecret(r)
+	if secret == "" {
+		return "", 0, fmt.Errorf("comment guard secret is unavailable")
+	}
 	nonce, err := randomCommentGuardValue(24)
 	if err != nil {
 		return "", 0, err
 	}
 	issuedAt := time.Now().Unix()
 	payload := fmt.Sprintf("v1.%d.%d.%s.%s", issuedAt, cid, nonce, commentGuardVisitorDigest(visitorID))
-	token := payload + "." + commentGuardSign(a.commentGuardSecret(r), "token", payload)
+	token := payload + "." + commentGuardSign(secret, "token", payload)
 	return token, issuedAt + int64(commentGuardTokenTTL/time.Second), nil
 }
 
@@ -139,7 +143,11 @@ func (a *App) validateCommentGuardToken(r *http.Request, cid int64, token string
 		return false
 	}
 	payload := strings.Join(parts[:5], ".")
-	expected := commentGuardSign(a.commentGuardSecret(r), "token", payload)
+	secret := a.commentGuardSecret(r)
+	if secret == "" {
+		return false
+	}
+	expected := commentGuardSign(secret, "token", payload)
 	if !hmac.Equal([]byte(expected), []byte(parts[5])) {
 		return false
 	}
@@ -190,7 +198,11 @@ func (a *App) commentGuardVisitor(r *http.Request) (string, bool) {
 		return "", false
 	}
 	payload := strings.Join(parts[:3], ".")
-	expected := commentGuardSign(a.commentGuardSecret(r), "visitor", payload)
+	secret := a.commentGuardSecret(r)
+	if secret == "" {
+		return "", false
+	}
+	expected := commentGuardSign(secret, "visitor", payload)
 	if !hmac.Equal([]byte(expected), []byte(parts[3])) {
 		return "", false
 	}
@@ -198,9 +210,13 @@ func (a *App) commentGuardVisitor(r *http.Request) (string, bool) {
 }
 
 func (a *App) setCommentGuardVisitor(w http.ResponseWriter, r *http.Request, visitorID string) {
+	secret := a.commentGuardSecret(r)
+	if secret == "" {
+		return
+	}
 	expiresAt := time.Now().Add(commentGuardVisitorTTL)
 	payload := fmt.Sprintf("v1.%d.%s", expiresAt.Unix(), visitorID)
-	value := payload + "." + commentGuardSign(a.commentGuardSecret(r), "visitor", payload)
+	value := payload + "." + commentGuardSign(secret, "visitor", payload)
 	options := a.cookieOptions(r.Context())
 	http.SetCookie(w, &http.Cookie{
 		Name:     options.Name("comment_guard_visitor"),
@@ -215,7 +231,7 @@ func (a *App) setCommentGuardVisitor(w http.ResponseWriter, r *http.Request, vis
 }
 
 func (a *App) commentGuardSecret(r *http.Request) string {
-	return a.option(r.Context(), "auth_secret", "gopherink")
+	return a.option(r.Context(), "auth_secret", "")
 }
 
 func commentGuardSign(secret, purpose, payload string) string {

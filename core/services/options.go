@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+
+	"github.com/Chocola-X/GopherInk/core/models"
 )
 
 type OptionService struct {
@@ -22,10 +24,11 @@ func (s *OptionService) Get(ctx context.Context, name string) (string, error) {
 
 func (s *OptionService) GetForUser(ctx context.Context, name string, userID int64) (string, error) {
 	var value string
-	err := s.db.QueryRowContext(ctx, `SELECT value FROM gb_options WHERE name = ? AND user = ?`, name, userID).Scan(&value)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		err = s.db.QueryRowContext(ctx, `SELECT value FROM gb_options WHERE name = $1 AND "user" = $2`, name, userID).Scan(&value)
+	userColumn := "user"
+	if s.db.Dialect() == models.DialectPostgres {
+		userColumn = `"user"`
 	}
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM gb_options WHERE name = ? AND `+userColumn+` = ?`, name, userID).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -38,25 +41,7 @@ func (s *OptionService) Set(ctx context.Context, name, value string) error {
 
 func (s *OptionService) SetForUser(ctx context.Context, name, value string, userID int64) error {
 	ctx = WithWriter(ctx)
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, user, value) VALUES (?, ?, ?)
-		ON CONFLICT(name, user) DO UPDATE SET value = excluded.value
-	`, name, userID, value)
-	if err == nil {
-		return nil
-	}
-
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, user, value) VALUES (?, ?, ?)
-		ON DUPLICATE KEY UPDATE value = VALUES(value)
-	`, name, userID, value)
-	if err == nil {
-		return nil
-	}
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, "user", value) VALUES ($1, $2, $3)
-		ON CONFLICT(name, "user") DO UPDATE SET value = EXCLUDED.value
-	`, name, userID, value)
+	_, err := s.db.ExecContext(ctx, models.UpsertOptionSQL(s.db.Dialect()), name, userID, value)
 	return err
 }
 
@@ -203,10 +188,11 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 }
 
 func (s *OptionService) All(ctx context.Context) (map[string]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT name, value FROM gb_options WHERE user = 0`)
-	if err != nil {
-		rows, err = s.db.QueryContext(ctx, `SELECT name, value FROM gb_options WHERE "user" = 0`)
+	userColumn := "user"
+	if s.db.Dialect() == models.DialectPostgres {
+		userColumn = `"user"`
 	}
+	rows, err := s.db.QueryContext(ctx, `SELECT name, value FROM gb_options WHERE `+userColumn+` = 0`)
 	if err != nil {
 		return nil, err
 	}

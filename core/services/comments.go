@@ -465,15 +465,52 @@ func (s *CommentService) Mark(ctx context.Context, id int64, status string) erro
 
 func (s *CommentService) MarkMany(ctx context.Context, ids []int64, status string) error {
 	ctx = WithWriter(ctx)
-	for _, id := range ids {
-		if id <= 0 {
-			continue
-		}
-		if err := s.Mark(ctx, id, status); err != nil {
+	ids = normalizeCommentIDs(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	inClause, idArgs := commentIDClause(ids)
+	rows, err := tx.QueryContext(ctx, models.Rebind(s.db.Dialect(), `SELECT coid, cid FROM gb_comments WHERE coid IN (`+inClause+`)`), idArgs...)
+	if err != nil {
+		return err
+	}
+	found := 0
+	cids := map[int64]struct{}{}
+	for rows.Next() {
+		var id, cid int64
+		if err := rows.Scan(&id, &cid); err != nil {
+			_ = rows.Close()
 			return err
 		}
+		found++
+		cids[cid] = struct{}{}
 	}
-	return nil
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if found != len(ids) {
+		return sql.ErrNoRows
+	}
+	args := make([]any, 0, len(idArgs)+1)
+	args = append(args, status)
+	args = append(args, idArgs...)
+	if _, err := txExec(ctx, tx, s.db.Dialect(), `UPDATE gb_comments SET status = ? WHERE coid IN (`+inClause+`)`, args...); err != nil {
+		return err
+	}
+	if err := refreshContentCountsTx(ctx, tx, s.db.Dialect(), cids); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *CommentService) Delete(ctx context.Context, id int64) error {
@@ -503,15 +540,119 @@ func (s *CommentService) Delete(ctx context.Context, id int64) error {
 
 func (s *CommentService) DeleteMany(ctx context.Context, ids []int64) error {
 	ctx = WithWriter(ctx)
+	ids = normalizeCommentIDs(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	inClause, idArgs := commentIDClause(ids)
+	rows, err := tx.QueryContext(ctx, models.Rebind(s.db.Dialect(), `SELECT coid, cid, parent FROM gb_comments WHERE coid IN (`+inClause+`)`), idArgs...)
+	if err != nil {
+		return err
+	}
+	parents := make(map[int64]int64, len(ids))
+	cids := map[int64]struct{}{}
+	for rows.Next() {
+		var id, cid, parent int64
+		if err := rows.Scan(&id, &cid, &parent); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		parents[id] = parent
+		cids[cid] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if len(parents) != len(ids) {
+		return sql.ErrNoRows
+	}
+	caseParts := make([]string, 0, len(ids))
+	reparentArgs := make([]any, 0, len(ids)*3)
+	for _, id := range ids {
+		caseParts = append(caseParts, "WHEN ? THEN ?")
+		reparentArgs = append(reparentArgs, id, nearestSurvivingCommentParent(id, parents))
+	}
+	reparentArgs = append(reparentArgs, idArgs...)
+	if _, err := txExec(ctx, tx, s.db.Dialect(), `UPDATE gb_comments SET parent = CASE parent `+strings.Join(caseParts, " ")+` ELSE parent END WHERE parent IN (`+inClause+`)`, reparentArgs...); err != nil {
+		return err
+	}
+	if _, err := txExec(ctx, tx, s.db.Dialect(), `DELETE FROM gb_comments WHERE coid IN (`+inClause+`)`, idArgs...); err != nil {
+		return err
+	}
+	if err := refreshContentCountsTx(ctx, tx, s.db.Dialect(), cids); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func normalizeCommentIDs(ids []int64) []int64 {
+	seen := make(map[int64]struct{}, len(ids))
+	normalized := make([]int64, 0, len(ids))
 	for _, id := range ids {
 		if id <= 0 {
 			continue
 		}
-		if err := s.Delete(ctx, id); err != nil {
-			return err
+		if _, ok := seen[id]; ok {
+			continue
 		}
+		seen[id] = struct{}{}
+		normalized = append(normalized, id)
 	}
-	return nil
+	return normalized
+}
+
+func commentIDClause(ids []int64) (string, []any) {
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for index, id := range ids {
+		placeholders[index] = "?"
+		args[index] = id
+	}
+	return strings.Join(placeholders, ","), args
+}
+
+func nearestSurvivingCommentParent(id int64, deleting map[int64]int64) int64 {
+	parent := deleting[id]
+	seen := map[int64]struct{}{id: {}}
+	for parent > 0 {
+		if _, cycle := seen[parent]; cycle {
+			return 0
+		}
+		seen[parent] = struct{}{}
+		next, removed := deleting[parent]
+		if !removed {
+			return parent
+		}
+		parent = next
+	}
+	return 0
+}
+
+func refreshContentCountsTx(ctx context.Context, tx *sql.Tx, dialect models.Dialect, cids map[int64]struct{}) error {
+	if len(cids) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(cids))
+	for cid := range cids {
+		ids = append(ids, cid)
+	}
+	inClause, args := commentIDClause(ids)
+	_, err := txExec(ctx, tx, dialect, `
+		UPDATE gb_contents SET commentsNum = (
+			SELECT COUNT(*) FROM gb_comments
+			WHERE gb_comments.cid = gb_contents.cid AND gb_comments.status = 'approved'
+		) WHERE gb_contents.cid IN (`+inClause+`)`, args...)
+	return err
 }
 
 func (s *CommentService) ClearSpam(ctx context.Context) error {

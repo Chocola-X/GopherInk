@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -1728,25 +1731,10 @@ func dispatchHooks(ctx context.Context, hooks []ownedHook, active map[string]boo
 			continue
 		}
 		result.Triggered = true
-		var (
-			next any
-			err  error
-		)
-		if hook.RuntimeFn != nil {
-			if runtime == nil {
-				return HookDispatch{}, ErrRuntimeUnavailable
-			}
-			hookRuntime := runtime
-			if hook.Plugin != "" {
-				hookRuntime = runtime.WithOwner(hook.Plugin)
-			}
-			hookCtx := ContextWithRuntime(ctx, hookRuntime)
-			next, err = hook.RuntimeFn(hookCtx, hookRuntime, result.Payload)
-		} else if hook.Fn != nil {
-			next, err = hook.Fn(ctx, result.Payload)
-		} else {
+		if hook.RuntimeFn == nil && hook.Fn == nil {
 			continue
 		}
+		next, err := invokeHook(ctx, runtime, hook, result.Payload)
 		if err != nil {
 			return HookDispatch{}, err
 		}
@@ -1761,6 +1749,32 @@ func dispatchHooks(ctx context.Context, hooks []ownedHook, active map[string]boo
 		result.Payload = next
 	}
 	return result, nil
+}
+
+func invokeHook(ctx context.Context, runtime *Runtime, hook ownedHook, payload any) (next any, err error) {
+	owner := hook.Plugin
+	if owner == "" {
+		owner = "core"
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("plugin hook panic (owner=%q): %v\n%s", owner, recovered, debug.Stack())
+			next = nil
+			err = fmt.Errorf("plugin hook panicked (owner=%q)", owner)
+		}
+	}()
+	if hook.RuntimeFn != nil {
+		if runtime == nil {
+			return nil, ErrRuntimeUnavailable
+		}
+		hookRuntime := runtime
+		if hook.Plugin != "" {
+			hookRuntime = runtime.WithOwner(hook.Plugin)
+		}
+		hookCtx := ContextWithRuntime(ctx, hookRuntime)
+		return hook.RuntimeFn(hookCtx, hookRuntime, payload)
+	}
+	return hook.Fn(ctx, payload)
 }
 
 func compareVersion(a, b string) int {

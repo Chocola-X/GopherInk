@@ -13,6 +13,12 @@ import (
 	"github.com/yuin/goldmark/renderer/html"
 )
 
+var markdownRenderer = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+	goldmark.WithRendererOptions(html.WithHardWraps()),
+)
+
 func PlainTextHTML(input string) template.HTML {
 	input = strings.TrimPrefix(input, "<!--plaintext-->")
 	escaped := stdhtml.EscapeString(input)
@@ -24,13 +30,8 @@ func PlainTextHTML(input string) template.HTML {
 
 func MarkdownHTML(input string) template.HTML {
 	input = strings.TrimPrefix(input, "<!--markdown-->")
-	md := goldmark.New(
-		goldmark.WithExtensions(extension.GFM),
-		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
-		goldmark.WithRendererOptions(html.WithHardWraps()),
-	)
 	var buf bytes.Buffer
-	if err := md.Convert([]byte(input), &buf); err != nil {
+	if err := markdownRenderer.Convert([]byte(input), &buf); err != nil {
 		return PlainTextHTML(input)
 	}
 	return template.HTML(buf.String())

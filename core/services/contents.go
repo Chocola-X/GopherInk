@@ -1695,24 +1695,7 @@ func (s *ContentService) commitContentSlugID(ctx context.Context, typ, status st
 func (s *ContentService) setSlugIDFloor(ctx context.Context, typ string, next int64) error {
 	value := strconv.FormatInt(next, 10)
 	name := "content_slug_id_next_" + typ
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
-		ON CONFLICT(name, user) DO UPDATE SET value = excluded.value
-	`, name, value)
-	if err == nil {
-		return nil
-	}
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, user, value) VALUES (?, 0, ?)
-		ON DUPLICATE KEY UPDATE value = VALUES(value)
-	`, name, value)
-	if err == nil {
-		return nil
-	}
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO gb_options (name, "user", value) VALUES (?, 0, ?)
-		ON CONFLICT(name, "user") DO UPDATE SET value = EXCLUDED.value
-	`, name, value)
+	_, err := s.db.ExecContext(ctx, models.UpsertOptionSQL(s.db.Dialect()), name, 0, value)
 	return err
 }
 
