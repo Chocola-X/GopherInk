@@ -99,6 +99,16 @@
     </div>
     <span class="muted full-span">{{T "Thumbnails are only used for admin previews and do not change image URLs in posts; SVG remains unchanged."}}</span>
   </fieldset>
+
+  <fieldset class="fieldset">
+    <legend>{{T "Compatibility APIs"}}</legend>
+    <mdui-select class="full-span" name="xmlrpc_mode" label="{{T "XML-RPC interface"}}" value="{{index .Options "xmlrpc_mode"}}">
+      <mdui-menu-item value="off">{{T "Disabled"}}</mdui-menu-item>
+      <mdui-menu-item value="no_pingback">{{T "Disable Pingback only"}}</mdui-menu-item>
+      <mdui-menu-item value="on">{{T "Enabled"}}</mdui-menu-item>
+    </mdui-select>
+    <span class="muted full-span">{{T "Controls the XML-RPC endpoint and Pingback receiving capability."}}</span>
+  </fieldset>
   <div class="form-actions"><mdui-button type="submit">{{T "Save Settings"}}</mdui-button></div>
 </form>
 {{end}}

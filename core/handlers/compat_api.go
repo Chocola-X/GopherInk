@@ -32,6 +32,37 @@ type xmlRPCMethodCall struct {
 	Params     []xmlRPCParam `xml:"params>param"`
 }
 
+const (
+	xmlRPCModeOff        = "off"
+	xmlRPCModeNoPingback = "no_pingback"
+	xmlRPCModeOn         = "on"
+)
+
+func validXMLRPCMode(mode string) bool {
+	switch mode {
+	case xmlRPCModeOff, xmlRPCModeNoPingback, xmlRPCModeOn:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *App) xmlRPCMode(ctx context.Context) string {
+	mode := strings.TrimSpace(a.option(ctx, "xmlrpc_mode", xmlRPCModeOn))
+	if !validXMLRPCMode(mode) {
+		return xmlRPCModeOff
+	}
+	return mode
+}
+
+func (a *App) xmlRPCEnabled(ctx context.Context) bool {
+	return a.xmlRPCMode(ctx) != xmlRPCModeOff
+}
+
+func (a *App) pingbackEnabled(ctx context.Context) bool {
+	return a.xmlRPCMode(ctx) == xmlRPCModeOn
+}
+
 type xmlRPCParam struct {
 	Value xmlRPCValue `xml:"value"`
 }
@@ -63,8 +94,12 @@ func (a *App) xmlRPC(w http.ResponseWriter, r *http.Request) {
 		methodNotAllowed(w, http.MethodPost)
 		return
 	}
-	if !optionBool(a.option(r.Context(), "enable_xmlrpc", "1")) {
+	if !a.xmlRPCEnabled(r.Context()) {
 		a.writeXMLRPCFault(w, 403, "xml-rpc is disabled")
+		return
+	}
+	if r.URL.Path == "/action/pingback" && !a.pingbackEnabled(r.Context()) {
+		a.writeXMLRPCFault(w, 403, "pingback is disabled")
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<20))
@@ -94,7 +129,7 @@ type xmlRPCFault struct {
 func (a *App) handleXMLRPCMethod(ctx context.Context, method string, params []xmlRPCParam) (any, *xmlRPCFault) {
 	switch method {
 	case "mt.supportedMethods":
-		return []any{
+		methods := []any{
 			"blogger.getUsersBlogs",
 			"blogger.deletePost",
 			"metaWeblog.getRecentPosts",
@@ -117,9 +152,15 @@ func (a *App) handleXMLRPCMethod(ctx context.Context, method string, params []xm
 			"wp.getCategories",
 			"wp.getTags",
 			"wp.uploadFile",
-			"pingback.ping",
-		}, nil
+		}
+		if a.pingbackEnabled(ctx) {
+			methods = append(methods, "pingback.ping")
+		}
+		return methods, nil
 	case "pingback.ping":
+		if !a.pingbackEnabled(ctx) {
+			return nil, &xmlRPCFault{Code: 403, Message: "pingback is disabled"}
+		}
 		if len(params) < 2 {
 			return nil, &xmlRPCFault{Code: 400, Message: "missing pingback parameters"}
 		}
@@ -474,7 +515,7 @@ func (a *App) xmlRPCContentInput(ctx context.Context, value xmlRPCValue, publish
 		Password:     m["wp_password"].StringValue(),
 		AllowComment: true,
 		AllowFeed:    true,
-		AllowPing:    optionBool(a.option(ctx, "enable_pingback", "1")),
+		AllowPing:    a.pingbackEnabled(ctx),
 		Tags:         splitTags(firstNonEmpty(m["mt_keywords"].StringValue(), m["terms_names"].StructMap()["post_tag"].StringValue())),
 	}
 	if created := m["dateCreated"].TimeValue(); created > 0 {
@@ -564,6 +605,9 @@ func contentToSaveInput(ctx context.Context, a *App, item models.Content) servic
 }
 
 func (a *App) receivePingback(ctx context.Context, sourceURI, targetURI string) (string, error) {
+	if !a.pingbackEnabled(ctx) {
+		return "", errors.New("pingback is disabled")
+	}
 	pingPayload := plugin.XMLRPCPingbackPayload{SourceURI: sourceURI, TargetURI: targetURI}
 	if out, err := a.Plugins.ApplyActive(ctx, plugin.HookXMLRPCPingback, pingPayload); err != nil {
 		return "", err
@@ -576,9 +620,6 @@ func (a *App) receivePingback(ctx context.Context, sourceURI, targetURI string) 
 		}
 		sourceURI = next.SourceURI
 		targetURI = next.TargetURI
-	}
-	if !optionBool(a.option(ctx, "enable_pingback", "1")) {
-		return "", errors.New("pingback is disabled")
 	}
 	if sourceURI == "" || targetURI == "" || sourceURI == targetURI {
 		return "", errors.New("invalid pingback")
@@ -746,7 +787,7 @@ func (a *App) sendSinglePing(ctx context.Context, source, target string) {
 }
 
 func (a *App) rsdXML(w http.ResponseWriter, r *http.Request) {
-	if !optionBool(a.option(r.Context(), "enable_xmlrpc", "1")) {
+	if !a.xmlRPCEnabled(r.Context()) {
 		http.NotFound(w, r)
 		return
 	}
@@ -757,7 +798,7 @@ func (a *App) rsdXML(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) wlwManifest(w http.ResponseWriter, r *http.Request) {
-	if !optionBool(a.option(r.Context(), "enable_xmlrpc", "1")) {
+	if !a.xmlRPCEnabled(r.Context()) {
 		http.NotFound(w, r)
 		return
 	}

@@ -902,8 +902,7 @@ GopherInk 提供 80+ 项站点配置，均可在后台管理界面修改。以�
 
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
-| `enable_xmlrpc` | 1 | 启用 XML-RPC |
-| `enable_pingback` | 1 | 启用 Pingback |
+| `xmlrpc_mode` | on | XML-RPC 模式：`off`、`no_pingback` 或 `on` |
 | `enable_trackback` | 1 | 启用 Trackback |
 
 ### 数据库

@@ -86,6 +86,16 @@ metaWeblog.newMediaObject
 wp.uploadFile
 ```
 
+后台“基本设置 > 兼容性接口”提供三种运行模式：
+
+| 模式 | 行为 |
+|---|---|
+| 关闭 | 禁用 XML-RPC 入口，并停止输出 RSD、WLW Manifest 和 Pingback 发现信息 |
+| 仅关闭 Pingback 接口 | 保留 MetaWeblog、WordPress 和 Blogger 方法，但不宣告或接受 `pingback.ping` |
+| 打开 | 启用全部受支持的 XML-RPC 方法和 Pingback 接收能力 |
+
+配置项 `xmlrpc_mode` 对应值依次为 `off`、`no_pingback`、`on`，默认 `on`。Trackback 是独立协议，不受该模式影响。
+
 方法经过用户密码认证和角色/资源所有权检查。贡献者可管理自己的文章，但不能通过 API 绕过页面和发布权限；页面创建/编辑要求编辑权限。
 
 上传方法复用核心附件安全校验和上传钩子。内容保存复用草稿/发布服务和内容钩子，不应形成一套独立数据语义。

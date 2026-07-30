@@ -2428,7 +2428,7 @@ func (a *App) adminOptionsGeneral(w http.ResponseWriter, r *http.Request) {
 	if !a.requireRole(w, r, "administrator") {
 		return
 	}
-	keys := []string{"site_title", "site_description", "site_keywords", "base_url", "site_language", "site_timezone", "allow_register", "register_default_role", "cookie_prefix", "cookie_secure", "cookie_samesite", "content_autosave_enabled", "upload_allowed_exts", "upload_max_size", "upload_image_processing", "upload_webp_quality", "image_processing_memory_mb", "thumbnail_format", "thumbnail_quality", "upload_replace_same_ext_only", "attachment_delete_policy"}
+	keys := []string{"site_title", "site_description", "site_keywords", "base_url", "site_language", "site_timezone", "allow_register", "register_default_role", "cookie_prefix", "cookie_secure", "cookie_samesite", "content_autosave_enabled", "upload_allowed_exts", "upload_max_size", "upload_image_processing", "upload_webp_quality", "image_processing_memory_mb", "thumbnail_format", "thumbnail_quality", "upload_replace_same_ext_only", "attachment_delete_policy", "xmlrpc_mode"}
 	if r.Method == http.MethodGet {
 		options, err := a.Options.All(r.Context())
 		if err != nil {
@@ -2478,6 +2478,12 @@ func (a *App) adminOptionsGeneral(w http.ResponseWriter, r *http.Request) {
 }
 
 func normalizeGeneralOptionsForm(r *http.Request) error {
+	mode := strings.TrimSpace(r.FormValue("xmlrpc_mode"))
+	if !validXMLRPCMode(mode) {
+		return fmt.Errorf("Choose a valid XML-RPC mode")
+	}
+	r.Form.Set("xmlrpc_mode", mode)
+
 	rawMB := strings.TrimSpace(r.FormValue("upload_max_size_mb"))
 	if rawMB == "" {
 		rawMB = "16"
@@ -8593,8 +8599,8 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 		if _, ok := data["FeedPath"]; !ok {
 			data["FeedPath"] = "/feed.xml"
 		}
-		data["XMLRPCEnabled"] = optionBool(a.option(r.Context(), "enable_xmlrpc", "1"))
-		data["PingbackEnabled"] = optionBool(a.option(r.Context(), "enable_pingback", "1"))
+		data["XMLRPCEnabled"] = a.xmlRPCEnabled(r.Context())
+		data["PingbackEnabled"] = a.pingbackEnabled(r.Context())
 		data["XMLRPCURL"] = baseURL + "/xmlrpc.php"
 		data["RSDURL"] = baseURL + "/rsd.xml"
 		data["WLWManifestURL"] = baseURL + "/wlwmanifest.xml"
