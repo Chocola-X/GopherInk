@@ -15,7 +15,7 @@ import (
 	"github.com/Chocola-X/GopherInk/core/plugin"
 )
 
-//go:embed templates/* static/* admin/*
+//go:embed templates/* static/*
 var themeFS embed.FS
 
 var assetRandomSequence atomic.Uint64
@@ -47,17 +47,8 @@ func init() {
 		Embedded:     true,
 		Translate:    defaultThemeT,
 		Capabilities: plugin.ThemeCapabilities{CommentGuard: true},
-		AdminPages: []plugin.AdminPage{{
-			Name:        friendAdminPageName,
-			Label:       "Friend Links",
-			Icon:        "link",
-			Title:       "Friend Link Settings",
-			Description: "Manage friend links and choose the standalone page that uses the friend-link template.",
-		}},
-		RenderAdminPage:       renderFriendAdminPage,
-		HandleAdminPageAction: handleFriendAdminPageAction,
-		EnrichComments:        friendEnrichComments,
 		AdjustData:            adjustDefaultThemeData,
+		EnrichComments:        friendEnrichComments,
 		Routes: []plugin.Route{
 			{Method: "POST", Pattern: "/action/theme/default/view", Handler: handleView},
 			{Method: "POST", Pattern: "/action/theme/default/like", Handler: handleLike},

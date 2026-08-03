@@ -13,6 +13,8 @@ plugins/*
 !plugins/sitemap/**
 !plugins/virtual-files/
 !plugins/virtual-files/**
+!plugins/links/
+!plugins/links/**
 themes/
 !themes/default/
 !themes/default/**
