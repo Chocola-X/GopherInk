@@ -125,6 +125,8 @@ func init() {
 			{Name: "stale_notice_days", Label: "Stale notice days", Group: "Post Display", Type: plugin.FieldNumber, Default: "30", Description: "Calculated from post modified time", Min: "1", Max: "3650", Step: "1", Required: true, ShowWhenField: "show_stale_notice", ShowWhenValue: "1", Wide: true},
 			{Name: "stale_notice_text", Label: "Stale notice text", Group: "Post Display", Type: plugin.FieldTextarea, Description: "Use {days} as placeholder for days since last modification; leave blank for default text", ShowWhenField: "show_stale_notice", ShowWhenValue: "1", Wide: true},
 			{Name: "footer_html", Label: "Footer HTML", Group: "Footer", Type: plugin.FieldTextarea, Description: "Blank shows Powered by GopherInk", Wide: true},
+			{Name: "friend_page_target", Label: "Friend link page CID or permalink", Group: "Friend Links", Type: plugin.FieldText, Description: "Supports CID, custom slug, /page/slug.html, or full page URL; numeric values are parsed as CID first; requires the links plugin"},
+			{Name: "friend_links_shuffle", Label: "Shuffle friend links", Group: "Friend Links", Type: plugin.FieldCheckbox, Default: "0", Description: "Randomize display order on each render without changing the saved order; requires the links plugin"},
 		},
 		ContentFields: []plugin.FieldSchema{
 			{

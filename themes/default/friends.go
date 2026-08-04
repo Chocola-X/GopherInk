@@ -2,18 +2,16 @@ package defaulttheme
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
+	"net/url"
+	"path"
+	"strconv"
 	"strings"
 
 	"github.com/Chocola-X/GopherInk/core/models"
 	"github.com/Chocola-X/GopherInk/core/plugin"
 	"github.com/Chocola-X/GopherInk/plugins/links"
-)
-
-const (
-	friendPageTargetKey = "friend_page_target"
-	friendShuffleKey    = "friend_links_shuffle"
-	friendLinksKey      = "friend_links"
 )
 
 type friendLinkView struct {
@@ -25,23 +23,16 @@ type friendLinkView struct {
 
 func adjustDefaultThemeData(ctx context.Context, data map[string]any) error {
 	content, ok := data["Post"].(models.Content)
+	config, _ := data["ThemeConfig"].(map[string]string)
 	if !ok || content.Type != models.ContentTypePage {
 		return nil
 	}
+	pageTarget := strings.TrimSpace(config["friend_page_target"])
+	if pageTarget == "" || !friendPageTargetMatches(content, pageTarget) {
+		return nil
+	}
 	runtime, _ := plugin.RuntimeFromContext(ctx)
-	if runtime == nil || runtime.ServiceAvailable == nil || !runtime.ServiceAvailable("links.config") {
-		return nil
-	}
-	configValue, err := runtime.CallService(ctx, "links.config")
-	if err != nil {
-		return nil
-	}
-	cfg, ok := configValue.(map[string]string)
-	if !ok {
-		return nil
-	}
-	pageTarget := strings.TrimSpace(cfg[friendPageTargetKey])
-	if pageTarget == "" || !links.FriendPageTargetMatches(content, pageTarget) {
+	if runtime == nil || runtime.ServiceAvailable == nil || !runtime.ServiceAvailable("links.list") {
 		return nil
 	}
 	listValue, err := runtime.CallService(ctx, "links.list")
@@ -61,7 +52,7 @@ func adjustDefaultThemeData(ctx context.Context, data map[string]any) error {
 			AvatarURL:   lv.AvatarURL,
 		})
 	}
-	if cfg[friendShuffleKey] == "1" {
+	if config["friend_links_shuffle"] == "1" {
 		rand.Shuffle(len(views), func(i, j int) { views[i], views[j] = views[j], views[i] })
 	}
 	data["IsFriendPage"] = true
@@ -70,19 +61,19 @@ func adjustDefaultThemeData(ctx context.Context, data map[string]any) error {
 }
 
 func friendEnrichComments(ctx context.Context, rt *plugin.Runtime, config map[string]string, comments []plugin.PublicComment) map[int64]plugin.CommentEnrichment {
-	if rt == nil || rt.ServiceAvailable == nil || !rt.ServiceAvailable("links.enrich") {
-		return nil
+	lang := "en-US"
+	if rt != nil && rt.Language != nil {
+		lang = rt.Language(ctx)
 	}
-	enrichValue, err := rt.CallService(ctx, "links.enrich")
-	if err != nil {
-		return nil
+	var emails map[string]bool
+	if rt != nil && rt.ServiceAvailable != nil && rt.ServiceAvailable("links.emails") {
+		if emailsValue, err := rt.CallService(ctx, "links.emails"); err == nil {
+			emails, _ = emailsValue.(map[string]bool)
+		}
 	}
-	enrichResult, ok := enrichValue.(links.LinksEnrichResult)
-	if !ok {
-		return nil
+	if emails == nil {
+		emails = make(map[string]bool)
 	}
-	lang := enrichResult.Lang
-	emails := enrichResult.Emails
 	enrichments := make(map[int64]plugin.CommentEnrichment)
 	for _, comment := range comments {
 		switch {
@@ -97,4 +88,52 @@ func friendEnrichComments(ctx context.Context, rt *plugin.Runtime, config map[st
 		}
 	}
 	return enrichments
+}
+
+func friendPageTargetMatches(content models.Content, value string) bool {
+	target, err := parseFriendPageTarget(value)
+	if err != nil {
+		return false
+	}
+	if target.CID > 0 {
+		return content.CID == target.CID
+	}
+	return content.Slug == target.Slug || (content.Slug == "" && strconv.FormatInt(content.SlugID, 10) == target.Slug)
+}
+
+type friendPageTarget struct {
+	CID  int64
+	Slug string
+}
+
+func parseFriendPageTarget(value string) (friendPageTarget, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return friendPageTarget{}, fmt.Errorf("enter a target page CID or permalink")
+	}
+	if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
+		return friendPageTarget{CID: id}, nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return friendPageTarget{}, fmt.Errorf("target page permalink is invalid")
+	}
+	candidate := parsed.Path
+	if candidate == "" {
+		candidate = value
+	}
+	candidate = strings.TrimSpace(candidate)
+	if strings.HasPrefix(candidate, "/") || strings.Contains(candidate, "/") {
+		cleaned := strings.Trim(path.Clean("/"+candidate), "/")
+		if !strings.HasPrefix(cleaned, "page/") {
+			return friendPageTarget{}, fmt.Errorf("permalink must point to a page under /page/")
+		}
+		candidate = strings.TrimPrefix(cleaned, "page/")
+	}
+	candidate = strings.TrimSuffix(candidate, ".html")
+	candidate, err = url.PathUnescape(candidate)
+	if err != nil || candidate == "" || strings.Contains(candidate, "/") {
+		return friendPageTarget{}, fmt.Errorf("target page permalink is invalid")
+	}
+	return friendPageTarget{Slug: candidate}, nil
 }

@@ -9,20 +9,6 @@
     <mdui-button type="button" variant="tonal" data-friend-add><mdui-icon slot="icon" name="add"></mdui-icon>{{T .Lang "Add Friend Link"}}</mdui-button>
   </div>
 
-  <fieldset class="fieldset theme-friend-options">
-    <legend>{{T .Lang "Page and Ordering"}}</legend>
-    <div class="theme-friend-page-field">
-      <mdui-text-field name="friend_page_target" label="{{T .Lang "Target page CID or permalink"}}" value="{{.PageTarget}}" required></mdui-text-field>
-      <span class="muted">{{T .Lang "Supports CID, custom slug, /page/slug.html, or full page URL; numeric values are parsed as CID first."}}</span>
-      {{if .TargetTitle}}<a class="theme-friend-target" href="{{.TargetURL}}" target="_blank" rel="noopener noreferrer"><mdui-icon name="open_in_new"></mdui-icon>{{T .Lang "Current page"}}: {{.TargetTitle}}</a>{{end}}
-      {{if .TargetNotice}}<span class="theme-friend-target-warning">{{.TargetNotice}}</span>{{end}}
-    </div>
-    <div class="schema-option-field theme-friend-shuffle-field">
-      <mdui-checkbox name="friend_links_shuffle" value="1" {{if .Shuffle}}checked{{end}}>{{T .Lang "Shuffle friend links"}}</mdui-checkbox>
-      <span class="muted">{{T .Lang "Randomize display order on each render without changing the saved order below."}}</span>
-    </div>
-  </fieldset>
-
   <div class="theme-friend-list" data-friend-list>
     {{range .Links}}
     <article class="theme-friend-card" data-friend-card>

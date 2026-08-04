@@ -5,16 +5,12 @@ import (
 	"fmt"
 	"net/mail"
 	"net/url"
-	"path"
-	"strconv"
 	"strings"
 )
 
 const (
-	friendPageTargetKey = "friend_page_target"
-	friendShuffleKey    = "friend_links_shuffle"
-	friendLinksKey      = "friend_links"
-	maxFriendLinks      = 200
+	friendLinksKey = "friend_links"
+	maxFriendLinks = 200
 )
 
 type FriendLink struct {
@@ -31,11 +27,6 @@ type FriendLinkView struct {
 	Description string
 	URL         string
 	AvatarURL   string
-}
-
-type FriendPageTarget struct {
-	CID  int64
-	Slug string
 }
 
 func DecodeFriendLinks(raw string) ([]FriendLink, error) {
@@ -123,38 +114,6 @@ func validFriendIconURL(value string) bool {
 		return err == nil && parsed.Path != ""
 	}
 	return validFriendURL(value)
-}
-
-func ParseFriendPageTarget(value string) (FriendPageTarget, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return FriendPageTarget{}, fmt.Errorf("enter a target page CID or permalink")
-	}
-	if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
-		return FriendPageTarget{CID: id}, nil
-	}
-	parsed, err := url.Parse(value)
-	if err != nil {
-		return FriendPageTarget{}, fmt.Errorf("target page permalink is invalid")
-	}
-	candidate := parsed.Path
-	if candidate == "" {
-		candidate = value
-	}
-	candidate = strings.TrimSpace(candidate)
-	if strings.HasPrefix(candidate, "/") || strings.Contains(candidate, "/") {
-		cleaned := strings.Trim(path.Clean("/"+candidate), "/")
-		if !strings.HasPrefix(cleaned, "page/") {
-			return FriendPageTarget{}, fmt.Errorf("permalink must point to a page under /page/")
-		}
-		candidate = strings.TrimPrefix(cleaned, "page/")
-	}
-	candidate = strings.TrimSuffix(candidate, ".html")
-	candidate, err = url.PathUnescape(candidate)
-	if err != nil || candidate == "" || strings.Contains(candidate, "/") {
-		return FriendPageTarget{}, fmt.Errorf("target page permalink is invalid")
-	}
-	return FriendPageTarget{Slug: candidate}, nil
 }
 
 func firstFormValue(form map[string][]string, name string) string {

@@ -3,11 +3,8 @@ package links
 import (
 	"context"
 	"html/template"
-	"math/rand"
-	"strconv"
 	"strings"
 
-	"github.com/Chocola-X/GopherInk/core/models"
 	"github.com/Chocola-X/GopherInk/core/plugin"
 )
 
@@ -20,7 +17,7 @@ func init() { plugin.Register(linksPlugin{}) }
 func (linksPlugin) Name() string    { return pluginName }
 func (linksPlugin) Version() string { return "0.1.0" }
 func (linksPlugin) Description() string {
-	return "Manage friend links and choose the standalone page that uses the friend-link template."
+	return "Manage friend link data for themes to consume."
 }
 
 func (linksPlugin) Info() plugin.PluginInfo {
@@ -28,7 +25,7 @@ func (linksPlugin) Info() plugin.PluginInfo {
 		Name:             pluginName,
 		Version:          "0.1.0",
 		Author:           "GopherInk",
-		Description:      "Manage friend links and choose the standalone page that uses the friend-link template.",
+		Description:      "Manage friend link data for themes to consume.",
 		Homepage:         "https://gopherink.nekopara.uk",
 		RequireGopherInk: "0.5.0",
 	}
@@ -43,8 +40,7 @@ func (linksPlugin) Init(m *plugin.Manager) {
 		Icon:  "link",
 	})
 	m.RegisterService("links.list", listLinksService)
-	m.RegisterService("links.config", linksConfigService)
-	m.RegisterService("links.enrich", linksEnrichService)
+	m.RegisterService("links.emails", linksEmailsService)
 }
 
 func (linksPlugin) AdminPages() []plugin.AdminPage {
@@ -53,7 +49,7 @@ func (linksPlugin) AdminPages() []plugin.AdminPage {
 		Label:       "Friend Links",
 		Icon:        "link",
 		Title:       "Friend Link Settings",
-		Description: "Manage friend links and choose the standalone page that uses the friend-link template.",
+		Description: "Manage friend link data for themes to consume.",
 	}}
 }
 
@@ -87,38 +83,16 @@ func listLinksService(ctx context.Context, rt *plugin.Runtime, args ...any) (any
 		}
 		views = append(views, view)
 	}
-	if cfg[friendShuffleKey] == "1" {
-		rand.Shuffle(len(views), func(i, j int) { views[i], views[j] = views[j], views[i] })
-	}
 	return views, nil
 }
 
-func linksConfigService(ctx context.Context, rt *plugin.Runtime, args ...any) (any, error) {
+func linksEmailsService(ctx context.Context, rt *plugin.Runtime, args ...any) (any, error) {
 	if rt == nil || rt.Config == nil {
 		return nil, plugin.ErrRuntimeUnavailable
 	}
 	cfg, err := rt.Config(ctx, pluginName)
 	if err != nil {
 		return nil, err
-	}
-	return map[string]string{
-		friendPageTargetKey: cfg[friendPageTargetKey],
-		friendShuffleKey:    cfg[friendShuffleKey],
-		friendLinksKey:      cfg[friendLinksKey],
-	}, nil
-}
-
-func linksEnrichService(ctx context.Context, rt *plugin.Runtime, args ...any) (any, error) {
-	if rt == nil || rt.Config == nil {
-		return nil, plugin.ErrRuntimeUnavailable
-	}
-	cfg, err := rt.Config(ctx, pluginName)
-	if err != nil {
-		return nil, err
-	}
-	lang := "en-US"
-	if rt.Language != nil {
-		lang = rt.Language(ctx)
 	}
 	links, _ := DecodeFriendLinks(cfg[friendLinksKey])
 	emails := make(map[string]bool, len(links))
@@ -127,26 +101,7 @@ func linksEnrichService(ctx context.Context, rt *plugin.Runtime, args ...any) (a
 			emails[email] = true
 		}
 	}
-	return LinksEnrichResult{
-		Emails: emails,
-		Lang:   lang,
-	}, nil
-}
-
-type LinksEnrichResult struct {
-	Emails map[string]bool
-	Lang   string
-}
-
-func FriendPageTargetMatches(content models.Content, value string) bool {
-	target, err := ParseFriendPageTarget(value)
-	if err != nil {
-		return false
-	}
-	if target.CID > 0 {
-		return content.CID == target.CID
-	}
-	return content.Slug == target.Slug || (content.Slug == "" && strconv.FormatInt(content.SlugID, 10) == target.Slug)
+	return emails, nil
 }
 
 var _ plugin.AdminPageProvider = linksPlugin{}
