@@ -40,5 +40,8 @@
 | 插件和主题接口 | `core/plugin/plugin.go` |
 | Markdown 和文本渲染 | `pkg/render/render.go` |
 | 图片处理 | `pkg/imageproc/imageproc.go` |
+| 国际化 | `pkg/i18n/i18n.go` |
+| SQL 标识符规整 | `pkg/safeid/safeid.go` |
+| SQL 占位符方言改写 | `pkg/sqlutil/rebind.go` |
 | 默认主题 | `themes/default/` |
 | 内置插件 | `plugins/` |

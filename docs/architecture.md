@@ -12,7 +12,7 @@ GopherInk 是一个服务端渲染的 Go CMS。程序将后台模板、后台静
 4. `core/services` 实现内容、评论、分类标签、用户和选项的业务规则。
 5. `core/models` 定义持久化结构、数据库方言及当前版本 Schema。
 6. `core/plugin` 提供构建时插件/主题注册、配置 Schema、路由、后台菜单和钩子调度。
-7. `pkg` 提供认证 Cookie、安全 HTTP 客户端、国际化、图片处理、Markdown 渲染和 Slug 工具。
+7. `pkg` 提供认证 Cookie、安全 HTTP 客户端、国际化、图片处理、Markdown 渲染、Slug 工具、SQL 标识符规整和占位符方言改写。
 
 处理器不会把 SQL 细节扩散到模板中；主题通过处理器整理后的模板数据读取内容。插件可以在业务生命周期的钩子中修改载荷或接管特定默认实现，但不能替代数据库 Schema 初始化流程。
 

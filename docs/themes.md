@@ -201,7 +201,7 @@ plugin.RegisterTheme(plugin.Theme{
 
 选项卡地址由核心生成，为 `/admin/themes/<主题名>/config?tab=<页面名>`。`ConfigPatch` 只覆盖返回的键，普通 Schema 设置保存时也会保留附加页面管理的键。回调输出属于编译进程序的可信主题代码，但仍应使用 `html/template` 渲染外部数据；不要把用户输入直接拼进 `template.HTML`。
 
-默认主题的友链功能使用这一接口，将目标独立页面、是否乱序和友链 JSON 保存在 `theme:default` 配置中，不修改内容自定义字段或核心数据库结构。目标页面支持 CID、自定义 slug、`/page/slug.html` 和完整页面 URL，且保存时必须解析为已发布独立页面。每条友链必须填写邮箱或图标 URL；显式图标优先，留空时通过统一邮箱头像接口生成。邮箱还用于匹配评论身份，不应写入公开页面。
+默认主题的友链展示使用 `AdjustData` + 命名服务模式，不再通过主题附加选项卡保存友链数据。友链数据由独立的 `links` 插件管理（位于 `plugins/links/`），主题只保留两个配置项：`friend_page_target` 指定展示友链的独立页面（支持 CID、自定义 slug、`/page/slug.html` 或完整页面 URL），`friend_links_shuffle` 控制每次渲染时是否随机打乱顺序。主题在 `AdjustData` 中通过 `rt.ServiceAvailable("links.list")` 检查插件是否启用，再调用 `rt.CallService(ctx, "links.list")` 取得友链视图列表；评论增强回调则通过 `links.emails` 服务取得友链邮箱集合，用于匹配评论者身份并显示友链好友标志。`links` 插件未启用时主题静默跳过友链相关渲染，不会报错。
 
 ## 统一邮箱头像
 
@@ -419,7 +419,7 @@ ConfigSchema: []plugin.FieldSchema{
 
 默认主题的 `enable_infinite_scroll` 配置默认关闭。启用后，浏览器接近文章列表底部时会读取分页中的下一页 URL，把返回页面的 `.article .post` 追加到当前列表，并继续观察新的下一页入口；关闭时保留常规分页和手动加载。服务端分页仍然存在，因此搜索引擎和禁用 JavaScript 的访问不会失去后续页面入口。
 
-默认主题的文章过期横幅由 `show_stale_notice` 控制，默认开启。`stale_notice_days` 默认 30，只在开关启用时显示和参与必填校验；模板根据文章最后修改时间计算是否展示横幅。
+默认主题的文章过期横幅由 `show_stale_notice` 控制，默认开启。`stale_notice_days` 默认 30，只在开关启用时显示和参与必填校验；模板根据文章最后修改时间计算是否展示横幅。`stale_notice_text` 可自定义横幅文本，支持 `{days}` 占位符（替换为距今天数），留空时使用默认翻译文本。
 
 ## 图片和相对 URL
 
@@ -552,6 +552,8 @@ Routes: []plugin.Route{{
 模板数据 `.CSRF` 是 `public` 用途的令牌。公开写入路由必须校验 CSRF、请求方法、目标内容状态和业务权限；`X-Requested-With` 只能用于区分交互方式，不能替代安全校验。主题路由处理器收到的 Runtime 已绑定当前主题，可使用字段、内容查询、语言和命名服务等通用能力。
 
 `InvalidatesPublicData` 默认为 `false`。路由会改变页面正文、URL 或公开列表时应设为 `true`；浏览量、点赞等高频计数通常保持 `false`，允许页面按 WAF 配置的 TTL 自然过期，否则每次计数都会清空全部公开页面缓存。
+
+默认主题使用这一机制实现阅读计数和点赞：注册 `POST /action/theme/default/view` 和 `POST /action/theme/default/like` 两个路由，校验 CSRF 和目标内容公开状态后，通过 `rt.IncrementContentFieldInt(ctx, cid, "views", 1)` / `rt.IncrementContentFieldInt(ctx, cid, "likes", 1)` 原子递增对应内容字段。两个字段在 `ContentFields` 中声明为只读，避免后台编辑时被覆盖；`InvalidatesPublicData` 保持 `false`，让页面缓存按 TTL 自然过期。
 
 ## 调用插件服务
 

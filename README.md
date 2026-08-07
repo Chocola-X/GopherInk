@@ -23,11 +23,12 @@
 - **图片处理** — 上传自动转 WebP（无损/有损可选）、缩略图生成、GIF 动画转 WebP
 - **安全认证** — CSRF 令牌、HMAC-SHA256 Cookie 会话、登录限速、SSRF 防护、上传安全校验、评论反垃圾与评论守卫
 - **命令行应急恢复** — 无需启动网站即可列出用户并按 ID 或用户名重置密码，重置后自动撤销该账户的现有登录会话
-- **国际化** — 中英文后台界面
+- **国际化** — 后台界面支持英语、简体中文、繁体中文、日语和西班牙语
 - **Markdown 渲染** — 基于 Goldmark，支持 GFM 扩展（表格、任务列表、删除线等）
 - **RSS/Atom 订阅** — 文章和评论的 RSS/Atom Feed
 - **Sitemap** — 内置 Sitemap 插件
 - **验证文件管理** — 内置虚拟文件插件，后台维护 Robots、SEO 和域名所有权验证文本，已有路由始终优先
+- **友链管理** — 内置 `links` 插件，后台维护友链数据并通过命名服务（`links.list`、`links.emails`）供主题消费
 - **单二进制部署** — 前后台模板与静态资源通过 `embed.FS` 嵌入，无需额外分发前端依赖文件
 
 插件优先级、接管信号，以及内容、评论、附件的生命周期和字段扩展接口见 [插件与钩子开发](docs/plugins-and-hooks.md)。架构、配置、主题、安全和兼容接口等开发说明见 [开发文档目录](docs/README.md)。
@@ -142,8 +143,7 @@ GopherInk/
 ├── cmd/gopherink/              # 程序入口
 │   ├── main.go                 # 命令分发、服务初始化和监听
 │   ├── runtime_config.go       # JSON 配置、环境变量、CLI 和首次引导
-│   ├── user_commands.go        # 用户列表和密码重置应急命令
-│   └── plugins.go              # 构建器生成空白导入时的包占位
+│   └── user_commands.go        # 用户列表和密码重置应急命令
 ├── admin/                   # 后台管理界面
 │   ├── embed.go             # embed.FS 嵌入声明
 │   ├── assets/              # 后台静态资源
@@ -180,11 +180,14 @@ GopherInk/
 ├── pkg/                     # 公共工具包
 │   ├── auth/                # HMAC-SHA256 Cookie 会话
 │   ├── httpclient/          # HTTP 客户端（重试、代理、SSRF 防护）
-│   ├── i18n/                # 核心后台中英文国际化
+│   ├── i18n/                # 核心后台多语言国际化
 │   ├── imageproc/           # 图片处理（WebP 转换、缩略图、GIF 动画）
 │   ├── render/              # Markdown/纯文本/HTML 渲染
-│   └── slug/                # URL slug 生成
+│   ├── safeid/              # SQL 标识符规整（插件表名/字段名安全化）
+│   ├── slug/                # URL slug 生成
+│   └── sqlutil/             # SQL 占位符方言改写（PostgreSQL `$n` 重绑定）
 ├── plugins/                 # 内置插件
+│   ├── links/               # 友链管理插件（数据存储 + 命名服务）
 │   ├── sitemap/             # Sitemap 生成插件
 │   └── virtual-files/       # SEO/域名验证虚拟文本文件
 ├── themes/                  # 内置主题
@@ -220,7 +223,7 @@ GopherInk/
 - **编辑草稿**：`gb_contents.draftOf` 字段实现已发布内容的修改先保存为草稿，发布时合并回原文
 - **Slug ID 映射**：`gb_contents.slugId` 字段支持 `/post/{slug}.html` 和 `/post/{id}.html` 两种 URL 格式
 - **Schema 版本**：当前数据库结构版本为 1，新安装时直接初始化最终表结构
-- **自定义字段**：`gb_fields` 表支持 str/int/float 三种值类型，插件可通过 `ContentFieldsProvider` 声明字段
+- **自定义字段**：`gb_fields` 表支持 str/int/float/json 四种值类型，插件可通过 `ContentFieldsProvider` 声明字段
 
 ### 表结构详情
 
@@ -389,6 +392,7 @@ type Plugin interface {
 | 接口 | 方法 | 说明 |
 |------|------|------|
 | `InfoProvider` | `Info() PluginInfo` | 提供详细插件信息 |
+| `Translator` | `Translate(lang, key string) string` | 后台文案翻译适配 |
 | `Activator` | `Activate(ctx, *Runtime) error` | 插件激活回调 |
 | `Deactivator` | `Deactivate(ctx, *Runtime) error` | 插件停用回调 |
 | `ConfigProvider` | `ConfigSchema() []FieldSchema` | 提供站点级配置 Schema |
@@ -403,6 +407,7 @@ type Plugin interface {
 | `AdminMenuProvider` | `AdminMenuItems(ctx) []AdminMenuItem` | 动态后台菜单 |
 | `DatabaseProvider` | `DatabaseTables() []TableDefinition` | 插件数据库表定义 |
 | `DatabaseMigrator` | `Migrate(ctx, *sql.DB, dialect, from, to) error` | 插件数据库迁移 |
+| `StaticProvider` | `PluginStatic() fs.FS` | 插件静态资源（挂载到 `/plugin/<插件名>/`） |
 
 ### 插件运行时 API
 
@@ -428,6 +433,14 @@ type Plugin interface {
 | `CommentURL(ctx, id)` | 生成带评论锚点的绝对链接 |
 | `AvatarURL(ctx, email, size)` | 根据邮箱生成头像 URL |
 | `GetSiteURL(ctx)` / `GetAdminURL(ctx)` | 读取站点和后台入口 URL |
+| `FeedURL(ctx)` / `CommentsFeedURL(ctx)` / `XMLRPCURL(ctx)` | 读取核心订阅源、评论订阅源和 XML-RPC 入口 URL |
+| `LoginURL(ctx)` / `RegisterURL(ctx)` / `LogoutURL(ctx)` / `ProfileURL(ctx)` | 读取登录、注册、登出和个人资料入口 URL |
+| `ThemeURL(ctx, name, file)` | 生成主题静态资源 URL |
+| `PluginURL(ctx, owner)` | 生成插件静态资源基址（`owner` 留空时返回当前插件自身资源基址） |
+| `PluginActive(name)` | 判断指定插件是否处于启用状态 |
+| `RenderContent(ctx, cid)` | 按前端同一渲染管线返回任意内容的 HTML |
+| `Excerpt(ctx, text, limit)` | 生成受 `content.excerpt` 钩子影响的摘要 |
+| `Language(ctx)` | 读取当前 CMS 语言设置，返回规范化语言码 |
 | `ClientIP(r)` | 按站点反向代理信任策略取得访客 IP |
 | `CurrentUser(r)` | 从当前请求读取已登录用户的精简信息 |
 | `CSRFToken(r, purpose)` / `ValidateCSRF(r, purpose)` | 为扩展路由签发或校验指定用途的 CSRF 令牌 |
@@ -440,6 +453,7 @@ type Plugin interface {
 | `CallService(ctx, name, args...)` | 调用已启用插件提供的命名服务 |
 | `NotifyAdmin(w, r, notices...)` | 写入一次性后台提示 |
 | `OpenPluginDatabase(ctx)` | 打开当前插件数据库 |
+| `PluginDataDir(ctx)` | 返回当前插件在数据目录下的私有目录 `data/extensions/<owner>/` |
 | `PluginDBDialect(ctx)` | 返回当前插件数据库方言 |
 | `DatabaseTableName(table)` | 根据当前插件名生成核心实际创建的表名 |
 | `RebindSQL(ctx, query)` | 将 `?` 占位符改写为当前插件数据库方言需要的形式 |
@@ -549,6 +563,7 @@ type Plugin interface {
 |------|------|
 | `admin.menu` | 过滤最终后台插件菜单 |
 | `request.before` | WAF 放行后、路由处理前同步调用，可观察或短路响应 |
+| `request.fallback` | 所有已注册路由和动态固定链接均未匹配时提供后备响应 |
 | `request.after` | 路由响应完成后异步通知，适合访问统计 |
 | `frontend.head` | 前台 `<head>` 注入 |
 | `frontend.footer` | 前台页脚注入 |
@@ -604,7 +619,7 @@ type Plugin interface {
 
 ### 接管默认实现
 
-搜索、内容/评论解析、上传保存、附件替换、附件删除、附件数据读取、图片处理、内容列表查询和请求短路的 payload 均包含 `Handled` 字段。插件设置 `Handled=true` 并返回完整结果后，核心不会执行默认实现。存储插件不能绕过文件大小、危险扩展名和 MIME 一致性等安全校验。
+搜索、内容/评论解析、上传保存、附件替换、附件删除、附件数据读取、图片处理、内容列表查询、请求短路和请求后备响应的 payload 均包含 `Handled` 字段。插件设置 `Handled=true` 并返回完整结果后，核心不会执行默认实现。存储插件不能绕过文件大小、危险扩展名和 MIME 一致性等安全校验。
 
 ### 主题开发
 
@@ -615,7 +630,7 @@ type Plugin interface {
 - 可选的后台主题列表封面（`Theme.Screenshot`）
 - 配置 Schema（`FieldSchema`，后台自动生成设置表单）
 - 自定义字段定义（可限定 `post`/`page` 类型）
-- 核心评论守卫协议（主题声明后由核心强制校验）
+- 核心评论守卫协议（`Capabilities.CommentGuard`，主题声明后由核心强制校验）
 - 评论增强回调（`EnrichComments`，批量生成头像标志、CSS 类和额外字段）
 - 运行时初始化回调（`InitRuntime`，前台渲染前调整运行时参数）
 - 设置页持续提示（`AdminNotices`）
@@ -623,6 +638,7 @@ type Plugin interface {
 - 配置跨字段校验（`ConfigValidator`）和保存前处理（`ConfigHandler`）
 - 模板函数（`FuncMap`）
 - 数据调整回调（`AdjustData`）
+- 前台路由（`Routes`，可声明是否使公开缓存失效）
 - 可编辑目录（`EditableDir`，允许后台编辑主题文件）
 
 ### 字段类型
@@ -640,6 +656,10 @@ type Plugin interface {
 | `number` | 数字 |
 | `color` | 颜色选择器 |
 | `image` | 图片 URL |
+| `switch` | 开关（与 `checkbox` 一样保存 `1`/`0`） |
+| `slider` | 滑块（绑定 `Min`/`Max`/`Step` 保存数值） |
+| `date` / `time` / `datetime` | 日期/时间/日期时间控件 |
+| `multiselect` / `multicheckbox` | 多选（多个选中值以换行连接，读取时用 `plugin.SplitMultiValue` 还原） |
 
 ## 默认主题
 
@@ -655,10 +675,11 @@ type Plugin interface {
 - 图片 URL 支持 `{random}` 随机占位符，可配合随机图片 API 使用
 - 侧栏组件（资料卡、最新回复、标签云）
 - 阅读时间估算
+- 阅读计数和点赞（通过主题 POST 路由 + 内容字段原子递增实现）
 - Gravatar / 自定义头像
 - 核心强制校验的 JS 评论守卫
 - 评论增强（博主和友链好友头像标志）
-- 内置友链管理（通过主题附加选项卡配置）
+- 友链展示（消费 `links` 插件提供的命名服务，支持目标页面指定和乱序）
 - 回到顶部按钮
 
 ### 主题配置项
@@ -692,6 +713,9 @@ type Plugin interface {
 | 文章显示 | `enable_infinite_scroll` | 滚动接近文章列表底部时自动加载下一页（默认关闭） |
 | | `show_stale_notice` | 显示文章过期提醒横幅 |
 | | `stale_notice_days` | 最后修改超过多少天时触发提醒（默认 30） |
+| | `stale_notice_text` | 自定义过期提醒文本（支持 `{days}` 占位符；留空使用默认翻译） |
+| 友链 | `friend_page_target` | 友链展示目标页面（CID、自定义 slug、`/page/slug.html` 或完整 URL；依赖 `links` 插件） |
+| | `friend_links_shuffle` | 每次渲染时随机打乱友链顺序（不修改保存顺序；依赖 `links` 插件） |
 | 页脚 | `footer_html` | 底部自定义 HTML |
 
 ### 内容字段
@@ -702,6 +726,8 @@ type Plugin interface {
 | `cover` | image | post, page | 封面图 URL |
 | `catalog` | select | post, page | 文章目录（显示/隐藏） |
 | `remark` | text | post, page | 无封面卡片短句 |
+| `views` | number | post, page | 阅读计数（只读，由主题 POST 路由自动维护） |
+| `likes` | number | post, page | 点赞数（只读，由主题 POST 路由自动维护） |
 
 ### 模板函数
 
@@ -711,12 +737,14 @@ type Plugin interface {
 | `themeInt(values, key, fallback)` | 获取主题配置整数值 |
 | `themeOpacity(values, key, fallback)` | 获取透明度值（0-1 钳制） |
 | `emailAvatarURL(email, size)` | 按 CMS 统一设置生成邮箱头像 URL |
-| `assetURL(value)` | 资源 URL 处理 |
+| `assetURL(value)` | 资源 URL 处理（兼容站内相对、协议相对和完整 URL） |
 | `safeHTML(value)` | 标记为安全 HTML |
-| `readingTime(text)` | 阅读时间估算（400 字/分钟） |
+| `readingTimeI18n(text)` | 阅读时间估算（按当前语言本地化输出） |
 | `daysSince(ts)` | 距今天数 |
 | `staleDays(ts, threshold)` | 是否超过阈值天数 |
+| `staleNoticeText(days)` | 生成过期提醒文本（优先使用自定义文本，支持 `{days}` 占位符） |
 | `fieldString(fields, name)` | 获取自定义字段字符串值 |
+| `fieldInt(fields, name)` | 获取自定义字段整数值 |
 
 ## WAF 安全中间件
 
@@ -975,14 +1003,17 @@ WAF 提供独立开关、分类限流、封禁、缓存、URL 索引和反向代
 
 ## 国际化
 
-核心后台界面支持中英文切换，默认语言为英文：
+核心后台界面支持多语言切换，默认语言为英文：
 
 | 语言 | 代码 |
 |------|------|
 | 英语 | `en-US`（默认） |
 | 简体中文 | `zh-CN` |
+| 繁体中文 | `zh-TW` |
+| 日语 | `ja-JP` |
+| 西班牙语 | `es-ES` |
 
-核心翻译通过 `i18n.T(lang, key)` 调用，空语言回退到 `en-US`，找不到翻译时返回 key 本身。主题和插件不使用核心翻译表；核心只通过 `Runtime.Language(ctx)`、模板 `.Lang` 和组件翻译接口告知当前语言，主题/插件是否适配、如何回落由它们自己维护。
+核心翻译通过 `i18n.T(lang, key)` 调用，空语言回退到 `en-US`，找不到翻译时返回 key 本身。新增语种只需在 `pkg/i18n/` 添加翻译 map、注册到 `messages`、在 `languageNames` 中加原生名称并扩展 `Normalize()` 识别规则，后台语言下拉框会自动显示。主题和插件不使用核心翻译表；核心只通过 `Runtime.Language(ctx)`、模板 `.Lang` 和组件翻译接口告知当前语言，主题/插件是否适配、如何回落由它们自己维护。
 
 ## 内容渲染
 
