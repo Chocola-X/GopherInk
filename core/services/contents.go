@@ -213,10 +213,8 @@ func (s *ContentService) List(ctx context.Context, q ContentQuery) ([]models.Con
 	where, args := buildContentWhere(q)
 	args = append(args, q.Limit, q.Offset)
 
-	orderBy := "c.modified DESC, c.cid DESC"
-	if q.Type == models.ContentTypePost && q.Status == models.ContentStatusPost {
-		orderBy = "c.created DESC, c.cid DESC"
-	} else if q.Type == models.ContentTypePage {
+	orderBy := "c.created DESC, c.cid DESC"
+	if q.Type == models.ContentTypePage {
 		orderBy = "c.sortOrder ASC, c.created DESC, c.cid DESC"
 	}
 

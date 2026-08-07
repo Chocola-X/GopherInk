@@ -29,7 +29,7 @@
         <th>{{T "Title"}}</th>
         <th>{{T "Status"}}</th>
         <th>{{T "Comments"}}</th>
-        <th>{{T "Modified"}}</th>
+        <th>{{T "Publish date"}}</th>
         <th></th>
       </tr>
     </thead>
@@ -43,10 +43,10 @@
         <td>
           {{contentStatus .}}
           {{if and (eq .Status "publish") (index $.DraftMap .CID)}}<span class="draft-badge">{{T "Has editing draft"}}</span>{{end}}
-          <br><span class="muted">{{date .Created}}</span>
+          <br><span class="muted">{{date .Modified}}</span>
         </td>
         <td><a href="/admin/comments?cid={{.CID}}">{{.CommentsNum}}</a></td>
-        <td>{{date .Modified}}</td>
+        <td>{{date .Created}}</td>
         <td>
           <div class="row-actions">
             {{if eq .Status "publish"}}<mdui-button-icon href="{{contentPublicURL .}}" title="{{T "View"}}"><mdui-icon name="rss_feed"></mdui-icon></mdui-button-icon>{{end}}
