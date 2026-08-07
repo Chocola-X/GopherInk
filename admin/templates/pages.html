@@ -50,6 +50,10 @@
           <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="{{T "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
           {{else}}
           <mdui-button-icon href="/admin/pages/{{.CID}}/edit" title="{{T "Edit"}}"><mdui-icon name="edit"></mdui-icon></mdui-button-icon>
+          <form method="post" action="/admin/pages/{{.CID}}/mark">
+            <input type="hidden" name="status" value="publish">
+            <mdui-button-icon type="submit" title="{{T "Restore"}}"><mdui-icon name="visibility"></mdui-icon></mdui-button-icon>
+          </form>
           <form method="post" action="/admin/pages/{{.CID}}/delete"><mdui-button-icon type="submit" title="{{T "Delete"}}"><mdui-icon name="delete"></mdui-icon></mdui-button-icon></form>
           {{end}}
         </div></td>
