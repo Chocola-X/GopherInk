@@ -185,7 +185,10 @@
           },
         });
         if (!response.ok) throw new Error(response.status === 403 ? "评论校验已失效，请重新提交。" : "评论提交失败，请稍后重试。");
-        window.location.assign(response.url || window.location.href);
+        const targetUrl = new URL(response.url || window.location.href, window.location.href);
+        targetUrl.hash = "";
+        await loadPage(targetUrl.toString(), true);
+        document.getElementById("comments")?.scrollIntoView({ block: "start" });
       } catch (error) {
         showCommentSubmitError(form, error instanceof Error ? error.message : "评论提交失败，请稍后重试。");
       } finally {
@@ -492,12 +495,12 @@
       if (!response.ok) throw new Error(response.statusText);
       const html = await response.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
+      window.scrollTo(0, 0);
       if (!replaceFromDocument(doc)) {
         window.location.href = url;
         return;
       }
       if (push) history.pushState({ pjax: true }, "", url);
-      window.scrollTo({ top: 0, behavior: "auto" });
       afterLoad();
     } catch (err) {
       window.location.href = url;
@@ -561,6 +564,7 @@
   }
 
   function bindGlobalEvents() {
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
     document.addEventListener("click", (event) => {
       const target = event.target instanceof Element ? event.target : event.target.parentElement;
       if (!target) return;
