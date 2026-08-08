@@ -1,0 +1,175 @@
+name: Build Beta
+
+on:
+  push:
+    tags:
+      - 'v*beta*'          # 匹配包含 beta 的标签，如 v1.0.0-beta.1
+
+env:
+  # 公共环境变量，供所有 job 使用
+  PLUGIN_REPOS: |
+    https://github.com/Chocola-X/GopherInk-ServerInfo
+    https://github.com/Chocola-X/GopherInk-CommentNotifier
+    https://github.com/Chocola-X/GopherInk-VistorLogger
+
+jobs:
+  # ==========================================
+  # 1. Linux (全静态，多架构)
+  # ==========================================
+  build-linux:
+    name: Linux (${{ matrix.goarch }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        goarch: [amd64, arm64, 386, arm]
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+
+      # 安装 QEMU 以支持非本机架构模拟
+      - name: Set up QEMU
+        if: matrix.goarch != 'amd64'
+        uses: docker/setup-qemu-action@v3
+
+      # 克隆插件到 plugins/ 目录
+      - name: Clone plugins
+        run: |
+          mkdir -p plugins
+          for repo in ${{ env.PLUGIN_REPOS }}; do
+            name=$(basename "$repo")
+            git clone "$repo" "plugins/$name"
+          done
+
+      # 使用 Alpine 容器进行静态编译
+      - name: Build in Alpine container
+        run: |
+          docker run --rm \
+            --platform linux/${{ matrix.goarch }} \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            golang:1.25-alpine \
+            sh -c "
+              apk add --no-cache git make gcc musl-dev &&
+              CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.goarch }} \
+              GOFLAGS='-ldflags=-linkmode=external -extldflags=-static -s -w' \
+              make build
+            "
+
+      # 打包产物（可选，便于下载时区分）
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp gopherink dist/gopherink-linux-${{ matrix.goarch }}
+          # 若希望压缩，可取消注释下面的 zip 打包
+          # cd dist && zip -r gopherink-linux-${{ matrix.goarch }}.zip gopherink-linux-${{ matrix.goarch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gopherink-linux-${{ matrix.goarch }}
+          path: dist/gopherink-linux-${{ matrix.goarch }}
+
+  # ==========================================
+  # 2. macOS (原生编译)
+  # ==========================================
+  build-darwin:
+    name: macOS (${{ matrix.goarch }})
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+
+      - name: Clone plugins
+        run: |
+          mkdir -p plugins
+          for repo in ${{ env.PLUGIN_REPOS }}; do
+            name=$(basename "$repo")
+            git clone "$repo" "plugins/$name"
+          done
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+          # macOS 不能全静态，仅精简调试信息
+          GOFLAGS: '-ldflags=-s -w'
+        run: make build
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp gopherink dist/gopherink-darwin-${{ matrix.goarch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gopherink-darwin-${{ matrix.goarch }}
+          path: dist/gopherink-darwin-${{ matrix.goarch }}
+
+  # ==========================================
+  # 3. Windows (MinGW 交叉编译)
+  # ==========================================
+  build-windows:
+    name: Windows (${{ matrix.goarch }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            cc: x86_64-w64-mingw32-gcc
+            pkg: gcc-mingw-w64-x86-64
+          - goarch: 386
+            cc: i686-w64-mingw32-gcc
+            pkg: gcc-mingw-w64-i686
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+
+      - name: Clone plugins
+        run: |
+          mkdir -p plugins
+          for repo in ${{ env.PLUGIN_REPOS }}; do
+            name=$(basename "$repo")
+            git clone "$repo" "plugins/$name"
+          done
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Install MinGW
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.pkg }}
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: windows
+          GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc }}
+          # 静态链接 Windows 运行时
+          GOFLAGS: '-ldflags=-linkmode external -extldflags -static -s -w'
+        run: make build
+
+      - name: Rename binary (add .exe)
+        run: mv gopherink gopherink.exe
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp gopherink.exe dist/gopherink-windows-${{ matrix.goarch }}.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gopherink-windows-${{ matrix.goarch }}
+          path: dist/gopherink-windows-${{ matrix.goarch }}.exe
