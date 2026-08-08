@@ -6,6 +6,185 @@ on:
       - 'v*beta*'          # 匹配包含 beta 的标签，如 v1.0.0-beta.1
 
 env:
+  # 公共环境变量，供所有 job 使用（不再用于克隆）
+  PLUGIN_REPOS: |
+    https://github.com/Chocola-X/GopherInk-ServerInfo
+    https://github.com/Chocola-X/GopherInk-CommentNotifier
+    https://github.com/Chocola-X/GopherInk-VistorLogger
+
+jobs:
+  # ==========================================
+  # 1. Linux (全静态，多架构)
+  # ==========================================
+  build-linux:
+    name: Linux (${{ matrix.goarch }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        goarch: [amd64, arm64, 386, arm]
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        if: matrix.goarch != 'amd64'
+        uses: docker/setup-qemu-action@v3
+
+      # 克隆插件到 plugins/ 目录 —— 使用硬编码循环
+      - name: Clone plugins
+        run: |
+          mkdir -p plugins
+          for repo in \
+            https://github.com/Chocola-X/GopherInk-ServerInfo \
+            https://github.com/Chocola-X/GopherInk-CommentNotifier \
+            https://github.com/Chocola-X/GopherInk-VistorLogger
+          do
+            name=$(basename "$repo")
+            git clone "$repo" "plugins/$name"
+          done
+
+      - name: Build in Alpine container
+        run: |
+          docker run --rm \
+            --platform linux/${{ matrix.goarch }} \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            golang:1.25-alpine \
+            sh -c "
+              apk add --no-cache git make gcc musl-dev &&
+              CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.goarch }} \
+              GOFLAGS='-ldflags=-linkmode=external -extldflags=-static -s -w' \
+              make build
+            "
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp gopherink dist/gopherink-linux-${{ matrix.goarch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gopherink-linux-${{ matrix.goarch }}
+          path: dist/gopherink-linux-${{ matrix.goarch }}
+
+  # ==========================================
+  # 2. macOS (原生编译)
+  # ==========================================
+  build-darwin:
+    name: macOS (${{ matrix.goarch }})
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+
+      - name: Clone plugins
+        run: |
+          mkdir -p plugins
+          for repo in \
+            https://github.com/Chocola-X/GopherInk-ServerInfo \
+            https://github.com/Chocola-X/GopherInk-CommentNotifier \
+            https://github.com/Chocola-X/GopherInk-VistorLogger
+          do
+            name=$(basename "$repo")
+            git clone "$repo" "plugins/$name"
+          done
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+          GOFLAGS: '-ldflags=-s -w'
+        run: make build
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp gopherink dist/gopherink-darwin-${{ matrix.goarch }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gopherink-darwin-${{ matrix.goarch }}
+          path: dist/gopherink-darwin-${{ matrix.goarch }}
+
+  # ==========================================
+  # 3. Windows (MinGW 交叉编译)
+  # ==========================================
+  build-windows:
+    name: Windows (${{ matrix.goarch }})
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - goarch: amd64
+            cc: x86_64-w64-mingw32-gcc
+            pkg: gcc-mingw-w64-x86-64
+          - goarch: 386
+            cc: i686-w64-mingw32-gcc
+            pkg: gcc-mingw-w64-i686
+    steps:
+      - name: Checkout main repository
+        uses: actions/checkout@v4
+
+      - name: Clone plugins
+        run: |
+          mkdir -p plugins
+          for repo in \
+            https://github.com/Chocola-X/GopherInk-ServerInfo \
+            https://github.com/Chocola-X/GopherInk-CommentNotifier \
+            https://github.com/Chocola-X/GopherInk-VistorLogger
+          do
+            name=$(basename "$repo")
+            git clone "$repo" "plugins/$name"
+          done
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Install MinGW
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.pkg }}
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: windows
+          GOARCH: ${{ matrix.goarch }}
+          CC: ${{ matrix.cc }}
+          GOFLAGS: '-ldflags=-linkmode external -extldflags -static -s -w'
+        run: make build
+
+      - name: Rename binary (add .exe)
+        run: mv gopherink gopherink.exe
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp gopherink.exe dist/gopherink-windows-${{ matrix.goarch }}.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gopherink-windows-${{ matrix.goarch }}
+          path: dist/gopherink-windows-${{ matrix.goarch }}.exename: Build Beta
+
+on:
+  push:
+    tags:
+      - 'v*beta*'          # 匹配包含 beta 的标签，如 v1.0.0-beta.1
+
+env:
   # 公共环境变量，供所有 job 使用
   PLUGIN_REPOS: |
     https://github.com/Chocola-X/GopherInk-ServerInfo
