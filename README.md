@@ -79,6 +79,75 @@ go run ./cmd/gopherink-builder -o gopherink
 
 运行 `./gopherink -help` 可查看启动参数、持久化配置、环境变量和用户应急命令的完整提示。
 
+### Nginx 反向代理与 HTTPS
+
+生产环境推荐由 Nginx 监听公网的 `80`/`443` 端口并终止 TLS，GopherInk 只通过 HTTP 监听本机回环地址。这样可以由 Nginx 负责 HTTP 到 HTTPS 跳转、证书续期和连接管理，不需要为 GopherInk 启用内置 TLS。
+
+先把 GopherInk 持久化配置为仅接受本机 Nginx 的请求，然后启动服务：
+
+```bash
+./gopherink config --host 127.0.0.1 --port 8086 --allow-cidr 127.0.0.1/32 --tls=false
+./gopherink
+```
+
+下面以 `blog.example.com` 和 Let's Encrypt 证书为例。将配置保存到 Nginx 的站点配置目录，并按实际域名和证书路径修改：
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name blog.example.com;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name blog.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/blog.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/blog.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # 应略高于后台的文件限制，为 multipart 请求体留出余量；GopherInk 默认限制为 16 MB。
+    client_max_body_size 20m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8086;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_set_header X-Forwarded-Port  $server_port;
+
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 60s;
+    }
+}
+```
+
+这里有意使用 `X-Forwarded-For $remote_addr` 覆盖客户端传入的同名请求头。单层 Nginx 直接面向公网时，不要改成 `$proxy_add_x_forwarded_for`，否则应用信任 Nginx 后，攻击者可能通过伪造转发头影响 WAF 的客户端 IP 判断。若 Nginx 前面还有可信 CDN 或负载均衡器，应先用 Nginx 的 Real IP 模块限定可信上游并还原 `$remote_addr`，再沿用上述代理头配置。
+
+启用配置前检查语法并重新加载 Nginx：
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+最后在 GopherInk 后台完成以下设置：
+
+1. 在“基本设置”中把站点 URL（`base_url`）设为 `https://blog.example.com`，并启用 Secure Cookie（`cookie_secure`）。
+2. 在“WAF -> 设置 -> 反向代理 IP 信任”中启用信任，选择白名单模式，只填写 `127.0.0.1/32`。只有 Nginx 和 GopherInk 通过 IPv6 回环通信时才需要额外填写 `::1/128`。
+3. 确认证书续期和 HTTPS 长期稳定后，可在上面的 HTTPS `server` 中增加 `add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;`。Nginx 终止 TLS 时，GopherInk 收到的是内部 HTTP 请求，后台的 HSTS 开关不会替代代理层的 HSTS 响应头。
+
+如果 Nginx 与 GopherInk 不在同一台服务器，应让 GopherInk 监听内网 IP，把 `--allow-cidr` 和 WAF 代理白名单改为 Nginx 的实际内网 IP/CIDR，并使用防火墙阻止其他来源直接访问 GopherInk 端口。更多启动配置与安全边界见 [安装与配置](docs/installation-and-configuration.md#基础-url-和反向代理) 和 [安全与 WAF](docs/security-and-waf.md)。
+
 ### 用户应急命令
 
 ```bash
