@@ -1,5 +1,5 @@
 body {
-  --admin-appbar-height: 64px;
+  --admin-appbar-height: 50px;
   --admin-sidebar-width: 16.5rem;
   --admin-card-opacity: 0.84;
   --admin-sidebar-opacity: 0.9;
@@ -53,7 +53,10 @@ body.admin-page {
 .admin-appbar {
   position: fixed;
   inset: 0 0 auto 0;
+  box-sizing: border-box;
+  align-items: center;
   height: var(--admin-appbar-height);
+  padding: 0 8px;
   z-index: 30;
   color: rgb(var(--mdui-color-on-primary-container));
   background: rgba(var(--mdui-color-primary-container), var(--admin-topbar-opacity));
@@ -63,6 +66,36 @@ body.admin-page {
 .admin-appbar mdui-button-icon,
 .admin-appbar mdui-top-app-bar-title {
   color: inherit;
+}
+
+.admin-appbar mdui-top-app-bar-title {
+  height: 40px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 20px;
+  line-height: 40px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-appbar mdui-button-icon {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+}
+
+.admin-appbar mdui-button-icon mdui-icon,
+.admin-appbar mdui-button-icon mdui-icon-web {
+  width: 24px;
+  height: 24px;
+  font-size: 24px;
+}
+
+.admin-appbar form {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  margin: 0;
 }
 
 .admin-drawer {
@@ -2026,6 +2059,10 @@ mdui-icon {
 }
 
 @media (max-width: 720px) {
+  .admin-appbar mdui-top-app-bar-title {
+    font-size: 18px;
+  }
+
   body.admin-drawer-open:not(.admin-drawer-modal) .admin-layout-main {
     left: 0;
   }

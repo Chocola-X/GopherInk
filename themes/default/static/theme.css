@@ -66,7 +66,7 @@ input {
   z-index: 3000;
   width: 0;
   height: 4px;
-  background: var(--cuckoo-accent);
+  background: rgb(var(--mdui-color-secondary-container));
   opacity: 0;
   transition: width 0.24s ease, opacity 0.24s ease;
 }
@@ -85,22 +85,30 @@ input {
   position: sticky;
   top: 0;
   z-index: 60;
-  color: rgb(var(--mdui-color-on-primary));
+  height: 50px;
+  min-height: 50px;
+  color: rgb(var(--mdui-color-on-primary-container));
   text-shadow: none;
-  background: rgba(var(--mdui-color-primary), 0.72);
+  background: rgba(var(--mdui-color-primary-container), 0.72);
+  border-bottom: 1px solid rgba(var(--mdui-color-primary), 0.18);
 }
 
 .mdui-toolbar {
   display: flex;
   align-items: center;
-  min-height: 56px;
+  height: 50px;
+  min-height: 50px;
   width: 100%;
   margin: 0 auto;
   padding: 0 8px;
 }
 
 .mdui-toolbar > * {
-  margin: 0 8px;
+  margin: 0;
+}
+
+.mdui-toolbar > :not(:last-child) {
+  margin-right: 8px;
 }
 
 .mdui-toolbar-spacer {
@@ -116,34 +124,45 @@ input {
 }
 
 .mdui-toolbar .mdui-btn-icon {
-  width: 38px;
-  min-width: 38px;
-  height: 38px;
-  color: rgb(var(--mdui-color-on-primary));
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  color: rgb(var(--mdui-color-on-primary-container));
   background: transparent;
   border-radius: 999px;
 }
 
+.mdui-toolbar .mdui-btn-icon mdui-icon,
+.mdui-toolbar .mdui-btn-icon mdui-icon-web,
+.appbar-search mdui-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 24px;
+}
+
 .mdui-toolbar .mdui-btn-icon:hover {
-  background: rgba(var(--mdui-color-on-primary), 0.16);
+  color: rgb(var(--mdui-color-on-secondary-container));
+  background: rgb(var(--mdui-color-secondary-container));
 }
 
 .appbar-title {
+  display: block;
+  height: 50px;
   overflow: hidden;
   max-width: min(42vw, 360px);
   font-size: 20px;
   font-weight: 500;
-  line-height: 56px;
+  line-height: 50px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
 .appbar-search {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 34px;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
   align-items: center;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   overflow: hidden;
   border-radius: 999px;
   background: transparent;
@@ -153,15 +172,16 @@ input {
 
 .appbar-search.is-expanded {
   width: min(34vw, 320px);
-  background: rgba(var(--mdui-color-on-primary), 0.14);
+  color: rgb(var(--mdui-color-on-secondary-container));
+  background: rgb(var(--mdui-color-secondary-container));
 }
 
 .appbar-search button {
   display: inline-grid;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   place-items: center;
-  color: rgb(var(--mdui-color-on-primary));
+  color: rgb(var(--mdui-color-on-primary-container));
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -169,14 +189,14 @@ input {
 }
 
 .appbar-search-icon {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
 }
 
 .appbar-search input {
   width: 100%;
   min-width: 0;
-  color: rgb(var(--mdui-color-on-primary));
+  color: rgb(var(--mdui-color-on-primary-container));
   border: 0;
   outline: 0;
   background: transparent;
@@ -185,7 +205,16 @@ input {
 }
 
 .appbar-search input::placeholder {
-  color: rgba(var(--mdui-color-on-primary), 0.74);
+  color: rgba(var(--mdui-color-on-primary-container), 0.74);
+}
+
+.appbar-search.is-expanded button,
+.appbar-search.is-expanded input {
+  color: rgb(var(--mdui-color-on-secondary-container));
+}
+
+.appbar-search.is-expanded input::placeholder {
+  color: rgba(var(--mdui-color-on-secondary-container), 0.74);
 }
 
 .appbar-search.is-expanded input {
@@ -324,7 +353,8 @@ html.mdui-theme-dark .drawer-divider {
 
 .drawer-list a:hover,
 .drawer-collapse summary:hover {
-  background: rgba(var(--mdui-color-primary), 0.12);
+  color: rgb(var(--mdui-color-on-secondary-container));
+  background: rgb(var(--mdui-color-secondary-container));
 }
 
 .drawer-list span,
@@ -403,7 +433,7 @@ html.mdui-theme-dark .drawer-empty {
 .drawer-bottom a:focus-visible,
 footer a:hover,
 footer a:focus-visible {
-  color: rgb(var(--mdui-color-primary));
+  color: rgb(var(--mdui-color-secondary));
 }
 
 body.mdui-theme-layout-dark .drawer-bottom,
@@ -654,7 +684,8 @@ html.mdui-theme-dark .drawer-bottom {
 }
 
 .pagination a:hover {
-  background: rgba(var(--mdui-color-primary), 0.12);
+  color: rgb(var(--mdui-color-on-secondary-container));
+  background: rgb(var(--mdui-color-secondary-container));
 }
 
 .changePage {
@@ -775,7 +806,8 @@ body[data-infinite-scroll="1"] .pagination {
 }
 
 .sidebar-list a:hover {
-  background: rgba(var(--mdui-color-primary), 0.1);
+  color: rgb(var(--mdui-color-on-secondary-container));
+  background: rgb(var(--mdui-color-secondary-container));
 }
 
 .sidebar-tag {
@@ -873,8 +905,10 @@ body[data-infinite-scroll="1"] .pagination {
   align-items: center;
   gap: 8px;
   padding: 10px 24px;
-  color: #fff;
-  background: #ef5350;
+  color: rgb(var(--mdui-color-on-tertiary-container));
+  background: rgb(var(--mdui-color-tertiary-container));
+  border-top: 1px solid rgba(var(--mdui-color-tertiary), 0.24);
+  border-bottom: 1px solid rgba(var(--mdui-color-tertiary), 0.24);
 }
 
 .post-content {
@@ -1163,15 +1197,16 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 }
 
 .post-like-btn:hover {
-  border-color: rgba(var(--mdui-color-primary), 0.5);
-  background: rgba(var(--mdui-color-primary), 0.08);
+  color: rgb(var(--mdui-color-on-secondary-container));
+  border-color: rgba(var(--mdui-color-secondary), 0.5);
+  background: rgb(var(--mdui-color-secondary-container));
   transform: translateY(-1px);
 }
 
 .post-like-btn.is-liked {
-  color: rgb(var(--mdui-color-primary));
-  border-color: rgba(var(--mdui-color-primary), 0.5);
-  background: rgba(var(--mdui-color-primary), 0.1);
+  color: rgb(var(--mdui-color-on-secondary-container));
+  border-color: rgba(var(--mdui-color-secondary), 0.5);
+  background: rgb(var(--mdui-color-secondary-container));
 }
 
 .post-like-btn mdui-icon {
@@ -1198,7 +1233,8 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   padding: 0 10px;
   overflow: hidden;
   border-radius: 5px;
-  background: rgba(var(--mdui-color-primary), 0.1);
+  color: rgb(var(--mdui-color-on-secondary-container));
+  background: rgb(var(--mdui-color-secondary-container));
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1260,8 +1296,8 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 
 .friend-link:hover .friend-link-card,
 .friend-link:focus-visible .friend-link-card {
-  border-color: rgba(var(--mdui-color-primary), 0.5);
-  background: rgba(var(--mdui-color-surface-container-high), calc(var(--cuckoo-card-opacity) + 0.12));
+  border-color: rgba(var(--mdui-color-secondary), 0.5);
+  background: rgba(var(--mdui-color-secondary-container), 0.72);
   box-shadow: 0 8px 22px rgba(var(--mdui-color-shadow), 0.18);
   transform: translateY(-2px);
 }
@@ -1529,7 +1565,8 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 
 .comment-reply:hover,
 .comment-reply:focus-visible {
-  background: rgba(var(--mdui-color-primary), 0.1);
+  color: rgb(var(--mdui-color-on-secondary-container));
+  background: rgb(var(--mdui-color-secondary-container));
 }
 
 .comment-reply-name {
@@ -1544,8 +1581,8 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 }
 
 .notice-error {
-  color: #fff;
-  background: #ef5350;
+  color: rgb(var(--mdui-color-on-error-container));
+  background: rgb(var(--mdui-color-error-container));
 }
 
 .comment-respond {
@@ -1565,9 +1602,9 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
   width: 100%;
   margin: 16px 0 2px;
   box-sizing: border-box;
-  border-top: 1px solid rgba(var(--mdui-color-primary), 0.24);
+  border-top: 1px solid rgba(var(--mdui-color-secondary), 0.24);
   border-radius: 5px;
-  background: rgba(var(--mdui-color-primary-container), calc(var(--cuckoo-card-opacity) * 0.72));
+  background: rgba(var(--mdui-color-secondary-container), calc(var(--cuckoo-card-opacity) * 0.72));
   box-shadow: none;
 }
 
@@ -1675,7 +1712,7 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 
 #toc {
   position: sticky;
-  top: 70px;
+  top: 56px;
   max-height: 500px;
   overflow: hidden;
 }
@@ -1713,9 +1750,9 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 
 .toc a.toc-link:hover,
 .toc a.toc-link.is-active-link {
-  color: rgb(var(--mdui-color-primary));
+  color: rgb(var(--mdui-color-on-secondary-container));
   font-weight: 700;
-  background: rgba(var(--mdui-color-primary), 0.1);
+  background: rgb(var(--mdui-color-secondary-container));
 }
 
 .toc .is-collapsible {
@@ -1729,7 +1766,7 @@ html.mdui-theme-dark .post-content table tr:nth-child(even) td {
 }
 
 .toc .is-active-link::before {
-  background-color: rgb(var(--mdui-color-primary));
+  background-color: rgb(var(--mdui-color-secondary));
 }
 
 body.mdui-theme-layout-dark .toc a.toc-link,
@@ -1744,9 +1781,9 @@ html.mdui-theme-dark .toc a.toc-link {
   z-index: 55;
   width: 56px;
   height: 56px;
-  color: #fff;
+  color: rgb(var(--mdui-color-on-secondary-container));
   border-radius: 50%;
-  background: var(--cuckoo-accent);
+  background: rgb(var(--mdui-color-secondary-container));
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.24);
   opacity: 0;
   transform: translateY(12px);
@@ -1823,10 +1860,6 @@ mdui-icon {
 
   .mdui-toolbar {
     padding: 0 8px;
-  }
-
-  .mdui-toolbar > * {
-    margin: 0 4px;
   }
 
   .appbar-title {
