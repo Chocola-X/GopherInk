@@ -59,12 +59,13 @@ func sqliteSchema() []string {
 			allowPing char(1) default '0',
 			allowFeed char(1) default '1',
 			parent int(10) default '0',
-			draftOf int(10) default '0'
+			draftOf int(10) NOT NULL default '0'
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_slug ON gb_contents (slug)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_slugId ON gb_contents (slugId)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_created ON gb_contents (created)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_draftOf ON gb_contents (draftOf)`,
+		`CREATE INDEX IF NOT EXISTS gb_contents_public_list ON gb_contents (type, status, draftOf, created)`,
 		`CREATE TABLE IF NOT EXISTS gb_users (
 			uid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			name varchar(32) default NULL,
@@ -97,11 +98,14 @@ func sqliteSchema() []string {
 			parent int(10) default '0'
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_metas_slug ON gb_metas (slug)`,
+		`CREATE INDEX IF NOT EXISTS gb_metas_type_slug ON gb_metas (type, slug)`,
+		`CREATE INDEX IF NOT EXISTS gb_metas_type_sort ON gb_metas (type, sortOrder)`,
 		`CREATE TABLE IF NOT EXISTS gb_relationships (
 			cid int(10) NOT NULL,
 			mid int(10) NOT NULL,
 			PRIMARY KEY (cid, mid)
 		)`,
+		`CREATE INDEX IF NOT EXISTS gb_relationships_mid_cid ON gb_relationships (mid, cid)`,
 		`CREATE TABLE IF NOT EXISTS gb_comments (
 			coid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			cid int(10) default '0',
@@ -119,6 +123,8 @@ func sqliteSchema() []string {
 			parent int(10) default '0'
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_comments_cid ON gb_comments (cid)`,
+		`CREATE INDEX IF NOT EXISTS gb_comments_cid_status_created ON gb_comments (cid, status, created)`,
+		`CREATE INDEX IF NOT EXISTS gb_comments_status_created ON gb_comments (status, created)`,
 		`CREATE TABLE IF NOT EXISTS gb_fields (
 			fid INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 			cid int(10) NOT NULL default '0',
@@ -172,12 +178,13 @@ func mysqlSchema() []string {
 			allowPing char(1) default '0',
 			allowFeed char(1) default '1',
 			parent int(10) unsigned default '0',
-			draftOf int(10) unsigned default '0',
+			draftOf int(10) unsigned NOT NULL default '0',
 			PRIMARY KEY (cid),
 			KEY gb_contents_slug (slug),
 			KEY gb_contents_slugId (slugId),
 			KEY gb_contents_created (created),
-			KEY gb_contents_draftOf (draftOf)
+			KEY gb_contents_draftOf (draftOf),
+			KEY gb_contents_public_list (type, status, draftOf, created)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS gb_users (
 			uid int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -211,12 +218,15 @@ func mysqlSchema() []string {
 			sortOrder int(10) unsigned default '0',
 			parent int(10) unsigned default '0',
 			PRIMARY KEY (mid),
-			KEY gb_metas_slug (slug)
+			KEY gb_metas_slug (slug),
+			KEY gb_metas_type_slug (type, slug),
+			KEY gb_metas_type_sort (type, sortOrder)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS gb_relationships (
 			cid int(10) unsigned NOT NULL,
 			mid int(10) unsigned NOT NULL,
-			PRIMARY KEY (cid, mid)
+			PRIMARY KEY (cid, mid),
+			KEY gb_relationships_mid_cid (mid, cid)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS gb_comments (
 			coid int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -234,7 +244,9 @@ func mysqlSchema() []string {
 			status varchar(16) default 'approved',
 			parent int(10) unsigned default '0',
 			PRIMARY KEY (coid),
-			KEY gb_comments_cid (cid)
+			KEY gb_comments_cid (cid),
+			KEY gb_comments_cid_status_created (cid, status, created),
+			KEY gb_comments_status_created (status, created)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 		`CREATE TABLE IF NOT EXISTS gb_fields (
 			fid int(10) unsigned NOT NULL AUTO_INCREMENT,
@@ -473,12 +485,13 @@ func postgresSchema() []string {
 			allowPing char(1) default '0',
 			allowFeed char(1) default '1',
 			parent bigint default 0,
-			draftOf bigint default 0
+			draftOf bigint NOT NULL default 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_slug ON gb_contents (slug)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_slugId ON gb_contents (slugId)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_created ON gb_contents (created)`,
 		`CREATE INDEX IF NOT EXISTS gb_contents_draftOf ON gb_contents (draftOf)`,
+		`CREATE INDEX IF NOT EXISTS gb_contents_public_list ON gb_contents (type, status, draftOf, created)`,
 		`CREATE TABLE IF NOT EXISTS gb_users (
 			uid bigserial PRIMARY KEY,
 			name varchar(32) default NULL,
@@ -511,11 +524,14 @@ func postgresSchema() []string {
 			parent bigint default 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_metas_slug ON gb_metas (slug)`,
+		`CREATE INDEX IF NOT EXISTS gb_metas_type_slug ON gb_metas (type, slug)`,
+		`CREATE INDEX IF NOT EXISTS gb_metas_type_sort ON gb_metas (type, sortOrder)`,
 		`CREATE TABLE IF NOT EXISTS gb_relationships (
 			cid bigint NOT NULL,
 			mid bigint NOT NULL,
 			PRIMARY KEY (cid, mid)
 		)`,
+		`CREATE INDEX IF NOT EXISTS gb_relationships_mid_cid ON gb_relationships (mid, cid)`,
 		`CREATE TABLE IF NOT EXISTS gb_comments (
 			coid bigserial PRIMARY KEY,
 			cid bigint default 0,
@@ -533,6 +549,8 @@ func postgresSchema() []string {
 			parent bigint default 0
 		)`,
 		`CREATE INDEX IF NOT EXISTS gb_comments_cid ON gb_comments (cid)`,
+		`CREATE INDEX IF NOT EXISTS gb_comments_cid_status_created ON gb_comments (cid, status, created)`,
+		`CREATE INDEX IF NOT EXISTS gb_comments_status_created ON gb_comments (status, created)`,
 		`CREATE TABLE IF NOT EXISTS gb_fields (
 			fid bigserial PRIMARY KEY,
 			cid bigint NOT NULL default 0,

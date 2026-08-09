@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"unicode"
 	"unicode/utf8"
 
@@ -35,12 +34,6 @@ type virtualFile struct {
 	Content string `json:"content"`
 }
 
-var fileCache struct {
-	sync.RWMutex
-	ready bool
-	files map[string]virtualFile
-}
-
 func init() { plugin.Register(virtualFilesPlugin{}) }
 
 func (virtualFilesPlugin) Name() string    { return pluginName }
@@ -61,6 +54,7 @@ func (virtualFilesPlugin) Info() plugin.PluginInfo {
 }
 
 func (virtualFilesPlugin) Init(m *plugin.Manager) {
+	m.RegisterPublicPathProvider(virtualFilePaths)
 	m.RegisterRuntimeHook(plugin.HookRequestFallback, serveVirtualFile)
 	m.RegisterAdminMenu(plugin.AdminMenuItem{
 		Label: "Virtual Files",
@@ -69,28 +63,20 @@ func (virtualFilesPlugin) Init(m *plugin.Manager) {
 	})
 }
 
+func virtualFilePaths(ctx context.Context, rt *plugin.Runtime) ([]string, error) {
+	files, err := runtimeFiles(ctx, rt)
+	if err != nil {
+		return nil, err
+	}
+	paths := make([]string, 0, len(files))
+	for filePath := range files {
+		paths = append(paths, filePath)
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
 func (virtualFilesPlugin) Translate(lang, key string) string { return T(lang, key) }
-
-func (virtualFilesPlugin) Activate(ctx context.Context, rt *plugin.Runtime) error {
-	values, err := rt.Config(ctx, pluginName)
-	if err != nil {
-		return err
-	}
-	files, err := filesFromConfig(values)
-	if err != nil {
-		return err
-	}
-	setFileCache(files)
-	return nil
-}
-
-func (virtualFilesPlugin) Deactivate(context.Context, *plugin.Runtime) error {
-	fileCache.Lock()
-	fileCache.ready = false
-	fileCache.files = nil
-	fileCache.Unlock()
-	return nil
-}
 
 func serveVirtualFile(ctx context.Context, rt *plugin.Runtime, value any) (any, error) {
 	payload, ok := value.(plugin.RequestPayload)
@@ -118,14 +104,6 @@ func serveVirtualFile(ctx context.Context, rt *plugin.Runtime, value any) (any, 
 }
 
 func runtimeFiles(ctx context.Context, rt *plugin.Runtime) (map[string]virtualFile, error) {
-	fileCache.RLock()
-	if fileCache.ready {
-		files := fileCache.files
-		fileCache.RUnlock()
-		return files, nil
-	}
-	fileCache.RUnlock()
-
 	if rt == nil || rt.Config == nil {
 		return nil, plugin.ErrRuntimeUnavailable
 	}
@@ -137,15 +115,7 @@ func runtimeFiles(ctx context.Context, rt *plugin.Runtime) (map[string]virtualFi
 	if err != nil {
 		return nil, err
 	}
-	setFileCache(files)
 	return fileMap(files), nil
-}
-
-func setFileCache(files []virtualFile) {
-	fileCache.Lock()
-	fileCache.ready = true
-	fileCache.files = fileMap(files)
-	fileCache.Unlock()
 }
 
 func fileMap(files []virtualFile) map[string]virtualFile {

@@ -3,10 +3,12 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log"
 	"net/http"
 	"net/netip"
+	neturl "net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -59,7 +61,6 @@ type wafConfig struct {
 	LoginFailures         int
 	LoginBan              time.Duration
 	PublicCacheMaxEntries int
-	PublicIndexMaxItems   int
 	StateMaxEntries       int
 }
 
@@ -87,6 +88,7 @@ type wafManager struct {
 	banIndex       sync.Map
 	loginBans      map[string]time.Time
 	publicIndex    map[string]struct{}
+	pluginRoutes   []plugin.Route
 	themeRoutes    []plugin.Route
 	indexLoaded    time.Time
 	cache          map[string]wafCacheEntry
@@ -103,10 +105,13 @@ type wafCounter struct {
 }
 
 type wafCacheEntry struct {
-	Status    int
-	Header    http.Header
-	Body      []byte
-	ExpiresAt time.Time
+	Status     int
+	Header     http.Header
+	Body       []byte
+	ETag       string
+	ExpiresAt  time.Time
+	StaleUntil time.Time
+	Persistent bool
 }
 
 type wafCacheFlight struct {
@@ -168,24 +173,26 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			rejectWAF(sw, http.StatusTooManyRequests)
 			return
 		}
-		wafPayload := plugin.WAFPayload{Request: r, IP: ip, Path: r.URL.Path}
-		if out, err := m.app.Plugins.ApplyActive(r.Context(), plugin.HookWAFCheck, wafPayload); err != nil {
-			m.logEventOnce(cfg, "plugin-error|"+ip, time.Minute, "plugin WAF check failed for IP %s: %v", ip, err)
-			rejectWAF(sw, http.StatusForbidden)
-			return
-		} else if nextPayload, ok := out.(plugin.WAFPayload); ok {
-			if nextPayload.Blocked {
-				reason := strings.TrimSpace(nextPayload.Reason)
-				if reason == "" {
-					reason = "plugin WAF rule"
-				}
-				m.logEventOnce(cfg, "plugin-block|"+ip+"|"+reason, time.Minute, "%s blocked IP %s", reason, ip)
+		if m.app.Plugins.HasActiveHook(plugin.HookWAFCheck) {
+			wafPayload := plugin.WAFPayload{Request: r, IP: ip, Path: r.URL.Path}
+			if out, err := m.app.Plugins.ApplyActive(r.Context(), plugin.HookWAFCheck, wafPayload); err != nil {
+				m.logEventOnce(cfg, "plugin-error|"+ip, time.Minute, "plugin WAF check failed for IP %s: %v", ip, err)
 				rejectWAF(sw, http.StatusForbidden)
 				return
-			}
-			if nextPayload.Handled {
-				next.ServeHTTP(sw, r)
-				return
+			} else if nextPayload, ok := out.(plugin.WAFPayload); ok {
+				if nextPayload.Blocked {
+					reason := strings.TrimSpace(nextPayload.Reason)
+					if reason == "" {
+						reason = "plugin WAF rule"
+					}
+					m.logEventOnce(cfg, "plugin-block|"+ip+"|"+reason, time.Minute, "%s blocked IP %s", reason, ip)
+					rejectWAF(sw, http.StatusForbidden)
+					return
+				}
+				if nextPayload.Handled {
+					next.ServeHTTP(sw, r)
+					return
+				}
 			}
 		}
 		if cfg.URLIndexEnabled && shouldCheckPublicURLIndex(r) {
@@ -200,22 +207,14 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 				}
 			}
 			if err == nil && !exists {
-				fallback, handled, fallbackErr := m.app.resolveRequestFallback(r)
-				if fallbackErr != nil {
-					m.logEventOnce(cfg, "fallback-error", time.Minute, "request fallback check failed: %v", fallbackErr)
-					rejectWAF(sw, http.StatusInternalServerError)
-					return
-				}
-				if handled {
-					exists = true
-					r = r.WithContext(context.WithValue(r.Context(), requestFallbackContextKey{}, fallback))
-				}
-			}
-			if err == nil && !exists {
-				if cfg.InvalidPathEnabled && m.recordInvalidPath(ip, cfg, now) {
-					m.logEvent(cfg, "invalid path ban triggered for IP %s on %s", ip, r.URL.Path)
-					rejectWAF(sw, http.StatusForbidden)
-					return
+				if cfg.InvalidPathEnabled {
+					if blocked, newlyBanned := m.recordInvalidPath(ip, cfg, now); blocked {
+						if newlyBanned {
+							m.logEvent(cfg, "invalid path ban triggered for IP %s on %s", ip, r.URL.Path)
+						}
+						rejectWAF(sw, http.StatusForbidden)
+						return
+					}
 				}
 				m.serveThemeNotFound(sw, r, cfg, now)
 				return
@@ -227,26 +226,23 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			}
 			return
 		}
-		if cfg.CacheEnabled && m.cacheablePublicRequest(r) {
-			key := cacheKey(r)
-			if entry, ok := m.cachedResponse(key, now); ok {
-				copyHeaders(sw.Header(), entry.Header)
-				sw.WriteHeader(entry.Status)
-				if r.Method != http.MethodHead {
-					_, _ = sw.Write(entry.Body)
-				}
+		if cacheRequest, key, cacheable := m.publicCacheRequest(r, cfg.CacheEnabled); cacheable {
+			r = cacheRequest
+			entry, fresh, exists := m.cachedResponse(key, now)
+			if fresh {
+				serveCachedResponse(sw, r, entry)
 				return
 			}
 			leader, done := m.beginCacheFlight(key)
 			if !leader {
+				if exists {
+					serveCachedResponse(sw, r, entry)
+					return
+				}
 				select {
 				case <-done:
-					if entry, ok := m.cachedResponse(key, time.Now()); ok {
-						copyHeaders(sw.Header(), entry.Header)
-						sw.WriteHeader(entry.Status)
-						if r.Method != http.MethodHead {
-							_, _ = sw.Write(entry.Body)
-						}
+					if entry, fresh, _ := m.cachedResponse(key, time.Now()); fresh {
+						serveCachedResponse(sw, r, entry)
 						return
 					}
 				case <-r.Context().Done():
@@ -263,10 +259,14 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			}
 			return
 		}
-		if cfg.AttachmentBanEnabled && isAttachmentDownloadRequest(r) && m.recordAttachmentDownload(ip, cfg, now) {
-			m.logEvent(cfg, "attachment download ban triggered for IP %s on %s", ip, r.URL.Path)
-			rejectWAF(sw, http.StatusForbidden)
-			return
+		if cfg.AttachmentBanEnabled && isAttachmentDownloadRequest(r) {
+			if blocked, newlyBanned := m.recordAttachmentDownload(ip, cfg, now); blocked {
+				if newlyBanned {
+					m.logEvent(cfg, "attachment download ban triggered for IP %s on %s", ip, r.URL.Path)
+				}
+				rejectWAF(sw, http.StatusForbidden)
+				return
+			}
 		}
 		next.ServeHTTP(sw, r)
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -276,39 +276,40 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 }
 
 func (m *wafManager) serveThemeNotFound(w http.ResponseWriter, r *http.Request, cfg wafConfig, now time.Time) {
-	if cfg.CacheEnabled {
-		if entry, ok := m.cachedResponse(themeNotFoundCacheKey, now); ok {
-			copyHeaders(w.Header(), entry.Header)
-			w.WriteHeader(entry.Status)
-			if r.Method != http.MethodHead {
-				_, _ = w.Write(entry.Body)
-			}
-			return
-		}
-		leader, done := m.beginCacheFlight(themeNotFoundCacheKey)
-		if !leader {
-			select {
-			case <-done:
-				if entry, ok := m.cachedResponse(themeNotFoundCacheKey, time.Now()); ok {
-					copyHeaders(w.Header(), entry.Header)
-					w.WriteHeader(entry.Status)
-					if r.Method != http.MethodHead {
-						_, _ = w.Write(entry.Body)
-					}
-					return
-				}
-			case <-r.Context().Done():
-			}
-			rejectWAF(w, http.StatusServiceUnavailable)
-			return
-		}
-		defer m.endCacheFlight(themeNotFoundCacheKey)
+	entry, fresh, exists := m.cachedResponse(themeNotFoundCacheKey, now)
+	if fresh {
+		serveCachedResponse(w, r, entry)
+		return
 	}
+	leader, done := m.beginCacheFlight(themeNotFoundCacheKey)
+	if !leader {
+		if exists {
+			serveCachedResponse(w, r, entry)
+			return
+		}
+		select {
+		case <-done:
+			if entry, fresh, _ := m.cachedResponse(themeNotFoundCacheKey, time.Now()); fresh {
+				serveCachedResponse(w, r, entry)
+				return
+			}
+		case <-r.Context().Done():
+		}
+		rejectWAF(w, http.StatusServiceUnavailable)
+		return
+	}
+	defer m.endCacheFlight(themeNotFoundCacheKey)
+	anonymousRequest := r.Clone(r.Context())
+	anonymousRequest.Header = r.Header.Clone()
+	anonymousRequest.Header.Del("Cookie")
+	urlCopy := *r.URL
+	urlCopy.RawQuery = ""
+	anonymousRequest.URL = &urlCopy
 	recorder := newWAFResponseRecorder(w, cfg.CacheMaxBodyBytes)
-	m.app.renderThemeNotFound(recorder, r)
+	m.app.renderThemeNotFound(recorder, anonymousRequest)
 	recorder.flush()
-	if cfg.CacheEnabled && recorder.cacheable() && recorder.status == http.StatusNotFound {
-		m.storeCachedResponse(themeNotFoundCacheKey, recorder.status, recorder.header, recorder.body.Bytes(), cfg, now)
+	if recorder.cacheable() && recorder.status == http.StatusNotFound {
+		m.storeCachedResponseWithPolicy(themeNotFoundCacheKey, recorder.status, recorder.header, recorder.body.Bytes(), cfg, now, true)
 	}
 }
 
@@ -321,31 +322,31 @@ func (m *wafManager) authenticatedAdminBackendRequest(r *http.Request) bool {
 }
 
 func (m *wafManager) extensionRouteMayHandle(r *http.Request, cachedTheme bool) (bool, bool) {
-	for _, route := range m.app.Plugins.Routes() {
-		if route.Plugin != "" && !m.app.Plugins.IsActive(route.Plugin) {
-			continue
+	if cachedTheme {
+		m.indexMu.RLock()
+		defer m.indexMu.RUnlock()
+		for _, route := range m.pluginRoutes {
+			if (route.Method == "" || route.Method == r.Method) && extensionRouteMatches(route.Pattern, r.URL.Path) {
+				return true, true
+			}
 		}
-		if route.Method != "" && route.Method != r.Method {
-			continue
+		for _, route := range m.themeRoutes {
+			if (route.Method == "" || route.Method == r.Method) && extensionRouteMatches(route.Pattern, r.URL.Path) {
+				return true, route.InvalidatesPublicData
+			}
 		}
-		if extensionRouteMatches(route.Pattern, r.URL.Path) {
+		return false, false
+	}
+	for _, route := range m.app.Plugins.ActiveRoutes() {
+		if (route.Method == "" || route.Method == r.Method) && extensionRouteMatches(route.Pattern, r.URL.Path) {
 			return true, true
 		}
 	}
-	themeRoutes := []plugin.Route(nil)
-	if cachedTheme {
-		m.indexMu.RLock()
-		themeRoutes = append(themeRoutes, m.themeRoutes...)
-		m.indexMu.RUnlock()
-	} else if theme, ok := m.app.activeTheme(r.Context()); ok {
-		themeRoutes = theme.Routes
-	}
-	for _, route := range themeRoutes {
-		if route.Method != "" && route.Method != r.Method {
-			continue
-		}
-		if extensionRouteMatches(route.Pattern, r.URL.Path) {
-			return true, route.InvalidatesPublicData
+	if theme, ok := m.app.activeTheme(r.Context()); ok {
+		for _, route := range theme.Routes {
+			if (route.Method == "" || route.Method == r.Method) && extensionRouteMatches(route.Pattern, r.URL.Path) {
+				return true, route.InvalidatesPublicData
+			}
 		}
 	}
 	return false, false
@@ -367,28 +368,37 @@ func isBackendPath(value string) bool {
 func (m *wafManager) currentConfig(ctx context.Context) wafConfig {
 	now := time.Now()
 	m.configMu.RLock()
-	if !m.configLoaded.IsZero() && now.Sub(m.configLoaded) < 5*time.Second {
-		cfg := m.config
-		m.configMu.RUnlock()
+	cfg := m.config
+	loadedAt := m.configLoaded
+	m.configMu.RUnlock()
+	if !loadedAt.IsZero() && now.Sub(loadedAt) < 5*time.Second {
 		return cfg
 	}
-	m.configMu.RUnlock()
-	m.configRefreshMu.Lock()
+	if !loadedAt.IsZero() && !m.configRefreshMu.TryLock() {
+		return cfg
+	}
+	if loadedAt.IsZero() {
+		m.configRefreshMu.Lock()
+	}
 	defer m.configRefreshMu.Unlock()
+
 	now = time.Now()
 	m.configMu.RLock()
-	if !m.configLoaded.IsZero() && now.Sub(m.configLoaded) < 5*time.Second {
-		cfg := m.config
-		m.configMu.RUnlock()
+	cfg = m.config
+	loadedAt = m.configLoaded
+	m.configMu.RUnlock()
+	if !loadedAt.IsZero() && now.Sub(loadedAt) < 5*time.Second {
 		return cfg
 	}
-	m.configMu.RUnlock()
 
 	options, err := m.app.Options.All(ctx)
+	if err != nil && !loadedAt.IsZero() {
+		return cfg
+	}
 	if err != nil {
 		options = map[string]string{}
 	}
-	cfg := wafConfig{
+	cfg = wafConfig{
 		Enabled:               optionBool(defaultString(options["waf_enabled"], "1")),
 		HSTSEnabled:           optionBool(defaultString(options["waf_hsts_enabled"], "0")),
 		TrustProxy:            loadProxyTrustConfig(options),
@@ -427,7 +437,6 @@ func (m *wafManager) currentConfig(ctx context.Context) wafConfig {
 		LoginFailures:         boundedInt(options["waf_login_failures"], 5, 1, 100000),
 		LoginBan:              durationSeconds(options["waf_login_ban_seconds"], 900),
 		PublicCacheMaxEntries: boundedInt(options["waf_cache_max_entries"], 512, 1, 100000),
-		PublicIndexMaxItems:   boundedInt(options["waf_index_max_items"], 10000, 100, 1000000),
 		StateMaxEntries:       boundedInt(options["waf_state_max_entries"], 100000, 1000, 1000000),
 	}
 
@@ -440,8 +449,24 @@ func (m *wafManager) currentConfig(ctx context.Context) wafConfig {
 
 func (m *wafManager) publicURLExists(ctx context.Context, requestPath string, cfg wafConfig, now time.Time) (bool, error) {
 	m.indexMu.RLock()
-	loaded := !m.indexLoaded.IsZero() && now.Sub(m.indexLoaded) < cfg.URLIndexTTL
+	loadedAt := m.indexLoaded
+	loaded := !loadedAt.IsZero() && now.Sub(loadedAt) < cfg.URLIndexTTL
 	m.indexMu.RUnlock()
+	if !loaded && !loadedAt.IsZero() {
+		if m.indexRefreshMu.TryLock() {
+			now = time.Now()
+			m.indexMu.RLock()
+			loaded = !m.indexLoaded.IsZero() && now.Sub(m.indexLoaded) < cfg.URLIndexTTL
+			m.indexMu.RUnlock()
+			if !loaded {
+				if err := m.refreshPublicIndex(ctx, cfg, now); err != nil {
+					m.logEventOnce(cfg, "url-index-refresh-error", time.Minute, "public URL index refresh failed: %v", err)
+				}
+			}
+			m.indexRefreshMu.Unlock()
+		}
+		loaded = true
+	}
 	if !loaded {
 		m.indexRefreshMu.Lock()
 		defer m.indexRefreshMu.Unlock()
@@ -462,6 +487,16 @@ func (m *wafManager) publicURLExists(ctx context.Context, requestPath string, cf
 	return ok, nil
 }
 
+func (m *wafManager) warmPublicIndex(ctx context.Context) {
+	cfg := m.currentConfig(ctx)
+	if !cfg.Enabled || !cfg.URLIndexEnabled {
+		return
+	}
+	if err := m.refreshPublicIndex(ctx, cfg, time.Now()); err != nil {
+		m.logEventOnce(cfg, "url-index-warmup-error", time.Minute, "public URL index warmup failed: %v", err)
+	}
+}
+
 func (m *wafManager) refreshPublicIndex(ctx context.Context, cfg wafConfig, now time.Time) error {
 	index := map[string]struct{}{}
 	add := func(value string) {
@@ -479,21 +514,26 @@ func (m *wafManager) refreshPublicIndex(ctx context.Context, cfg wafConfig, now 
 	add("/xmlrpc.php")
 	add("/action/xmlrpc")
 	add("/action/pingback")
-	for _, route := range m.app.Plugins.Routes() {
-		if route.Plugin != "" && !m.app.Plugins.IsActive(route.Plugin) {
-			continue
-		}
+	dynamicPaths, err := m.app.Plugins.ActivePublicPaths(ctx, m.app.pluginRuntime())
+	if err != nil {
+		return err
+	}
+	for _, publicPath := range dynamicPaths {
+		add(publicPath)
+	}
+	pluginRoutes := m.app.Plugins.ActiveRoutes()
+	for _, route := range pluginRoutes {
 		if route.Method == "" || route.Method == http.MethodGet {
 			add(route.Pattern)
 		}
 	}
 	themeRoutes := []plugin.Route(nil)
-	if theme, ok := m.app.activeTheme(ctx); ok {
-		themeRoutes = append(themeRoutes, theme.Routes...)
+	for _, theme := range m.app.Plugins.Themes() {
 		for _, route := range theme.Routes {
 			if route.Method == "" || route.Method == http.MethodGet {
 				add(route.Pattern)
 			}
+			themeRoutes = append(themeRoutes, route)
 		}
 	}
 	postsIndexPath := m.app.postsIndexPath(ctx)
@@ -502,23 +542,15 @@ func (m *wafManager) refreshPublicIndex(ctx context.Context, cfg wafConfig, now 
 		add(postsIndexPath + "/feed.xml")
 	}
 
-	posts, err := m.app.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: cfg.PublicIndexMaxItems})
-	if err != nil {
-		return err
-	}
-	for _, item := range posts {
-		add(m.app.contentURL(ctx, item))
-		add("/post/" + contentRouteSlug(item))
-		add("/post/" + contentRouteSlug(item) + ".html")
-	}
-	pages, err := m.app.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePage, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: cfg.PublicIndexMaxItems})
-	if err != nil {
-		return err
-	}
-	for _, item := range pages {
-		add(m.app.contentURL(ctx, item))
-		add("/page/" + contentRouteSlug(item))
-		add("/page/" + contentRouteSlug(item) + ".html")
+	for _, query := range []services.ContentQuery{
+		{Type: models.ContentTypePost, Status: models.ContentStatusPost, ExcludeFuture: true},
+		{Type: models.ContentTypePost, Status: "private"},
+		{Type: models.ContentTypePage, Status: models.ContentStatusPost, ExcludeFuture: true},
+		{Type: models.ContentTypePage, Status: "private"},
+	} {
+		if err := m.addContentRoutes(ctx, add, query); err != nil {
+			return err
+		}
 	}
 	for _, typ := range []string{"category", "tag"} {
 		metas, err := m.app.Metas.List(ctx, typ)
@@ -540,22 +572,50 @@ func (m *wafManager) refreshPublicIndex(ctx context.Context, cfg wafConfig, now 
 			add("/author/" + strconv.FormatInt(user.UID, 10))
 		}
 	}
-	archives := m.app.archiveLinks(ctx, cfg.PublicIndexMaxItems)
+	archives := m.app.archiveLinks(ctx, 0)
 	for _, archive := range archives {
 		add(archive.URL)
+		add(archivePath(archive.Year, 0, 0))
 	}
 
 	m.indexMu.Lock()
 	m.publicIndex = index
+	m.pluginRoutes = pluginRoutes
 	m.themeRoutes = themeRoutes
 	m.indexLoaded = now
 	m.indexMu.Unlock()
 	return nil
 }
 
+func (m *wafManager) addContentRoutes(ctx context.Context, add func(string), query services.ContentQuery) error {
+	const batchSize = 500
+	for offset := 0; ; offset += batchSize {
+		query.Limit = batchSize
+		query.Offset = offset
+		contents, err := m.app.Contents.List(ctx, query)
+		if err != nil {
+			return err
+		}
+		for _, item := range contents {
+			add(m.app.contentURL(ctx, item))
+			prefix := "/post/"
+			if item.Type == models.ContentTypePage {
+				prefix = "/page/"
+			}
+			add(prefix + contentRouteSlug(item))
+			add(prefix + contentRouteSlug(item) + ".html")
+		}
+		if len(contents) < batchSize {
+			return nil
+		}
+	}
+}
+
 func (m *wafManager) invalidatePublicData() {
+	m.app.invalidateThemeData()
 	m.indexMu.Lock()
 	m.publicIndex = map[string]struct{}{}
+	m.pluginRoutes = nil
 	m.themeRoutes = nil
 	m.indexLoaded = time.Time{}
 	m.indexMu.Unlock()
@@ -569,6 +629,7 @@ func (m *wafManager) invalidatePublicData() {
 }
 
 func (m *wafManager) resetRuntimeState() {
+	m.app.invalidateThemeData()
 	m.rateMu.Lock()
 	m.rates = map[string]*wafCounter{}
 	m.invalids = map[string]*wafCounter{}
@@ -585,6 +646,7 @@ func (m *wafManager) resetRuntimeState() {
 	})
 	m.indexMu.Lock()
 	m.publicIndex = map[string]struct{}{}
+	m.pluginRoutes = nil
 	m.themeRoutes = nil
 	m.indexLoaded = time.Time{}
 	m.indexMu.Unlock()
@@ -749,26 +811,52 @@ func splitLogLines(value string) []string {
 	return strings.Split(value, "\n")
 }
 
-func (m *wafManager) cachedResponse(key string, now time.Time) (wafCacheEntry, bool) {
+func (m *wafManager) cachedResponse(key string, now time.Time) (wafCacheEntry, bool, bool) {
 	m.cacheMu.RLock()
 	entry, ok := m.cache[key]
 	m.cacheMu.RUnlock()
 	if !ok {
-		return wafCacheEntry{}, false
+		return wafCacheEntry{}, false, false
 	}
-	if now.After(entry.ExpiresAt) {
-		m.cacheMu.Lock()
-		if current, exists := m.cache[key]; exists && now.After(current.ExpiresAt) {
-			m.cacheBytes -= int64(len(current.Body))
-			delete(m.cache, key)
-		}
-		m.cacheMu.Unlock()
-		return wafCacheEntry{}, false
+	if entry.Persistent {
+		return entry, true, true
 	}
-	return entry, true
+	if !now.After(entry.ExpiresAt) {
+		return entry, true, true
+	}
+	if !now.After(entry.StaleUntil) {
+		return entry, false, true
+	}
+	m.cacheMu.Lock()
+	if current, exists := m.cache[key]; exists && now.After(current.StaleUntil) {
+		m.cacheBytes -= int64(len(current.Body))
+		delete(m.cache, key)
+	}
+	m.cacheMu.Unlock()
+	return wafCacheEntry{}, false, false
+}
+
+func serveCachedResponse(w http.ResponseWriter, r *http.Request, entry wafCacheEntry) {
+	copyHeaders(w.Header(), entry.Header)
+	if entry.ETag != "" {
+		w.Header().Set("ETag", entry.ETag)
+	}
+	if entry.ETag != "" && r.Header.Get("If-None-Match") == entry.ETag {
+		w.Header().Del("Content-Length")
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.WriteHeader(entry.Status)
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(entry.Body)
+	}
 }
 
 func (m *wafManager) storeCachedResponse(key string, status int, header http.Header, body []byte, cfg wafConfig, now time.Time) {
+	m.storeCachedResponseWithPolicy(key, status, header, body, cfg, now, false)
+}
+
+func (m *wafManager) storeCachedResponseWithPolicy(key string, status int, header http.Header, body []byte, cfg wafConfig, now time.Time, persistent bool) {
 	if len(body) == 0 || len(body) > cfg.CacheMaxBodyBytes || int64(len(body)) > cfg.CacheMaxBytes {
 		return
 	}
@@ -782,6 +870,9 @@ func (m *wafManager) storeCachedResponse(key string, status int, header http.Hea
 		var oldestKey string
 		var oldest time.Time
 		for key, entry := range m.cache {
+			if entry.Persistent {
+				continue
+			}
 			if oldest.IsZero() || entry.ExpiresAt.Before(oldest) {
 				oldest = entry.ExpiresAt
 				oldestKey = key
@@ -791,11 +882,13 @@ func (m *wafManager) storeCachedResponse(key string, status int, header http.Hea
 			m.cacheBytes -= int64(len(m.cache[oldestKey].Body))
 			delete(m.cache, oldestKey)
 		} else {
-			break
+			return
 		}
 	}
 	cachedBody := append([]byte(nil), body...)
-	m.cache[key] = wafCacheEntry{Status: status, Header: cloneCacheHeaders(header), Body: cachedBody, ExpiresAt: now.Add(cfg.CacheTTL)}
+	expiresAt := now.Add(cfg.CacheTTL)
+	etag := fmt.Sprintf("\"%x\"", sha256.Sum256(cachedBody))
+	m.cache[key] = wafCacheEntry{Status: status, Header: cloneCacheHeaders(header), Body: cachedBody, ETag: etag, ExpiresAt: expiresAt, StaleUntil: expiresAt.Add(cfg.CacheTTL), Persistent: persistent}
 	m.cacheBytes += int64(len(cachedBody))
 }
 
@@ -950,18 +1043,18 @@ func (a *App) pluginWAFStats(ctx context.Context) (plugin.WAFStatistics, error) 
 	return a.WAF.stats(ctx)
 }
 
-func (m *wafManager) recordInvalidPath(ip string, cfg wafConfig, now time.Time) bool {
+func (m *wafManager) recordInvalidPath(ip string, cfg wafConfig, now time.Time) (blocked, newlyBanned bool) {
 	if !m.allowWindow(m.invalids, ip, cfg.InvalidPathWindow, cfg.InvalidPathLimit, cfg.StateMaxEntries, now) {
-		return m.activateBan(ip, cfg.InvalidPathBan, cfg.StateMaxEntries, now)
+		return true, m.activateBan(ip, cfg.InvalidPathBan, cfg.StateMaxEntries, now)
 	}
-	return false
+	return false, false
 }
 
-func (m *wafManager) recordAttachmentDownload(ip string, cfg wafConfig, now time.Time) bool {
+func (m *wafManager) recordAttachmentDownload(ip string, cfg wafConfig, now time.Time) (blocked, newlyBanned bool) {
 	if m.allowWindow(m.attachments, ip, cfg.AttachmentBanWindow, cfg.AttachmentBanLimit, cfg.StateMaxEntries, now) {
-		return false
+		return false, false
 	}
-	return m.activateBan(ip, cfg.AttachmentBan, cfg.StateMaxEntries, now)
+	return true, m.activateBan(ip, cfg.AttachmentBan, cfg.StateMaxEntries, now)
 }
 
 func (m *wafManager) activateBan(ip string, duration time.Duration, maxEntries int, now time.Time) bool {
@@ -1116,12 +1209,23 @@ func (m *wafManager) trimBanMapLocked(now time.Time, max int) {
 	}
 }
 
-func (m *wafManager) cacheablePublicRequest(r *http.Request) bool {
-	return (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
-		r.URL.RawQuery == "" &&
-		r.Header.Get("Cookie") == "" &&
-		isPublicHTMLPath(r.URL.Path) &&
-		!strings.HasPrefix(r.URL.Path, "/preview/")
+func (m *wafManager) publicCacheRequest(r *http.Request, enabled bool) (*http.Request, string, bool) {
+	if !enabled || (r.Method != http.MethodGet && r.Method != http.MethodHead) ||
+		!isPublicHTMLPath(r.URL.Path) || strings.HasPrefix(r.URL.Path, "/preview/") ||
+		m.app.hasStatefulPublicSession(r) {
+		return r, "", false
+	}
+	query, ok := normalizedPublicCacheQuery(r)
+	if !ok {
+		return r, "", false
+	}
+	clone := r.Clone(r.Context())
+	clone.Header = r.Header.Clone()
+	clone.Header.Del("Cookie")
+	urlCopy := *r.URL
+	urlCopy.RawQuery = query
+	clone.URL = &urlCopy
+	return clone, cacheKey(clone), true
 }
 
 type wafResponseRecorder struct {
@@ -1181,7 +1285,7 @@ func (r *wafResponseRecorder) Flush() {
 }
 
 func (r *wafResponseRecorder) cacheable() bool {
-	return !r.overflow && r.body.Len() > 0
+	return !r.overflow && r.body.Len() > 0 && len(r.header.Values("Set-Cookie")) == 0
 }
 
 type securityResponseWriter struct {
@@ -1268,10 +1372,34 @@ func cloneCacheHeaders(src http.Header) http.Header {
 }
 
 func cacheKey(r *http.Request) string {
-	if r.URL.RawQuery == "" {
-		return r.Method + " " + cleanIndexPath(r.URL.Path)
+	method := r.Method
+	if method == http.MethodHead {
+		method = http.MethodGet
 	}
-	return r.Method + " " + cleanIndexPath(r.URL.Path) + "?" + r.URL.RawQuery
+	if r.URL.RawQuery == "" {
+		return method + " " + cleanIndexPath(r.URL.Path)
+	}
+	return method + " " + cleanIndexPath(r.URL.Path) + "?" + r.URL.RawQuery
+}
+
+func normalizedPublicCacheQuery(r *http.Request) (string, bool) {
+	query := r.URL.Query()
+	for _, name := range []string{"password", "reply", "comment_error", "comment_ok", "comment_status", "format", "token"} {
+		if query.Has(name) {
+			return "", false
+		}
+	}
+	allowed := map[string]struct{}{"page": {}, "comments_page": {}}
+	if isSearchRequest(r) {
+		allowed["q"] = struct{}{}
+	}
+	normalized := neturl.Values{}
+	for name := range allowed {
+		for _, value := range query[name] {
+			normalized.Add(name, value)
+		}
+	}
+	return normalized.Encode(), true
 }
 
 func cleanIndexPath(value string) string {
@@ -1289,9 +1417,6 @@ func shouldCheckPublicURLIndex(r *http.Request) bool {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		return false
 	}
-	if r.Header.Get("Cookie") != "" {
-		return false
-	}
 	if !isPublicHTMLPath(r.URL.Path) {
 		return false
 	}
@@ -1299,9 +1424,6 @@ func shouldCheckPublicURLIndex(r *http.Request) bool {
 		return false
 	}
 	if strings.HasPrefix(r.URL.Path, "/search") {
-		return false
-	}
-	if looksArchivePath(r.URL.Path) {
 		return false
 	}
 	return true
@@ -1349,18 +1471,6 @@ func isXMLRPCRequest(r *http.Request) bool {
 	default:
 		return false
 	}
-}
-
-func looksArchivePath(value string) bool {
-	parts := strings.Split(strings.Trim(value, "/"), "/")
-	if len(parts) == 0 || len(parts[0]) != 4 {
-		return false
-	}
-	year, err := strconv.Atoi(parts[0])
-	if err != nil || year < 1970 {
-		return false
-	}
-	return true
 }
 
 func durationSeconds(value string, fallback int) time.Duration {

@@ -35,7 +35,6 @@ func (virtualFilesPlugin) RenderAdminPage(ctx context.Context, rt *plugin.Runtim
 	if err != nil {
 		return "", err
 	}
-	setFileCache(files)
 	var output bytes.Buffer
 	if err := virtualFilesTemplate.Execute(&output, virtualFilesPageData{CSRF: rc.CSRF, Lang: lang, Files: files}); err != nil {
 		return "", fmt.Errorf("render virtual files: %w", err)
@@ -120,7 +119,6 @@ func (virtualFilesPlugin) HandleAdminPageAction(ctx context.Context, rt *plugin.
 	if err != nil {
 		return plugin.AdminPageActionResult{}, errors.New(T(lang, err.Error()))
 	}
-	setFileCache(files)
 	message := "Virtual file saved."
 	if action == "delete" {
 		message = "Virtual file deleted."

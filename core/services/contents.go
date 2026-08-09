@@ -121,7 +121,7 @@ func (s *ContentService) ArchiveMonths(ctx context.Context, loc *time.Location, 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT created
 		FROM gb_contents
-		WHERE type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0
+		WHERE type = ? AND status = ? AND created <= ? AND draftOf = 0
 		ORDER BY created DESC
 	`, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix())
 	if err != nil {
@@ -220,7 +220,7 @@ func (s *ContentService) List(ctx context.Context, q ContentQuery) ([]models.Con
 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT c.cid, c.title, c.slug, COALESCE(c.slugId,0), c.created, c.modified, c.text, c.sortOrder, c.authorId, COALESCE(c.template,''), c.type, c.status,
-			COALESCE(c.password,''), c.commentsNum, c.allowComment, c.allowPing, c.allowFeed, c.parent, COALESCE(c.draftOf,0)
+			COALESCE(c.password,''), c.commentsNum, c.allowComment, c.allowPing, c.allowFeed, c.parent, c.draftOf
 		FROM gb_contents c
 		WHERE `+strings.Join(where, " AND ")+`
 		ORDER BY `+orderBy+`
@@ -235,7 +235,7 @@ func (s *ContentService) List(ctx context.Context, q ContentQuery) ([]models.Con
 
 func (s *ContentService) Count(ctx context.Context) (int64, error) {
 	var count int64
-	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_contents WHERE type = ? AND status = ? AND COALESCE(draftOf, 0) = 0`, models.ContentTypePost, models.ContentStatusPost).Scan(&count)
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM gb_contents WHERE type = ? AND status = ? AND draftOf = 0`, models.ContentTypePost, models.ContentStatusPost).Scan(&count)
 	return count, err
 }
 
@@ -252,8 +252,8 @@ func (s *ContentService) Stats(ctx context.Context) (models.Stats, error) {
 		sql string
 		dst *int64
 	}{
-		{`SELECT COUNT(*) FROM gb_contents WHERE type = 'post' AND status = 'publish' AND COALESCE(draftOf, 0) = 0`, &stats.Posts},
-		{`SELECT COUNT(*) FROM gb_contents WHERE type = 'page' AND status = 'publish' AND COALESCE(draftOf, 0) = 0`, &stats.Pages},
+		{`SELECT COUNT(*) FROM gb_contents WHERE type = 'post' AND status = 'publish' AND draftOf = 0`, &stats.Posts},
+		{`SELECT COUNT(*) FROM gb_contents WHERE type = 'page' AND status = 'publish' AND draftOf = 0`, &stats.Pages},
 		{`SELECT COUNT(*) FROM gb_comments`, &stats.Comments},
 		{`SELECT COUNT(*) FROM gb_metas WHERE type = 'category'`, &stats.Categories},
 		{`SELECT COUNT(*) FROM gb_metas WHERE type = 'tag'`, &stats.Tags},
@@ -269,25 +269,25 @@ func (s *ContentService) Stats(ctx context.Context) (models.Stats, error) {
 }
 
 func (s *ContentService) BySlug(ctx context.Context, postSlug string) (models.Content, error) {
-	if c, err := s.one(ctx, `WHERE slug = ? AND slug <> '' AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, postSlug, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix()); err == nil {
+	if c, err := s.one(ctx, `WHERE slug = ? AND slug <> '' AND type = ? AND status = ? AND created <= ? AND draftOf = 0`, postSlug, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix()); err == nil {
 		return c, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return models.Content{}, err
 	}
 	if slugID, err := strconv.ParseInt(postSlug, 10, 64); err == nil && slugID > 0 {
-		return s.one(ctx, `WHERE slugId = ? AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, slugID, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix())
+		return s.one(ctx, `WHERE slugId = ? AND type = ? AND status = ? AND created <= ? AND draftOf = 0`, slugID, models.ContentTypePost, models.ContentStatusPost, time.Now().Unix())
 	}
 	return models.Content{}, sql.ErrNoRows
 }
 
 func (s *ContentService) PageBySlug(ctx context.Context, pageSlug string) (models.Content, error) {
-	if c, err := s.one(ctx, `WHERE slug = ? AND slug <> '' AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, pageSlug, models.ContentTypePage, models.ContentStatusPost, time.Now().Unix()); err == nil {
+	if c, err := s.one(ctx, `WHERE slug = ? AND slug <> '' AND type = ? AND status = ? AND created <= ? AND draftOf = 0`, pageSlug, models.ContentTypePage, models.ContentStatusPost, time.Now().Unix()); err == nil {
 		return c, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return models.Content{}, err
 	}
 	if slugID, err := strconv.ParseInt(pageSlug, 10, 64); err == nil && slugID > 0 {
-		return s.one(ctx, `WHERE slugId = ? AND type = ? AND status = ? AND created <= ? AND COALESCE(draftOf, 0) = 0`, slugID, models.ContentTypePage, models.ContentStatusPost, time.Now().Unix())
+		return s.one(ctx, `WHERE slugId = ? AND type = ? AND status = ? AND created <= ? AND draftOf = 0`, slugID, models.ContentTypePage, models.ContentStatusPost, time.Now().Unix())
 	}
 	return models.Content{}, sql.ErrNoRows
 }
@@ -296,13 +296,13 @@ func (s *ContentService) PrivateBySlugForAuthor(ctx context.Context, contentSlug
 	if authorID <= 0 || (typ != models.ContentTypePost && typ != models.ContentTypePage) {
 		return models.Content{}, sql.ErrNoRows
 	}
-	if content, err := s.one(ctx, `WHERE slug = ? AND slug <> '' AND type = ? AND status = 'private' AND authorId = ? AND COALESCE(draftOf, 0) = 0`, contentSlug, typ, authorID); err == nil {
+	if content, err := s.one(ctx, `WHERE slug = ? AND slug <> '' AND type = ? AND status = 'private' AND authorId = ? AND draftOf = 0`, contentSlug, typ, authorID); err == nil {
 		return content, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return models.Content{}, err
 	}
 	if slugID, err := strconv.ParseInt(contentSlug, 10, 64); err == nil && slugID > 0 {
-		return s.one(ctx, `WHERE slugId = ? AND type = ? AND status = 'private' AND authorId = ? AND COALESCE(draftOf, 0) = 0`, slugID, typ, authorID)
+		return s.one(ctx, `WHERE slugId = ? AND type = ? AND status = 'private' AND authorId = ? AND draftOf = 0`, slugID, typ, authorID)
 	}
 	return models.Content{}, sql.ErrNoRows
 }
@@ -1283,11 +1283,11 @@ func (s *ContentService) RestoreRevision(ctx context.Context, cid, rid int64) (i
 
 func (s *ContentService) Adjacent(ctx context.Context, c models.Content) (prev, next models.Content, err error) {
 	now := time.Now().Unix()
-	prev, prevErr := s.one(ctx, `WHERE type = ? AND status = ? AND created < ? AND created <= ? AND COALESCE(draftOf, 0) = 0 ORDER BY created DESC`, c.Type, models.ContentStatusPost, c.Created, now)
+	prev, prevErr := s.one(ctx, `WHERE type = ? AND status = ? AND created < ? AND created <= ? AND draftOf = 0 ORDER BY created DESC`, c.Type, models.ContentStatusPost, c.Created, now)
 	if prevErr != nil && !errors.Is(prevErr, sql.ErrNoRows) {
 		return models.Content{}, models.Content{}, prevErr
 	}
-	next, nextErr := s.one(ctx, `WHERE type = ? AND status = ? AND created > ? AND created <= ? AND COALESCE(draftOf, 0) = 0 ORDER BY created ASC`, c.Type, models.ContentStatusPost, c.Created, now)
+	next, nextErr := s.one(ctx, `WHERE type = ? AND status = ? AND created > ? AND created <= ? AND draftOf = 0 ORDER BY created ASC`, c.Type, models.ContentStatusPost, c.Created, now)
 	if nextErr != nil && !errors.Is(nextErr, sql.ErrNoRows) {
 		return models.Content{}, models.Content{}, nextErr
 	}
@@ -1297,7 +1297,7 @@ func (s *ContentService) Adjacent(ctx context.Context, c models.Content) (prev, 
 func (s *ContentService) one(ctx context.Context, where string, args ...any) (models.Content, error) {
 	query := `
 		SELECT cid, title, slug, COALESCE(slugId,0), created, modified, text, sortOrder, authorId, COALESCE(template,''), type, status,
-			COALESCE(password,''), commentsNum, allowComment, allowPing, allowFeed, parent, COALESCE(draftOf,0)
+			COALESCE(password,''), commentsNum, allowComment, allowPing, allowFeed, parent, draftOf
 		FROM gb_contents ` + where + ` LIMIT 1`
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -1328,7 +1328,7 @@ func buildContentWhere(q ContentQuery) ([]string, []any) {
 		args = append(args, q.Type)
 	}
 	if !q.IncludeDrafts {
-		where = append(where, "COALESCE(c.draftOf, 0) = 0")
+		where = append(where, "c.draftOf = 0")
 	}
 	if q.CID > 0 {
 		where = append(where, "c.cid = ?")
@@ -1457,7 +1457,7 @@ func (s *ContentService) cleanupMetasTx(ctx context.Context, db execer, ids []in
 	_, err := db.ExecContext(ctx, `
 		UPDATE gb_metas SET count = (
 			SELECT COUNT(*) FROM gb_relationships r JOIN gb_contents c ON c.cid = r.cid
-			WHERE r.mid = gb_metas.mid AND c.type = 'post' AND c.status = 'publish' AND COALESCE(c.draftOf, 0) = 0
+			WHERE r.mid = gb_metas.mid AND c.type = 'post' AND c.status = 'publish' AND c.draftOf = 0
 		) WHERE mid IN (`+inClause+`)
 	`, args...)
 	return err
@@ -1607,7 +1607,7 @@ func (s *ContentService) allocateSlugID(ctx context.Context, typ string, exceptI
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT COALESCE(slug,''), COALESCE(slugId,0)
 		FROM gb_contents
-		WHERE type = ? AND COALESCE(draftOf, 0) = 0 AND cid <> ?
+		WHERE type = ? AND draftOf = 0 AND cid <> ?
 	`, typ, exceptID)
 	if err != nil {
 		return 0, err
@@ -1654,7 +1654,7 @@ func (s *ContentService) slugIDFloor(ctx context.Context, typ string) (int64, er
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT MAX(COALESCE(slugId,0))
 		FROM gb_contents
-		WHERE type = ? AND status = ? AND COALESCE(draftOf, 0) = 0
+		WHERE type = ? AND status = ? AND draftOf = 0
 	`, typ, models.ContentStatusPost).Scan(&maxPublished); err != nil {
 		return 0, err
 	}
@@ -1687,7 +1687,7 @@ func (s *ContentService) setSlugIDFloor(ctx context.Context, typ string, next in
 
 func (s *ContentService) slugCandidateTaken(ctx context.Context, candidate, typ string, exceptID int64) (bool, error) {
 	var id int64
-	err := s.db.QueryRowContext(ctx, `SELECT cid FROM gb_contents WHERE slug = ? AND slug <> '' AND type = ? AND COALESCE(draftOf, 0) = 0 AND cid <> ? LIMIT 1`, candidate, typ, exceptID).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `SELECT cid FROM gb_contents WHERE slug = ? AND slug <> '' AND type = ? AND draftOf = 0 AND cid <> ? LIMIT 1`, candidate, typ, exceptID).Scan(&id)
 	if err == nil {
 		return true, nil
 	}
@@ -1696,7 +1696,7 @@ func (s *ContentService) slugCandidateTaken(ctx context.Context, candidate, typ 
 	}
 	if needsSlugID(typ) {
 		if slugID, parseErr := strconv.ParseInt(candidate, 10, 64); parseErr == nil && slugID > 0 {
-			err = s.db.QueryRowContext(ctx, `SELECT cid FROM gb_contents WHERE slugId = ? AND type = ? AND COALESCE(draftOf, 0) = 0 AND cid <> ? LIMIT 1`, slugID, typ, exceptID).Scan(&id)
+			err = s.db.QueryRowContext(ctx, `SELECT cid FROM gb_contents WHERE slugId = ? AND type = ? AND draftOf = 0 AND cid <> ? LIMIT 1`, slugID, typ, exceptID).Scan(&id)
 			if err == nil {
 				return true, nil
 			}

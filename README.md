@@ -126,6 +126,10 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/blog.example.com/privkey.pem;
     ssl_protocols TLSv1.2 TLSv1.3;
 
+    gzip on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json application/xml image/svg+xml;
+
     # 应略高于后台的文件限制，为 multipart 请求体留出余量；GopherInk 默认限制为 16 MB。
     client_max_body_size 20m;
 
@@ -884,6 +888,8 @@ GopherInk 内置 Web 应用防火墙（WAF），提供多层安全防护。已�
 
 WAF 内置公开页面缓存，默认开启：
 
+缓存到期回源期间会继续向并发访客提供上一份缓存，宽限期为一个 TTL；内容写入主动失效时不会使用旧缓存。无关查询参数和无效 Cookie 不会绕过匿名缓存，GET/HEAD 共享缓存项，缓存响应支持 ETag/304。主题模板解析结果和公共侧栏数据也会在进程内复用，并随公开内容写入统一失效。
+
 | 配置 | 默认值 | 说明 |
 |------|--------|------|
 | `waf_cache_enabled` | 1 | 缓存开关 |
@@ -894,13 +900,12 @@ WAF 内置公开页面缓存，默认开启：
 
 ### URL 索引
 
-WAF 维护公开 URL 索引，不存在的路径会被记录为无效路径，超过阈值后触发 IP 封禁。
+WAF 维护完整的公开 URL 索引，不存在的路径会被记录为无效路径，超过阈值后触发 IP 封禁。索引正常到期时由一个请求刷新，其他请求继续使用旧快照，避免并发请求等待数据库查询。插件运行时生成的路径必须通过 `RegisterPublicPathProvider` 集中登记，未登记的随机路径不会触发插件 fallback 查询。
 
 | 配置 | 默认值 | 说明 |
 |------|--------|------|
 | `waf_url_index_enabled` | 1 | URL 索引开关 |
 | `waf_url_index_ttl` | 60 | 索引 TTL（秒） |
-| `waf_index_max_items` | 10000 | 最大索引条目 |
 
 ### WAF 日志
 
@@ -1062,7 +1067,6 @@ WAF 提供独立开关、分类限流、封禁、缓存、URL 索引和反向代
 | `waf_cache_max_entries` | 512 | 最大缓存条目 |
 | `waf_url_index_enabled` | 1 | URL 索引开关 |
 | `waf_url_index_ttl` | 60 | 索引 TTL（秒） |
-| `waf_index_max_items` | 10000 | 最大索引条目 |
 | `waf_dynamic_rate_enabled` | 1 | 动态请求限流开关 |
 | `waf_dynamic_rate_window` / `waf_dynamic_rate_limit` | 60 / 300 | 动态请求窗口/次数 |
 | `waf_static_rate_enabled` | 1 | 静态请求限流开关 |

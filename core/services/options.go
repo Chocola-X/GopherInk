@@ -6,16 +6,31 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"sync"
 
 	"github.com/Chocola-X/GopherInk/core/models"
 )
 
 type OptionService struct {
-	db DB
+	db      DB
+	allMu   sync.Mutex
+	cacheMu sync.RWMutex
+	cache   map[optionCacheKey]string
+	known   map[optionCacheKey]struct{}
+	allRead bool
+}
+
+type optionCacheKey struct {
+	name   string
+	userID int64
 }
 
 func NewOptionService(db DB) *OptionService {
-	return &OptionService{db: db}
+	return &OptionService{
+		db:    db,
+		cache: make(map[optionCacheKey]string),
+		known: make(map[optionCacheKey]struct{}),
+	}
 }
 
 func (s *OptionService) Get(ctx context.Context, name string) (string, error) {
@@ -23,6 +38,16 @@ func (s *OptionService) Get(ctx context.Context, name string) (string, error) {
 }
 
 func (s *OptionService) GetForUser(ctx context.Context, name string, userID int64) (string, error) {
+	key := optionCacheKey{name: name, userID: userID}
+	if value, ok := s.cachedOption(key); ok {
+		return value, nil
+	}
+	s.allMu.Lock()
+	defer s.allMu.Unlock()
+	if value, ok := s.cachedOption(key); ok {
+		return value, nil
+	}
+
 	var value string
 	userColumn := "user"
 	if s.db.Dialect() == models.DialectPostgres {
@@ -30,9 +55,14 @@ func (s *OptionService) GetForUser(ctx context.Context, name string, userID int6
 	}
 	err := s.db.QueryRowContext(ctx, `SELECT value FROM gb_options WHERE name = ? AND `+userColumn+` = ?`, name, userID).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
+		s.storeCached(key, "")
 		return "", nil
 	}
-	return value, err
+	if err != nil {
+		return "", err
+	}
+	s.storeCached(key, value)
+	return value, nil
 }
 
 func (s *OptionService) Set(ctx context.Context, name, value string) error {
@@ -40,8 +70,13 @@ func (s *OptionService) Set(ctx context.Context, name, value string) error {
 }
 
 func (s *OptionService) SetForUser(ctx context.Context, name, value string, userID int64) error {
+	s.allMu.Lock()
+	defer s.allMu.Unlock()
 	ctx = WithWriter(ctx)
 	_, err := s.db.ExecContext(ctx, models.UpsertOptionSQL(s.db.Dialect()), name, userID, value)
+	if err == nil {
+		s.storeCached(optionCacheKey{name: name, userID: userID}, value)
+	}
 	return err
 }
 
@@ -128,7 +163,6 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 		"waf_cache_max_entries":         "512",
 		"waf_cache_max_body_kb":         "512",
 		"waf_cache_max_memory_mb":       "32",
-		"waf_index_max_items":           "10000",
 		"waf_dynamic_rate_enabled":      "1",
 		"waf_dynamic_rate_window":       "60",
 		"waf_dynamic_rate_limit":        "300",
@@ -191,6 +225,15 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 }
 
 func (s *OptionService) All(ctx context.Context) (map[string]string, error) {
+	if options, ok := s.cachedAll(); ok {
+		return options, nil
+	}
+	s.allMu.Lock()
+	defer s.allMu.Unlock()
+	if options, ok := s.cachedAll(); ok {
+		return options, nil
+	}
+
 	userColumn := "user"
 	if s.db.Dialect() == models.DialectPostgres {
 		userColumn = `"user"`
@@ -209,7 +252,65 @@ func (s *OptionService) All(ctx context.Context) (map[string]string, error) {
 		}
 		options[key] = value
 	}
-	return options, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	s.cacheMu.Lock()
+	for key := range s.known {
+		if key.userID == 0 {
+			delete(s.known, key)
+			delete(s.cache, key)
+		}
+	}
+	for name, value := range options {
+		key := optionCacheKey{name: name}
+		s.known[key] = struct{}{}
+		s.cache[key] = value
+	}
+	s.allRead = true
+	s.cacheMu.Unlock()
+	return cloneStringMap(options), nil
+}
+
+func (s *OptionService) cachedAll() (map[string]string, bool) {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+	if !s.allRead {
+		return nil, false
+	}
+	options := make(map[string]string)
+	for key, value := range s.cache {
+		if key.userID == 0 {
+			options[key.name] = value
+		}
+	}
+	return options, true
+}
+
+func (s *OptionService) cachedOption(key optionCacheKey) (string, bool) {
+	s.cacheMu.RLock()
+	defer s.cacheMu.RUnlock()
+	value := s.cache[key]
+	_, known := s.known[key]
+	if known || (key.userID == 0 && s.allRead) {
+		return value, true
+	}
+	return "", false
+}
+
+func (s *OptionService) storeCached(key optionCacheKey, value string) {
+	s.cacheMu.Lock()
+	s.cache[key] = value
+	s.known[key] = struct{}{}
+	s.cacheMu.Unlock()
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	clone := make(map[string]string, len(values))
+	for key, value := range values {
+		clone[key] = value
+	}
+	return clone
 }
 
 func randomHex(n int) (string, error) {

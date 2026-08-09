@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"path"
 	"runtime/debug"
 	"sort"
 	"strings"
@@ -502,6 +503,11 @@ func (r *Runtime) GetAdminURL(ctx context.Context) string {
 }
 
 type RouteHandler func(*Runtime, http.ResponseWriter, *http.Request)
+
+// PublicPathProvider returns exact public paths owned by a plugin whose paths
+// are determined from runtime configuration. The core calls providers only
+// while rebuilding its public route snapshot, never for each unknown request.
+type PublicPathProvider func(context.Context, *Runtime) ([]string, error)
 
 // ServiceFunc exposes one named capability to other active plugins and themes.
 // Structured return values remain subject to html/template escaping in themes.
@@ -1339,6 +1345,7 @@ type Manager struct {
 	hooks         map[string][]ownedHook
 	services      map[string]ownedService
 	routes        []ownedRoute
+	publicPaths   []ownedPublicPathProvider
 	adminMenus    []ownedAdminMenu
 	themes        map[string]Theme
 	activePlugins map[string]bool
@@ -1429,10 +1436,15 @@ func (m *Manager) ApplyActive(ctx context.Context, name string, payload any) (an
 
 func (m *Manager) DispatchActive(ctx context.Context, name string, payload any) (HookDispatch, error) {
 	m.mu.RLock()
-	hooks := append([]ownedHook(nil), m.hooks[name]...)
-	active := copyBoolMap(m.activePlugins)
+	registered := m.hooks[name]
+	hooks := make([]ownedHook, 0, len(registered))
+	for _, hook := range registered {
+		if hook.Plugin == "" || m.activePlugins[hook.Plugin] {
+			hooks = append(hooks, hook)
+		}
+	}
 	m.mu.RUnlock()
-	return dispatchHooks(ctx, hooks, active, payload)
+	return dispatchHooks(ctx, hooks, nil, payload)
 }
 
 func (m *Manager) HasActiveHook(name string) bool {
@@ -1495,6 +1507,59 @@ func (m *Manager) RegisterRoute(method, pattern string, handler RouteHandler) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.routes = append(m.routes, ownedRoute{Plugin: m.registering, Route: Route{Method: method, Pattern: pattern, Handler: handler}})
+}
+
+// RegisterPublicPathProvider registers runtime-configured exact public paths.
+// The handler for those paths can be implemented by a registered route or by
+// HookRequestFallback after the WAF route snapshot has accepted the path.
+func (m *Manager) RegisterPublicPathProvider(provider PublicPathProvider) {
+	if provider == nil {
+		panic("plugin: public path provider must not be nil")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.registering == "" {
+		panic("plugin: RegisterPublicPathProvider must be called from Plugin.Init")
+	}
+	m.publicPaths = append(m.publicPaths, ownedPublicPathProvider{Plugin: m.registering, Provider: provider})
+}
+
+// ActivePublicPaths collects configured paths from active plugins. Providers
+// execute outside the manager lock so they can safely use Runtime services.
+func (m *Manager) ActivePublicPaths(ctx context.Context, runtime *Runtime) ([]string, error) {
+	m.mu.RLock()
+	providers := make([]ownedPublicPathProvider, 0, len(m.publicPaths))
+	for _, provider := range m.publicPaths {
+		if m.activePlugins[provider.Plugin] {
+			providers = append(providers, provider)
+		}
+	}
+	m.mu.RUnlock()
+
+	var paths []string
+	for _, provider := range providers {
+		if runtime == nil {
+			return nil, ErrRuntimeUnavailable
+		}
+		ownerRuntime := runtime.WithOwner(provider.Plugin)
+		registered, err := provider.Provider(ContextWithRuntime(ctx, ownerRuntime), ownerRuntime)
+		if err != nil {
+			return nil, fmt.Errorf("plugin %s public paths: %w", provider.Plugin, err)
+		}
+		for _, publicPath := range registered {
+			publicPath = strings.TrimSpace(publicPath)
+			if publicPath == "" {
+				continue
+			}
+			clean := path.Clean(publicPath)
+			if !strings.HasPrefix(publicPath, "/") || strings.ContainsAny(publicPath, "?#\\") ||
+				(clean != publicPath && clean+"/" != publicPath) {
+				return nil, fmt.Errorf("plugin %s public path %q is not a canonical absolute path", provider.Plugin, publicPath)
+			}
+			paths = append(paths, publicPath)
+		}
+	}
+	return paths, nil
 }
 
 func (m *Manager) RegisterAdminMenu(item AdminMenuItem) {
@@ -1651,6 +1716,11 @@ type ownedService struct {
 type ownedRoute struct {
 	Plugin string
 	Route  Route
+}
+
+type ownedPublicPathProvider struct {
+	Plugin   string
+	Provider PublicPathProvider
 }
 
 type ownedAdminMenu struct {

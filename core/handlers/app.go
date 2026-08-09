@@ -26,6 +26,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -68,15 +69,27 @@ type App struct {
 	requestAfterSlots chan struct{}
 	extensionDBMu     sync.Mutex
 	extensionDBs      map[string]*sql.DB
+	themeTemplateMu   sync.RWMutex
+	themeTemplates    map[string]*template.Template
+	themeDataMu       sync.Mutex
+	themeData         *themeDataSnapshot
 	draftRepairOnce   sync.Once
 	draftRepairErr    error
+}
+
+type themeDataSnapshot struct {
+	recentPosts    []models.Content
+	pages          []models.Content
+	categories     []models.Meta
+	archives       []archiveLink
+	tags           []models.Meta
+	recentComments []models.Comment
+	users          []models.User
 }
 
 type contextKey string
 
 const currentUserKey contextKey = "currentUser"
-
-type requestFallbackContextKey struct{}
 
 func New(contents *services.ContentService, metas *services.MetaService, comments *services.CommentService, users *services.UserService, options *services.OptionService, plugins *plugin.Manager) *App {
 	dataDir := os.Getenv("GOPHERINK_DATA_DIR")
@@ -98,7 +111,7 @@ func NewWithPaths(contents *services.ContentService, metas *services.MetaService
 		uploadDir = filepath.Join(dataDir, "uploads")
 	}
 	httpClient, _ := compathttp.New(compathttp.Config{Timeout: 5 * time.Second, UserAgent: "GopherInk/0.5.0", Retries: 1})
-	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}, commentGuardUsed: map[string]time.Time{}, requestAfterSlots: make(chan struct{}, 4), extensionDBs: map[string]*sql.DB{}}
+	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}, commentGuardUsed: map[string]time.Time{}, requestAfterSlots: make(chan struct{}, 4), extensionDBs: map[string]*sql.DB{}, themeTemplates: map[string]*template.Template{}}
 	app.WAF = newWAFManager(app)
 	return app
 }
@@ -116,12 +129,12 @@ func (a *App) Handler() http.Handler {
 	a.applyContentRevisionOptions(context.Background())
 
 	adminAssets, _ := fs.Sub(admin.FS, "assets")
-	mux.Handle("/admin/assets/", http.StripPrefix("/admin/assets/", http.FileServer(http.FS(adminAssets))))
+	mux.Handle("/admin/assets/", withStaticCache(http.StripPrefix("/admin/assets/", http.FileServer(http.FS(adminAssets))), 24*time.Hour))
 
-	mux.HandleFunc("/theme/", a.themeStatic)
-	mux.HandleFunc("/plugin/", a.pluginStatic)
+	mux.Handle("/theme/", withStaticCache(http.HandlerFunc(a.themeStatic), 24*time.Hour))
+	mux.Handle("/plugin/", withStaticCache(http.HandlerFunc(a.pluginStatic), 24*time.Hour))
 	if a.UploadDir != "" {
-		mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(a.UploadDir))))
+		mux.Handle("/uploads/", withStaticCache(http.StripPrefix("/uploads/", http.FileServer(http.Dir(a.UploadDir))), time.Hour))
 	}
 
 	mux.HandleFunc("/admin/login", a.adminLogin)
@@ -282,6 +295,7 @@ func (a *App) Handler() http.Handler {
 		a.dispatchRequestAfter(r, recorder, time.Since(start))
 	})
 	secured := a.WAF.wrap(routed)
+	a.WAF.warmPublicIndex(context.Background())
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := plugin.ContextWithRuntime(r.Context(), runtime)
 		secured.ServeHTTP(w, r.WithContext(ctx))
@@ -351,14 +365,10 @@ func (a *App) resolveRequestFallback(r *http.Request) (plugin.RequestPayload, bo
 }
 
 func (a *App) dispatchRequestFallback(w http.ResponseWriter, r *http.Request) bool {
-	payload, ok := r.Context().Value(requestFallbackContextKey{}).(plugin.RequestPayload)
-	if !ok || !payload.Handled {
-		var err error
-		payload, ok, err = a.resolveRequestFallback(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return true
-		}
+	payload, ok, err := a.resolveRequestFallback(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return true
 	}
 	if !ok || !payload.Handled {
 		return false
@@ -2846,7 +2856,7 @@ func wafTab(r *http.Request) string {
 func wafOptionKeys() []string {
 	return []string{
 		"waf_enabled", "waf_hsts_enabled", "waf_trust_proxy_headers", "waf_trust_proxy_mode", "waf_trust_proxy_ips", "waf_state_max_entries", "waf_log_max_entries",
-		"waf_url_index_enabled", "waf_url_index_ttl", "waf_index_max_items",
+		"waf_url_index_enabled", "waf_url_index_ttl",
 		"waf_cache_enabled", "waf_cache_ttl", "waf_cache_max_entries", "waf_cache_max_body_kb", "waf_cache_max_memory_mb",
 		"waf_dynamic_rate_enabled", "waf_dynamic_rate_window", "waf_dynamic_rate_limit",
 		"waf_static_rate_enabled", "waf_static_rate_window", "waf_static_rate_limit",
@@ -2883,7 +2893,6 @@ func validateWAFOptions(r *http.Request) error {
 		max   int
 	}{
 		{"waf_url_index_ttl", "URL index refresh seconds", 1, 86400},
-		{"waf_index_max_items", "URL index maximum items", 100, 1000000},
 		{"waf_state_max_entries", "WAF state maximum entries", 1000, 1000000},
 		{"waf_log_max_entries", "Maximum WAF log entries", 1, 100000},
 		{"waf_cache_ttl", "Public page cache TTL", 1, 86400},
@@ -5257,9 +5266,6 @@ func (a *App) frontDynamic(w http.ResponseWriter, r *http.Request) {
 	if a.tryDynamicPermalink(w, r) {
 		return
 	}
-	if a.tryPrettyArchive(w, r) {
-		return
-	}
 	if a.dispatchRequestFallback(w, r) {
 		return
 	}
@@ -5576,15 +5582,19 @@ func (a *App) frontArchive(w http.ResponseWriter, r *http.Request) {
 	}
 	query := services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Year: year}
 	title := fmt.Sprintf("%s: %04d", i18n.T(a.language(r.Context()), "Archive"), year)
-	if len(parts) > 1 {
-		query.Month, _ = strconv.Atoi(parts[1])
+	if len(parts) > 2 {
+		a.renderThemeNotFound(w, r)
+		return
+	}
+	if len(parts) == 2 {
+		query.Month, err = strconv.Atoi(parts[1])
+		if err != nil || query.Month < 1 || query.Month > 12 {
+			a.renderThemeNotFound(w, r)
+			return
+		}
 		title = fmt.Sprintf("%s: %04d-%02d", i18n.T(a.language(r.Context()), "Archive"), year, query.Month)
 	}
-	if len(parts) > 2 {
-		query.Day, _ = strconv.Atoi(parts[2])
-		title = fmt.Sprintf("%s: %04d-%02d-%02d", i18n.T(a.language(r.Context()), "Archive"), year, query.Month, query.Day)
-	}
-	a.renderPostListWithData(w, r, query, title, map[string]any{"CanonicalPath": archivePath(query.Year, query.Month, query.Day)})
+	a.renderPostListWithData(w, r, query, title, map[string]any{"CanonicalPath": archivePath(query.Year, query.Month, 0)})
 }
 
 func (a *App) frontComment(w http.ResponseWriter, r *http.Request) {
@@ -7818,6 +7828,16 @@ func (a *App) currentUserID(r *http.Request) (int64, bool) {
 	return session.UID, true
 }
 
+func (a *App) hasStatefulPublicSession(r *http.Request) bool {
+	secret, err := a.Options.Get(r.Context(), "auth_secret")
+	if err == nil && secret != "" {
+		if _, ok := auth.ParseVersionedSessionWithOptions(r, secret, a.cookieOptions(r.Context())); ok {
+			return true
+		}
+	}
+	return len(a.unapprovedCommentIDs(r)) > 0
+}
+
 func (a *App) currentUser(r *http.Request) (models.User, bool) {
 	if user, ok := r.Context().Value(currentUserKey).(models.User); ok {
 		return user, true
@@ -8569,13 +8589,16 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	funcs["pluginURL"] = func(name string) string {
 		return a.pluginURLForRuntime(r.Context(), name)
 	}
-	tmpl, err := template.New("base.html").Funcs(funcs).ParseFS(theme.Templates, "templates/base.html", "templates/"+page)
+	tmpl, err := a.parsedThemeTemplate(theme, page, funcs)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	a.enrichData(r.Context(), data)
-	a.enrichThemeData(r.Context(), data)
+	if err := a.enrichThemeData(r.Context(), data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	if themeConfig, err := a.themeConfig(r.Context(), theme.Name); err == nil {
 		data["ThemeConfig"] = themeConfig
 	}
@@ -8660,6 +8683,52 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 	}
 }
 
+func (a *App) parsedThemeTemplate(theme plugin.Theme, page string, funcs template.FuncMap) (*template.Template, error) {
+	key := theme.Name + "/" + page
+	a.themeTemplateMu.RLock()
+	parsed := a.themeTemplates[key]
+	a.themeTemplateMu.RUnlock()
+	if parsed == nil {
+		a.themeTemplateMu.Lock()
+		parsed = a.themeTemplates[key]
+		if parsed == nil {
+			var err error
+			parsed, err = template.New("base.html").Funcs(templateParsePlaceholders(funcs)).ParseFS(theme.Templates, "templates/base.html", "templates/"+page)
+			if err != nil {
+				a.themeTemplateMu.Unlock()
+				return nil, err
+			}
+			a.themeTemplates[key] = parsed
+		}
+		a.themeTemplateMu.Unlock()
+	}
+	clone, err := parsed.Clone()
+	if err != nil {
+		return nil, err
+	}
+	clone.Funcs(funcs)
+	return clone, nil
+}
+
+func templateParsePlaceholders(funcs template.FuncMap) template.FuncMap {
+	placeholders := make(template.FuncMap, len(funcs))
+	for name, fn := range funcs {
+		fnType := reflect.TypeOf(fn)
+		if fnType == nil || fnType.Kind() != reflect.Func {
+			placeholders[name] = fn
+			continue
+		}
+		placeholders[name] = reflect.MakeFunc(fnType, func([]reflect.Value) []reflect.Value {
+			results := make([]reflect.Value, fnType.NumOut())
+			for index := range results {
+				results[index] = reflect.Zero(fnType.Out(index))
+			}
+			return results
+		}).Interface()
+	}
+	return placeholders
+}
+
 func (a *App) activeTheme(ctx context.Context) (plugin.Theme, bool) {
 	name, _ := a.Options.Get(ctx, "active_theme")
 	if name == "" {
@@ -8695,37 +8764,56 @@ func (a *App) themeStatic(w http.ResponseWriter, r *http.Request) {
 func (a *App) pluginStatic(w http.ResponseWriter, r *http.Request) {
 	rel := strings.TrimPrefix(r.URL.Path, "/plugin/")
 	name, filePath, ok := strings.Cut(rel, "/")
-	w.Header().Set("X-Dbg-Probe", fmt.Sprintf("enter rel=%q name=%q file=%q ok=%v", rel, name, filePath, ok))
 	if !ok || strings.TrimSpace(name) == "" || strings.TrimSpace(filePath) == "" || strings.Contains(name, "..") {
-		w.Header().Set("X-Dbg-Branch", "cut")
 		http.NotFound(w, r)
 		return
 	}
 	if !a.Plugins.IsActive(name) {
-		w.Header().Set("X-Dbg-Branch", "inactive")
 		http.NotFound(w, r)
 		return
 	}
 	p, ok := a.Plugins.Plugin(name)
 	if !ok {
-		w.Header().Set("X-Dbg-Branch", "notfound")
 		http.NotFound(w, r)
 		return
 	}
 	provider, ok := p.(plugin.StaticProvider)
 	if !ok {
-		w.Header().Set("X-Dbg-Branch", "notprovider")
 		http.NotFound(w, r)
 		return
 	}
 	static := provider.PluginStatic()
 	if static == nil {
-		w.Header().Set("X-Dbg-Branch", "nilfs")
 		http.NotFound(w, r)
 		return
 	}
-	w.Header().Set("X-Dbg-Branch", "serve")
 	http.StripPrefix("/plugin/"+name+"/", http.FileServer(http.FS(static))).ServeHTTP(w, r)
+}
+
+type staticCacheResponseWriter struct {
+	http.ResponseWriter
+	maxAge int
+}
+
+func (w *staticCacheResponseWriter) WriteHeader(status int) {
+	if status >= http.StatusOK && status < http.StatusMultipleChoices {
+		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", w.maxAge))
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *staticCacheResponseWriter) Write(body []byte) (int, error) {
+	if w.Header().Get("Cache-Control") == "" {
+		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", w.maxAge))
+	}
+	return w.ResponseWriter.Write(body)
+}
+
+func withStaticCache(next http.Handler, maxAge time.Duration) http.Handler {
+	seconds := int(maxAge / time.Second)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(&staticCacheResponseWriter{ResponseWriter: w, maxAge: seconds}, r)
+	})
 }
 
 func (a *App) enrichData(ctx context.Context, data map[string]any) {
@@ -8735,48 +8823,89 @@ func (a *App) enrichData(ctx context.Context, data map[string]any) {
 	}
 }
 
-func (a *App) enrichThemeData(ctx context.Context, data map[string]any) {
+func (a *App) enrichThemeData(ctx context.Context, data map[string]any) error {
+	snapshot, err := a.loadThemeData(ctx, data)
+	if err != nil {
+		return err
+	}
 	if _, ok := data["ProfileEmail"]; !ok {
-		data["ProfileEmail"] = a.defaultThemeProfileEmail(ctx, data)
+		data["ProfileEmail"] = themeProfileEmail(data, snapshot.users)
 	}
 	if _, ok := data["RecentPosts"]; !ok {
-		if posts, err := a.Contents.ListPublished(ctx, 5, 0); err == nil {
-			data["RecentPosts"] = posts
-		}
+		data["RecentPosts"] = append([]models.Content(nil), snapshot.recentPosts...)
 	}
 	if _, ok := data["Pages"]; !ok {
-		if pages, err := a.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePage, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: 20}); err == nil {
-			data["Pages"] = pages
-		}
+		data["Pages"] = append([]models.Content(nil), snapshot.pages...)
 	}
 	if _, ok := data["AllCategories"]; !ok {
-		if categories, err := a.Metas.List(ctx, "category"); err == nil {
-			data["AllCategories"] = categories
-		}
+		data["AllCategories"] = append([]models.Meta(nil), snapshot.categories...)
 	}
 	if _, ok := data["Archives"]; !ok {
-		data["Archives"] = a.archiveLinks(ctx, 0)
+		data["Archives"] = append([]archiveLink(nil), snapshot.archives...)
 	}
 	if _, ok := data["Tags"]; !ok {
-		if tags, err := a.Metas.ListCloud(ctx, "tag", 30); err == nil {
-			data["Tags"] = tags
-		}
+		data["Tags"] = append([]models.Meta(nil), snapshot.tags...)
 	}
 	if _, ok := data["RecentComments"]; !ok {
-		if comments, err := a.Comments.List(ctx, "approved", "", 0); err == nil {
-			size := 10
-			if site, ok := data["Site"].(map[string]string); ok {
-				size = optionInt(site["comments_list_size"], 10)
-			}
-			if size < 1 {
-				size = 10
-			}
-			if len(comments) > size {
-				comments = comments[:size]
-			}
-			data["RecentComments"] = comments
-		}
+		data["RecentComments"] = append([]models.Comment(nil), snapshot.recentComments...)
 	}
+	return nil
+}
+
+func (a *App) loadThemeData(ctx context.Context, data map[string]any) (*themeDataSnapshot, error) {
+	a.themeDataMu.Lock()
+	defer a.themeDataMu.Unlock()
+	if a.themeData != nil {
+		return a.themeData, nil
+	}
+
+	recentPosts, err := a.Contents.ListPublished(ctx, 5, 0)
+	if err != nil {
+		return nil, err
+	}
+	pages, err := a.Contents.List(ctx, services.ContentQuery{Type: models.ContentTypePage, Status: models.ContentStatusPost, ExcludeFuture: true, Limit: 20})
+	if err != nil {
+		return nil, err
+	}
+	categories, err := a.Metas.List(ctx, "category")
+	if err != nil {
+		return nil, err
+	}
+	tags, err := a.Metas.ListCloud(ctx, "tag", 30)
+	if err != nil {
+		return nil, err
+	}
+	commentLimit := 10
+	if site, ok := data["Site"].(map[string]string); ok {
+		commentLimit = optionInt(site["comments_list_size"], 10)
+	}
+	if commentLimit < 1 {
+		commentLimit = 10
+	}
+	recentComments, err := a.Comments.ListPage(ctx, services.CommentQuery{Status: "approved", Limit: commentLimit})
+	if err != nil {
+		return nil, err
+	}
+	users, err := a.Users.List(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	a.themeData = &themeDataSnapshot{
+		recentPosts:    recentPosts,
+		pages:          pages,
+		categories:     categories,
+		archives:       a.archiveLinks(ctx, 0),
+		tags:           tags,
+		recentComments: recentComments,
+		users:          users,
+	}
+	return a.themeData, nil
+}
+
+func (a *App) invalidateThemeData() {
+	a.themeDataMu.Lock()
+	a.themeData = nil
+	a.themeDataMu.Unlock()
 }
 
 func (a *App) archiveLinks(ctx context.Context, limit int) []archiveLink {
@@ -8797,15 +8926,13 @@ func (a *App) archiveLinks(ctx context.Context, limit int) []archiveLink {
 	return out
 }
 
-func (a *App) defaultThemeProfileEmail(ctx context.Context, data map[string]any) string {
+func themeProfileEmail(data map[string]any, users []models.User) string {
 	if post, ok := data["Post"].(models.Content); ok && post.AuthorID > 0 {
-		if user, err := a.Users.ByID(ctx, post.AuthorID); err == nil && strings.TrimSpace(user.Mail) != "" {
-			return strings.TrimSpace(user.Mail)
+		for _, user := range users {
+			if user.UID == post.AuthorID && strings.TrimSpace(user.Mail) != "" {
+				return strings.TrimSpace(user.Mail)
+			}
 		}
-	}
-	users, err := a.Users.List(ctx, "")
-	if err != nil {
-		return ""
 	}
 	for _, user := range users {
 		if user.Role == "administrator" && strings.TrimSpace(user.Mail) != "" {
@@ -9176,10 +9303,17 @@ func (a *App) contentURL(ctx context.Context, c models.Content) string {
 	switch c.Type {
 	case models.ContentTypePage:
 		pattern := a.option(ctx, "permalink_page", "/page/{slug}.html")
-		url = cleanPublicPath(applyContentPattern(pattern, c, a.pageDirectory(ctx, c)))
+		directory := ""
+		if strings.Contains(pattern, "{directory}") {
+			directory = a.pageDirectory(ctx, c)
+		}
+		url = cleanPublicPath(applyContentPattern(pattern, c, directory))
 	default:
 		pattern := a.option(ctx, "permalink_post", "/post/{slug}.html")
-		category, directory := a.primaryCategoryPath(ctx, c.CID)
+		category, directory := "", ""
+		if strings.Contains(pattern, "{category}") || strings.Contains(pattern, "{directory}") {
+			category, directory = a.primaryCategoryPath(ctx, c.CID)
+		}
 		url = cleanPublicPath(applyContentPattern(pattern, c, directory, category))
 	}
 	payload := plugin.ContentPermalinkPayload{Content: a.contentToPublic(c), URL: url}
@@ -9487,29 +9621,6 @@ func (a *App) tryDynamicTaxonomyFeed(w http.ResponseWriter, r *http.Request) boo
 	return true
 }
 
-func (a *App) tryPrettyArchive(w http.ResponseWriter, r *http.Request) bool {
-	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
-	if len(parts) == 0 || len(parts[0]) != 4 {
-		return false
-	}
-	year, err := strconv.Atoi(parts[0])
-	if err != nil || year < 1970 {
-		return false
-	}
-	query := services.ContentQuery{Type: models.ContentTypePost, Status: models.ContentStatusPost, Year: year}
-	title := fmt.Sprintf("%s: %04d", i18n.T(a.language(r.Context()), "Archive"), year)
-	if len(parts) > 1 {
-		query.Month, _ = strconv.Atoi(parts[1])
-		title = fmt.Sprintf("%s: %04d-%02d", i18n.T(a.language(r.Context()), "Archive"), year, query.Month)
-	}
-	if len(parts) > 2 {
-		query.Day, _ = strconv.Atoi(parts[2])
-		title = fmt.Sprintf("%s: %04d-%02d-%02d", i18n.T(a.language(r.Context()), "Archive"), year, query.Month, query.Day)
-	}
-	a.renderPostListWithData(w, r, query, title, map[string]any{"CanonicalPath": archivePath(query.Year, query.Month, query.Day)})
-	return true
-}
-
 func (a *App) contentFromPermalinkVars(ctx context.Context, vars map[string]string, typ string) (models.Content, error) {
 	if raw := vars["cid"]; raw != "" {
 		id, _ := strconv.ParseInt(raw, 10, 64)
@@ -9784,7 +9895,7 @@ func (a *App) pluginRuntime() *plugin.Runtime {
 		CSRFToken:                a.csrfTokenFor,
 		ValidateCSRF:             a.validCSRFFor,
 		Option:                   a.Options.Get,
-		SetOption:                a.Options.Set,
+		SetOption:                a.setOptionPlugin,
 		SaveContent:              a.saveContentPlugin,
 		DeleteContent:            a.deleteContentPlugin,
 		SaveComment:              a.saveCommentPlugin,
@@ -11389,6 +11500,7 @@ func (a *App) saveContentPlugin(ctx context.Context, input plugin.ContentWriteIn
 	if err != nil {
 		return plugin.PublicContent{}, err
 	}
+	a.invalidatePublicData()
 	content, err := a.Contents.ByID(ctx, payload.ID)
 	if err != nil {
 		return plugin.PublicContent{}, err
@@ -11397,7 +11509,11 @@ func (a *App) saveContentPlugin(ctx context.Context, input plugin.ContentWriteIn
 }
 
 func (a *App) deleteContentPlugin(ctx context.Context, id int64) error {
-	return a.contentWriter().DeleteContent(ctx, id)
+	if err := a.contentWriter().DeleteContent(ctx, id); err != nil {
+		return err
+	}
+	a.invalidatePublicData()
+	return nil
 }
 
 func (a *App) saveCommentPlugin(ctx context.Context, input plugin.CommentWriteInput) (plugin.PublicComment, error) {
@@ -11421,6 +11537,7 @@ func (a *App) saveCommentPlugin(ctx context.Context, input plugin.CommentWriteIn
 	if err != nil {
 		return plugin.PublicComment{}, err
 	}
+	a.invalidatePublicData()
 	comment, err := a.Comments.ByID(ctx, payload.ID)
 	if err != nil {
 		return plugin.PublicComment{}, err
@@ -11429,7 +11546,25 @@ func (a *App) saveCommentPlugin(ctx context.Context, input plugin.CommentWriteIn
 }
 
 func (a *App) deleteCommentPlugin(ctx context.Context, id int64) error {
-	return a.contentWriter().DeleteComment(ctx, id)
+	if err := a.contentWriter().DeleteComment(ctx, id); err != nil {
+		return err
+	}
+	a.invalidatePublicData()
+	return nil
+}
+
+func (a *App) setOptionPlugin(ctx context.Context, name, value string) error {
+	if err := a.Options.Set(ctx, name, value); err != nil {
+		return err
+	}
+	a.invalidatePublicData()
+	return nil
+}
+
+func (a *App) invalidatePublicData() {
+	if a.WAF != nil {
+		a.WAF.invalidatePublicData()
+	}
 }
 
 func (a *App) commentToPublic(comment models.Comment) plugin.PublicComment {
@@ -11617,10 +11752,14 @@ func (a *App) setContentFieldPlugin(ctx context.Context, cid int64, field plugin
 	if _, err := a.Contents.ByID(ctx, cid); err != nil {
 		return err
 	}
-	return a.Contents.SetField(ctx, cid, services.SaveFieldInput{
+	if err := a.Contents.SetField(ctx, cid, services.SaveFieldInput{
 		Name: field.Name, Type: field.Type, StrValue: field.StrValue,
 		IntValue: field.IntValue, FloatValue: field.FloatValue,
-	})
+	}); err != nil {
+		return err
+	}
+	a.invalidatePublicData()
+	return nil
 }
 
 func (a *App) deleteContentFieldPlugin(ctx context.Context, cid int64, name string) error {
@@ -11631,7 +11770,11 @@ func (a *App) deleteContentFieldPlugin(ctx context.Context, cid int64, name stri
 	if _, err := a.Contents.ByID(ctx, cid); err != nil {
 		return err
 	}
-	return a.Contents.DeleteField(ctx, cid, name)
+	if err := a.Contents.DeleteField(ctx, cid, name); err != nil {
+		return err
+	}
+	a.invalidatePublicData()
+	return nil
 }
 
 func (a *App) incrementContentFieldIntPlugin(ctx context.Context, cid int64, name string, delta int64) (int64, error) {

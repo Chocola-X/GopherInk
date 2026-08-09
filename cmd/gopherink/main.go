@@ -209,8 +209,15 @@ func openDB(cfg config) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if driver == "sqlite3" && !strings.Contains(cfg.DBDSN, "?") {
+	switch driver {
+	case "sqlite3":
 		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+	default:
+		db.SetMaxOpenConns(8)
+		db.SetMaxIdleConns(4)
+		db.SetConnMaxIdleTime(time.Minute)
+		db.SetConnMaxLifetime(5 * time.Minute)
 	}
 	if err := db.Ping(); err != nil {
 		_ = db.Close()

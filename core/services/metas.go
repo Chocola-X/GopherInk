@@ -259,7 +259,7 @@ func (s *MetaService) RefreshCounts(ctx context.Context) error {
 		UPDATE gb_metas SET count = (
 			SELECT COUNT(*) FROM gb_relationships r
 			JOIN gb_contents c ON c.cid = r.cid
-			WHERE r.mid = gb_metas.mid AND c.type = 'post' AND c.status = 'publish' AND COALESCE(c.draftOf, 0) = 0
+			WHERE r.mid = gb_metas.mid AND c.type = 'post' AND c.status = 'publish' AND c.draftOf = 0
 		)
 	`)
 	return err
@@ -274,7 +274,7 @@ func (s *MetaService) RefreshCount(ctx context.Context, id int64) error {
 		UPDATE gb_metas SET count = (
 			SELECT COUNT(*) FROM gb_relationships r
 			JOIN gb_contents c ON c.cid = r.cid
-			WHERE r.mid = gb_metas.mid AND c.type = 'post' AND c.status = 'publish' AND COALESCE(c.draftOf, 0) = 0
+			WHERE r.mid = gb_metas.mid AND c.type = 'post' AND c.status = 'publish' AND c.draftOf = 0
 		) WHERE mid = ?
 	`, id)
 	return err
@@ -349,7 +349,7 @@ func (s *MetaService) Merge(ctx context.Context, targetID int64, sourceIDs []int
 	if _, err := txExec(ctx, tx, s.db.Dialect(), `
 		UPDATE gb_metas SET count = (
 			SELECT COUNT(*) FROM gb_relationships r JOIN gb_contents c ON c.cid = r.cid
-			WHERE r.mid = gb_metas.mid AND c.type = 'post' AND c.status = 'publish' AND COALESCE(c.draftOf, 0) = 0
+			WHERE r.mid = gb_metas.mid AND c.type = 'post' AND c.status = 'publish' AND c.draftOf = 0
 		) WHERE mid = ?
 	`, targetID); err != nil {
 		return err

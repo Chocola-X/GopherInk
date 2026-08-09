@@ -529,6 +529,23 @@ func statusHandler(rt *plugin.Runtime, w http.ResponseWriter, r *http.Request) {
 
 WAF 会识别已启用插件路由，使其不被公开 URL 索引当成非法路径；它仍会经过常规 IP和分类限流。
 
+运行时配置才能确定的精确路径必须集中登记，不能让插件在每个未知请求上自行探测：
+
+```go
+func (Plugin) Init(m *plugin.Manager) {
+    m.RegisterPublicPathProvider(func(ctx context.Context, rt *plugin.Runtime) ([]string, error) {
+        cfg, err := rt.Config(ctx, "example")
+        if err != nil {
+            return nil, err
+        }
+        return []string{cfg["verification_path"]}, nil
+    })
+    m.RegisterRuntimeHook(plugin.HookRequestFallback, fallback)
+}
+```
+
+`RegisterPublicPathProvider` 只接受规范的绝对精确路径，由核心在公开路由快照重建时集中调用。插件配置、启停状态或公开内容变化会使快照失效；普通请求只查询内存快照。固定路径和固定前缀仍应优先使用 `RegisterRoute`。
+
 ## 后台侧边栏入口
 
 插件主动注册菜单时才显示插件侧边栏；没有管理页面的简单插件无需注册。
@@ -746,7 +763,7 @@ return plugin.StopHook(payload), nil
 |---|---|---|---|
 | `HookAdminMenu` | `admin.menu` | `[]plugin.AdminMenuItem` | 过滤最终后台插件菜单 |
 | `HookRequestBefore` | `request.before` | `RequestPayload` | WAF 放行后、路由处理前同步调用，可观察或短路响应 |
-| `HookRequestFallback` | `request.fallback` | `RequestPayload` | 所有已注册路由和动态固定链接均未匹配时提供后备响应 |
+| `HookRequestFallback` | `request.fallback` | `RequestPayload` | 为已登记的动态公开路径提供后备响应 |
 | `HookRequestAfter` | `request.after` | `RequestPayload` | 路由响应完成后有界异步通知，适合访问统计 |
 | `HookFrontendHead` | `frontend.head` | `FrontendHTMLPayload` | 过滤 head HTML |
 | `HookFrontendFooter` | `frontend.footer` | `FrontendHTMLPayload` | 过滤 body 底部 HTML |
@@ -778,7 +795,7 @@ Head/Footer 当前兼容旧插件返回 `string`，但新插件应返回 `Fronte
 
 `request.after` 使用固定容量的异步执行槽，不会为突发流量无限创建 goroutine。所有槽位都被慢钩子占用时，新的通知会被丢弃；访问统计、审计采样等插件必须把该钩子视为尽力而为，不得依赖它完成影响请求正确性的事务。需要可靠提交的数据应在对应内容、评论或管理动作钩子中同步处理。
 
-`request.fallback` 适合虚拟验证文件、自定义 404 回落接口等不能提前注册确定路径的功能。核心只会在标准 `ServeMux` 已选择动态前台入口，且首页、文章索引、动态固定链接、分类归档规则都未命中后使用它；后台、附件、主题资源、插件路由和其他已注册前缀仍然优先。启用公开 URL 索引时，WAF 会先调用同一钩子确认路径是否存在，并把已经解析的 payload 随请求传递给后备处理器，不会重复执行钩子。处理器应只响应明确拥有的路径，并至少设置 `Handled`、`Status`、`ContentType` 和 `Body`：
+`request.fallback` 适合虚拟验证文件等不能在编译时确定路径的功能。启用公开 URL 索引时，插件必须同时通过 `RegisterPublicPathProvider` 登记实际路径；WAF 只对登记路径放行，索引未命中的随机 URL 会直接计数并返回缓存 404，不会执行 fallback 钩子。核心标准路由、动态固定链接和已注册插件路由仍然优先。处理器应只响应明确拥有的路径，并至少设置 `Handled`、`Status`、`ContentType` 和 `Body`：
 
 ```go
 func fallback(ctx context.Context, rt *plugin.Runtime, value any) (any, error) {
@@ -794,7 +811,7 @@ func fallback(ctx context.Context, rt *plugin.Runtime, value any) (any, error) {
 }
 ```
 
-后备响应仍会经过 WAF 的 IP 封禁、请求频率、公开缓存等策略。匹配后应使用 `HookControl{Stop:true}`，避免后续同类钩子覆盖已经确定的响应；未匹配时必须原样返回 payload。不要用 `request.before` 实现同一需求，否则会在正常路由之前截获请求并可能覆盖核心或其他扩展页面。
+后备响应仍会经过 WAF 的 IP 封禁、请求频率、公开缓存等策略。匹配后应使用 `HookControl{Stop:true}`，避免后续同类钩子覆盖已经确定的响应；未匹配时必须原样返回 payload。不要用 `request.before` 实现同一需求，否则会在正常路由之前截获请求并让随机攻击路径进入插件热路径。
 
 ### 用户和认证
 
