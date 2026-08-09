@@ -25,6 +25,7 @@ func main() {
 	var (
 		output      string
 		tags        string
+		ldflags     string
 		listOnly    bool
 		verbose     bool
 		trimPath    bool
@@ -32,19 +33,20 @@ func main() {
 	)
 	flag.StringVar(&output, "o", "gopherink", "output binary path")
 	flag.StringVar(&tags, "tags", "", "comma-separated Go build tags")
+	flag.StringVar(&ldflags, "ldflags", "", "arguments to pass to go build -ldflags")
 	flag.BoolVar(&listOnly, "list", false, "list discovered plugins and themes without building")
 	flag.BoolVar(&verbose, "v", false, "print packages while building")
 	flag.BoolVar(&trimPath, "trimpath", false, "remove local file system paths from the binary")
 	flag.BoolVar(&raceEnabled, "race", false, "enable the Go race detector")
 	flag.Parse()
 
-	if err := run(output, tags, listOnly, verbose, trimPath, raceEnabled); err != nil {
+	if err := run(output, tags, ldflags, listOnly, verbose, trimPath, raceEnabled); err != nil {
 		fmt.Fprintln(os.Stderr, "gopherink-builder:", err)
 		os.Exit(1)
 	}
 }
 
-func run(output, tags string, listOnly, verbose, trimPath, raceEnabled bool) error {
+func run(output, tags, ldflags string, listOnly, verbose, trimPath, raceEnabled bool) error {
 	root, err := projectRoot()
 	if err != nil {
 		return err
@@ -113,11 +115,15 @@ func run(output, tags string, listOnly, verbose, trimPath, raceEnabled bool) err
 	if raceEnabled {
 		args = append(args, "-race")
 	}
+	if strings.TrimSpace(ldflags) != "" {
+		args = append(args, "-ldflags", ldflags)
+	}
 	args = append(args, "./cmd/gopherink")
 
 	cmd := exec.Command("go", args...)
 	cmd.Dir = root
 	cmd.Env = replaceEnv(os.Environ(), "GOWORK", workspacePath)
+	cmd.Env = replaceEnv(cmd.Env, "GOFLAGS", "")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -211,6 +217,7 @@ func modulePath(dir string) (string, error) {
 	cmd := exec.Command("go", "list", "-m", "-f", "{{.Path}}")
 	cmd.Dir = dir
 	cmd.Env = replaceEnv(os.Environ(), "GOWORK", "off")
+	cmd.Env = replaceEnv(cmd.Env, "GOFLAGS", "")
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
@@ -244,13 +251,13 @@ func writeComponentImports(path string, plugins, themes []discoveredPackage) err
 		source.WriteString(")\n")
 	}
 	formatted, err := format.Source(source.Bytes())
-	if err != nil {
-		return fmt.Errorf("format generated component imports: %w", err)
-	}
-	if err := os.WriteFile(path, formatted, 0o644); err != nil {
-		return fmt.Errorf("write generated component imports: %w", err)
-	}
-	return nil
+		if err != nil {
+			return fmt.Errorf("format generated component imports: %w", err)
+		}
+		if err := os.WriteFile(path, formatted, 0o644); err != nil {
+			return fmt.Errorf("write generated component imports: %w", err)
+		}
+		return nil
 }
 
 func writeWorkspace(path, root string, packageGroups ...[]discoveredPackage) error {
@@ -298,8 +305,14 @@ func writeWorkspace(path, root string, packageGroups ...[]discoveredPackage) err
 func goVersion(root string) (string, error) {
 	cmd := exec.Command("go", "env", "GOVERSION")
 	cmd.Dir = root
-	out, err := cmd.Output()
+	cmd.Env = replaceEnv(os.Environ(), "GOWORK", "off")
+	cmd.Env = replaceEnv(cmd.Env, "GOFLAGS", "")
+	out, err := cmd.CombinedOutput()
 	if err != nil {
+		message := strings.TrimSpace(string(out))
+		if message != "" {
+			return "", fmt.Errorf("read Go version: %w: %s", err, message)
+		}
 		return "", fmt.Errorf("read Go version: %w", err)
 	}
 	fields := strings.Fields(string(out))
