@@ -243,6 +243,8 @@ printf 'new-strong-password\n' | ./gopherink user reset-password --id 1 --passwo
 
 不要无条件信任来自公网的转发头，否则攻击者可以伪造 IP 绕过限流和登录封禁。详细规则见 [安全与 WAF](security-and-waf.md)。
 
+反向代理还应配置每 IP 请求频率和连接数限制。应用 WAF 可以避免随机 URL 进入内容查询，并保持缓存、日志和异步钩子状态有界，但请求到达 Go 进程后仍会消耗 HTTP 解析和响应 CPU。可直接使用 README 中带 `limit_req_zone`、`limit_req` 和 `limit_conn` 的 Nginx 示例作为起点。
+
 ## 上传和图片内存
 
 上传大小在后台以 MB 配置，默认 16 MB。图片处理内存预算默认 256 MB，最低允许 64 MB。预算用于在处理超大图片前做估算保护，不是 Go 进程总内存硬限制。

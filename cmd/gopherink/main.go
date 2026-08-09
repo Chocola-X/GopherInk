@@ -22,6 +22,7 @@ import (
 	"github.com/Chocola-X/GopherInk/core/models"
 	"github.com/Chocola-X/GopherInk/core/plugin"
 	"github.com/Chocola-X/GopherInk/core/services"
+	"github.com/Chocola-X/GopherInk/pkg/memoryguard"
 
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
@@ -125,13 +126,21 @@ func serve(cfg config) error {
 		log.Printf("admin: %s/admin", localServiceURL(cfg))
 	}
 	server := &http.Server{
-		Addr:      cfg.Addr,
-		Handler:   handler,
-		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
+		Addr:              cfg.Addr,
+		Handler:           handler,
+		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    64 << 10,
 	}
 	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return serveHTTPServer(shutdownContext, server, cfg)
+	runtimeContext, cancelRuntime := context.WithCancelCause(shutdownContext)
+	defer cancelRuntime(nil)
+	if err := startMemoryGuard(runtimeContext, options, cancelRuntime); err != nil {
+		return err
+	}
+	return serveHTTPServer(runtimeContext, server, cfg)
 }
 
 func shouldCreateDefaultAdmin(userCount int, cfg config) bool {
@@ -158,6 +167,12 @@ func serveHTTPServer(ctx context.Context, server *http.Server, cfg config) error
 		}
 		return nil
 	case <-ctx.Done():
+		cause := context.Cause(ctx)
+		if errors.Is(cause, memoryguard.ErrLimitReached) {
+			_ = server.Close()
+			<-serveErrors
+			return cause
+		}
 		log.Printf("shutdown signal received; waiting for active requests")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -168,6 +183,9 @@ func serveHTTPServer(ctx context.Context, server *http.Server, cfg config) error
 		err := <-serveErrors
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
+		}
+		if cause != nil && !errors.Is(cause, context.Canceled) {
+			return cause
 		}
 		return nil
 	}

@@ -55,6 +55,15 @@
   </fieldset>
 
   <fieldset class="fieldset">
+    <legend>{{T "Memory Safety"}}</legend>
+    <div class="comment-option-row">
+      <mdui-checkbox name="memory_guard_enabled" value="1" {{if eq (index .Options "memory_guard_enabled") "1"}}checked{{end}}>{{T "Exit when available memory is critically low"}}</mdui-checkbox>
+      <input type="hidden" name="memory_guard_enabled" value="0">
+    </div>
+    <mdui-text-field name="memory_guard_min_available_mb" label="{{T "Minimum available memory (MB)"}}" type="number" min="16" max="1048576" step="1" value="{{index .Options "memory_guard_min_available_mb"}}" helper="{{T "The process exits immediately below this threshold; default 50 MB"}}"></mdui-text-field>
+  </fieldset>
+
+  <fieldset class="fieldset">
     <legend>{{T "Writing Experience"}}</legend>
     <div class="comment-option-row">
       <mdui-checkbox name="content_autosave_enabled" value="1" {{if eq (index .Options "content_autosave_enabled") "1"}}checked{{end}}>{{T "Enable autosave for post and page drafts"}}</mdui-checkbox>

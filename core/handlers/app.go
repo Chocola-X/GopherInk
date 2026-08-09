@@ -50,25 +50,26 @@ import (
 )
 
 type App struct {
-	Contents         *services.ContentService
-	Metas            *services.MetaService
-	Comments         *services.CommentService
-	Users            *services.UserService
-	Options          *services.OptionService
-	Plugins          *plugin.Manager
-	DataDir          string
-	UploadDir        string
-	HTTPClient       *compathttp.Client
-	HTTPFetch        func(context.Context, string) (string, error)
-	WAF              *wafManager
-	loginMu          sync.Mutex
-	loginNext        map[string]time.Time
-	commentGuardMu   sync.Mutex
-	commentGuardUsed map[string]time.Time
-	extensionDBMu    sync.Mutex
-	extensionDBs     map[string]*sql.DB
-	draftRepairOnce  sync.Once
-	draftRepairErr   error
+	Contents          *services.ContentService
+	Metas             *services.MetaService
+	Comments          *services.CommentService
+	Users             *services.UserService
+	Options           *services.OptionService
+	Plugins           *plugin.Manager
+	DataDir           string
+	UploadDir         string
+	HTTPClient        *compathttp.Client
+	HTTPFetch         func(context.Context, string) (string, error)
+	WAF               *wafManager
+	loginMu           sync.Mutex
+	loginNext         map[string]time.Time
+	commentGuardMu    sync.Mutex
+	commentGuardUsed  map[string]time.Time
+	requestAfterSlots chan struct{}
+	extensionDBMu     sync.Mutex
+	extensionDBs      map[string]*sql.DB
+	draftRepairOnce   sync.Once
+	draftRepairErr    error
 }
 
 type contextKey string
@@ -97,7 +98,7 @@ func NewWithPaths(contents *services.ContentService, metas *services.MetaService
 		uploadDir = filepath.Join(dataDir, "uploads")
 	}
 	httpClient, _ := compathttp.New(compathttp.Config{Timeout: 5 * time.Second, UserAgent: "GopherInk/0.5.0", Retries: 1})
-	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}, commentGuardUsed: map[string]time.Time{}, extensionDBs: map[string]*sql.DB{}}
+	app := &App{Contents: contents, Metas: metas, Comments: comments, Users: users, Options: options, Plugins: plugins, DataDir: dataDir, UploadDir: uploadDir, HTTPClient: httpClient, loginNext: map[string]time.Time{}, commentGuardUsed: map[string]time.Time{}, requestAfterSlots: make(chan struct{}, 4), extensionDBs: map[string]*sql.DB{}}
 	app.WAF = newWAFManager(app)
 	return app
 }
@@ -389,6 +390,11 @@ func (a *App) dispatchRequestAfter(r *http.Request, recorder *statusResponseWrit
 	if a.Plugins == nil || !a.Plugins.HasActiveHook(plugin.HookRequestAfter) {
 		return
 	}
+	select {
+	case a.requestAfterSlots <- struct{}{}:
+	default:
+		return
+	}
 	status := recorder.status
 	if status == 0 {
 		status = http.StatusOK
@@ -400,6 +406,7 @@ func (a *App) dispatchRequestAfter(r *http.Request, recorder *statusResponseWrit
 	payload.ContentType = recorder.Header().Get("Content-Type")
 	runtime := a.pluginRuntime()
 	go func() {
+		defer func() { <-a.requestAfterSlots }()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_, _ = a.Plugins.ApplyActive(plugin.ContextWithRuntime(ctx, runtime), plugin.HookRequestAfter, payload)
@@ -2428,7 +2435,7 @@ func (a *App) adminOptionsGeneral(w http.ResponseWriter, r *http.Request) {
 	if !a.requireRole(w, r, "administrator") {
 		return
 	}
-	keys := []string{"site_title", "site_description", "site_keywords", "base_url", "site_language", "site_timezone", "allow_register", "register_default_role", "cookie_prefix", "cookie_secure", "cookie_samesite", "content_autosave_enabled", "upload_allowed_exts", "upload_max_size", "upload_image_processing", "upload_webp_quality", "image_processing_memory_mb", "thumbnail_format", "thumbnail_quality", "upload_replace_same_ext_only", "attachment_delete_policy", "xmlrpc_mode"}
+	keys := []string{"site_title", "site_description", "site_keywords", "base_url", "site_language", "site_timezone", "allow_register", "register_default_role", "cookie_prefix", "cookie_secure", "cookie_samesite", "memory_guard_enabled", "memory_guard_min_available_mb", "content_autosave_enabled", "upload_allowed_exts", "upload_max_size", "upload_image_processing", "upload_webp_quality", "image_processing_memory_mb", "thumbnail_format", "thumbnail_quality", "upload_replace_same_ext_only", "attachment_delete_policy", "xmlrpc_mode"}
 	if r.Method == http.MethodGet {
 		options, err := a.Options.All(r.Context())
 		if err != nil {
@@ -2493,6 +2500,12 @@ func normalizeGeneralOptionsForm(r *http.Request) error {
 		return fmt.Errorf("upload size limit must be an integer from 1 to 2048 MB")
 	}
 	r.Form.Set("upload_max_size", strconv.FormatInt(int64(mb)*1024*1024, 10))
+
+	minimumAvailableMB, err := strconv.Atoi(strings.TrimSpace(r.FormValue("memory_guard_min_available_mb")))
+	if err != nil || minimumAvailableMB < 16 || minimumAvailableMB > 1048576 {
+		return fmt.Errorf("minimum available memory must be an integer from 16 to 1048576 MB")
+	}
+	r.Form.Set("memory_guard_min_available_mb", strconv.Itoa(minimumAvailableMB))
 	return nil
 }
 
@@ -2834,7 +2847,7 @@ func wafOptionKeys() []string {
 	return []string{
 		"waf_enabled", "waf_hsts_enabled", "waf_trust_proxy_headers", "waf_trust_proxy_mode", "waf_trust_proxy_ips", "waf_state_max_entries", "waf_log_max_entries",
 		"waf_url_index_enabled", "waf_url_index_ttl", "waf_index_max_items",
-		"waf_cache_enabled", "waf_cache_ttl", "waf_cache_max_entries",
+		"waf_cache_enabled", "waf_cache_ttl", "waf_cache_max_entries", "waf_cache_max_body_kb", "waf_cache_max_memory_mb",
 		"waf_dynamic_rate_enabled", "waf_dynamic_rate_window", "waf_dynamic_rate_limit",
 		"waf_static_rate_enabled", "waf_static_rate_window", "waf_static_rate_limit",
 		"waf_upload_rate_enabled", "waf_upload_rate_window", "waf_upload_rate_limit",
@@ -2875,6 +2888,8 @@ func validateWAFOptions(r *http.Request) error {
 		{"waf_log_max_entries", "Maximum WAF log entries", 1, 100000},
 		{"waf_cache_ttl", "Public page cache TTL", 1, 86400},
 		{"waf_cache_max_entries", "Public page cache maximum entries", 1, 100000},
+		{"waf_cache_max_body_kb", "Maximum cached response size", 16, 16384},
+		{"waf_cache_max_memory_mb", "Public page cache memory limit", 1, 1024},
 		{"waf_dynamic_rate_window", "Dynamic request rate-limit window", 1, 86400},
 		{"waf_dynamic_rate_limit", "Dynamic request rate-limit count", 1, 100000},
 		{"waf_static_rate_window", "Static resource rate-limit window", 1, 86400},
@@ -2962,7 +2977,7 @@ func (a *App) optionsForm(w http.ResponseWriter, r *http.Request, title, tmpl st
 
 func optionsFormValue(r *http.Request, key string) string {
 	switch key {
-	case "content_autosave_enabled", "revision_enabled":
+	case "content_autosave_enabled", "revision_enabled", "memory_guard_enabled":
 		return formBoolValue(r.Form[key])
 	default:
 		return r.FormValue(key)

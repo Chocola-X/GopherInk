@@ -93,6 +93,22 @@ go run ./cmd/gopherink-builder -o gopherink
 下面以 `blog.example.com` 和 Let's Encrypt 证书为例。将配置保存到 Nginx 的站点配置目录，并按实际域名和证书路径修改：
 
 ```nginx
+# 这些指令必须位于 nginx.conf 的 http {} 中；常见发行版的 sites-enabled 文件本身已在 http {} 中加载。
+# 空键不会参与计数，因此主题/后台静态资源不占用动态请求额度，附件使用独立额度。
+map $uri $gopherink_dynamic_key {
+    ~^/(uploads|admin/assets|theme|plugin)/ "";
+    default                               $binary_remote_addr;
+}
+
+map $uri $gopherink_upload_key {
+    ~^/uploads/ $binary_remote_addr;
+    default      "";
+}
+
+limit_req_zone  $gopherink_dynamic_key zone=gopherink_dynamic:10m rate=10r/s;
+limit_req_zone  $gopherink_upload_key  zone=gopherink_upload:10m  rate=20r/s;
+limit_conn_zone $binary_remote_addr     zone=gopherink_conn:10m;
+
 server {
     listen 80;
     listen [::]:80;
@@ -114,6 +130,12 @@ server {
     client_max_body_size 20m;
 
     location / {
+        # 在请求进入 Go 进程前限制单 IP 并发和频率。超额请求由 Nginx 返回 429。
+        limit_conn gopherink_conn 20;
+        limit_req zone=gopherink_dynamic burst=30 nodelay;
+        limit_req zone=gopherink_upload burst=60 nodelay;
+        limit_req_status 429;
+
         proxy_pass http://127.0.0.1:8086;
         proxy_http_version 1.1;
 
@@ -131,7 +153,9 @@ server {
 }
 ```
 
-这里有意使用 `X-Forwarded-For $remote_addr` 覆盖客户端传入的同名请求头。单层 Nginx 直接面向公网时，不要改成 `$proxy_add_x_forwarded_for`，否则应用信任 Nginx 后，攻击者可能通过伪造转发头影响 WAF 的客户端 IP 判断。若 Nginx 前面还有可信 CDN 或负载均衡器，应先用 Nginx 的 Real IP 模块限定可信上游并还原 `$remote_addr`，再沿用上述代理头配置。
+这里有意使用 `X-Forwarded-For $remote_addr` 覆盖客户端传入的同名请求头。单层 Nginx 直接面向公网时，不要改成 `$proxy_add_x_forwarded_for`，否则应用信任 Nginx 后，攻击者可能通过伪造转发头影响 WAF 的客户端 IP 判断。若 Nginx 前面还有可信 CDN 或负载均衡器，应先用 Nginx 的 Real IP 模块限定可信上游并还原 `$remote_addr`，再沿用上述代理头配置；上面的 `$binary_remote_addr` 限流键也会随之使用还原后的访客 IP。
+
+示例中的速率是适合小型博客的保守起点，不是固定标准。主题静态资源不计入动态额度，`/uploads/` 使用独立额度；上线后应结合正常访问峰值调整 `rate`、`burst` 和 `limit_conn`。应用内 WAF 在识别封禁 IP 前仍需接受并解析 HTTP 请求，只有 Nginx/CDN/防火墙入口限流才能阻止高频请求持续占用 Go 进程 CPU。
 
 启用配置前检查语法并重新加载 Nginx：
 
@@ -865,6 +889,8 @@ WAF 内置公开页面缓存，默认开启：
 | `waf_cache_enabled` | 1 | 缓存开关 |
 | `waf_cache_ttl` | 30 | 缓存 TTL（秒） |
 | `waf_cache_max_entries` | 512 | 最大缓存条目 |
+| `waf_cache_max_body_kb` | 512 | 单个缓存响应上限（KB） |
+| `waf_cache_max_memory_mb` | 32 | 页面缓存正文总内存上限（MB） |
 
 ### URL 索引
 
@@ -1010,6 +1036,15 @@ GopherInk 提供 80+ 项站点配置，均可在后台管理界面修改。以�
 | `db_read_dsn` | — | 读库 DSN（读写分离） |
 | `db_write_dsn` | — | 写库 DSN（读写分离） |
 | `plugin_db_default_mode` | sqlite | 插件数据库默认存储形式（sqlite/main） |
+
+### 进程内存保护
+
+可用内存保护位于后台“设置 > 基本设置”，独立于 WAF 总开关。默认开启；主机或容器可用内存低于 50 MB 时，进程立即停止服务并以非零状态退出，避免持续分配内存拖垮整台服务器。
+
+| 选项 | 默认值 | 说明 |
+|------|--------|------|
+| `memory_guard_enabled` | 1 | 可用内存下限保护开关 |
+| `memory_guard_min_available_mb` | 50 | 触发进程退出的最低可用内存（MB） |
 
 ### WAF
 

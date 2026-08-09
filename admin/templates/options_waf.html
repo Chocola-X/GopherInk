@@ -70,6 +70,8 @@
     </div>
     <mdui-text-field name="waf_cache_ttl" label="{{T "Cache TTL (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_cache_ttl"}}"></mdui-text-field>
     <mdui-text-field name="waf_cache_max_entries" label="{{T "Maximum cache entries"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_cache_max_entries"}}"></mdui-text-field>
+    <mdui-text-field name="waf_cache_max_body_kb" label="{{T "Maximum cached response size (KB)"}}" type="number" min="16" max="16384" step="1" value="{{index .Options "waf_cache_max_body_kb"}}"></mdui-text-field>
+    <mdui-text-field name="waf_cache_max_memory_mb" label="{{T "Maximum cache memory (MB)"}}" type="number" min="1" max="1024" step="1" value="{{index .Options "waf_cache_max_memory_mb"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">

@@ -747,7 +747,7 @@ return plugin.StopHook(payload), nil
 | `HookAdminMenu` | `admin.menu` | `[]plugin.AdminMenuItem` | 过滤最终后台插件菜单 |
 | `HookRequestBefore` | `request.before` | `RequestPayload` | WAF 放行后、路由处理前同步调用，可观察或短路响应 |
 | `HookRequestFallback` | `request.fallback` | `RequestPayload` | 所有已注册路由和动态固定链接均未匹配时提供后备响应 |
-| `HookRequestAfter` | `request.after` | `RequestPayload` | 路由响应完成后异步通知，适合访问统计 |
+| `HookRequestAfter` | `request.after` | `RequestPayload` | 路由响应完成后有界异步通知，适合访问统计 |
 | `HookFrontendHead` | `frontend.head` | `FrontendHTMLPayload` | 过滤 head HTML |
 | `HookFrontendFooter` | `frontend.footer` | `FrontendHTMLPayload` | 过滤 body 底部 HTML |
 | `HookWAFCheck` | `waf.check` | `WAFPayload` | 参与 WAF 决策 |
@@ -775,6 +775,8 @@ return plugin.StopHook(payload), nil
 Head/Footer 当前兼容旧插件返回 `string`，但新插件应返回 `FrontendHTMLPayload`。最终 HTML 会转换为 `template.HTML`，插件必须保证内容可信。`FrontendHTMLPayload.Data` 是即将传给主题模板的数据字典：插件既可以就地修改其中的键，也可以返回替换后的 `Data`，核心会把它写回模板数据。这等价于 Typecho 的 `headerOptions` 过滤，SEO 插件可借此改写 `SeoImage`、`CurrentURL`、`FeedPath` 等 head 相关数据，无需另设钩子。
 
 `request.before` 返回 `RequestPayload{Handled:true}` 时核心不再进入路由，直接使用 `Status`、`ContentType`、`ResponseHeaders` 和 `Body` 输出响应；输出后仍会触发 `request.after`，方便统计插件记录完整生命周期。请求钩子位于 WAF 之后，不能用于绕过入口防护。`Headers` 是请求头副本，访客统计插件不要无差别保存 Cookie、Authorization 等敏感头。
+
+`request.after` 使用固定容量的异步执行槽，不会为突发流量无限创建 goroutine。所有槽位都被慢钩子占用时，新的通知会被丢弃；访问统计、审计采样等插件必须把该钩子视为尽力而为，不得依赖它完成影响请求正确性的事务。需要可靠提交的数据应在对应内容、评论或管理动作钩子中同步处理。
 
 `request.fallback` 适合虚拟验证文件、自定义 404 回落接口等不能提前注册确定路径的功能。核心只会在标准 `ServeMux` 已选择动态前台入口，且首页、文章索引、动态固定链接、分类归档规则都未命中后使用它；后台、附件、主题资源、插件路由和其他已注册前缀仍然优先。启用公开 URL 索引时，WAF 会先调用同一钩子确认路径是否存在，并把已经解析的 payload 随请求传递给后备处理器，不会重复执行钩子。处理器应只响应明确拥有的路径，并至少设置 `Handled`、`Status`、`ContentType` 和 `Body`：
 
