@@ -3871,13 +3871,15 @@ func adminAppearanceSchema() []plugin.FieldSchema {
 
 func adminAppearanceColorOptions() []plugin.FieldOption {
 	return []plugin.FieldOption{
-		{Label: "MDUI Purple", Value: "#6750a4"},
+		{Label: "Purple", Value: "#6750a4"},
 		{Label: "Rose", Value: "#ff4081"},
+		{Label: "Pink", Value: "#c2185b"},
+		{Label: "Indigo", Value: "#3f51b5"},
 		{Label: "Blue", Value: "#1976d2"},
 		{Label: "Cyan", Value: "#00838f"},
 		{Label: "Green", Value: "#2e7d32"},
 		{Label: "Amber", Value: "#ff8f00"},
-		{Label: "Orange Red", Value: "#e64a19"},
+		{Label: "Deep Orange", Value: "#e64a19"},
 		{Label: "Blue Grey", Value: "#546e7a"},
 	}
 }

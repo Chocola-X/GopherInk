@@ -1,7 +1,7 @@
 (function () {
   const body = document.body;
   const progress = document.querySelector(".pjax-progress");
-  const color = body.dataset.primary || "#ff4081";
+  const color = body.dataset.primary || "#6750a4";
   let infiniteObserver = null;
   let pageAppendPending = false;
 
@@ -11,7 +11,7 @@
       try {
         window.mdui.setColorScheme(color);
       } catch (err) {
-        window.mdui.setColorScheme("#ff4081");
+        window.mdui.setColorScheme("#6750a4");
       }
     }
   }

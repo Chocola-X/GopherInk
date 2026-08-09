@@ -35,7 +35,7 @@
   <script type="module" src="/theme/default/mdui-icons.js"></script>
   {{.FrontendHead}}
 </head>
-<body class="{{if eq (themeValue .ThemeConfig "theme_mode" "auto") "dark"}}mdui-theme-layout-dark{{end}}" data-primary="{{if themeValue .ThemeConfig "custom_primary"}}{{themeValue .ThemeConfig "custom_primary"}}{{else}}{{themeValue .ThemeConfig "primary_preset" "#ff4081"}}{{end}}" data-pjax="{{themeValue .ThemeConfig "enable_pjax" "1"}}" data-infinite-scroll="{{themeValue .ThemeConfig "enable_infinite_scroll" "0"}}" data-theme-mode="{{themeValue .ThemeConfig "theme_mode" "auto"}}" style="--cuckoo-card-opacity: {{themeOpacity .ThemeConfig "card_opacity" "0.8"}}; --cuckoo-input-opacity: {{themeOpacity .ThemeConfig "input_opacity" "0.42"}}; --cuckoo-bg-mask-opacity: {{themeOpacity .ThemeConfig "background_mask_opacity" "0.46"}}">
+<body class="{{if eq (themeValue .ThemeConfig "theme_mode" "auto") "dark"}}mdui-theme-layout-dark{{end}}" data-primary="{{if themeValue .ThemeConfig "custom_primary"}}{{themeValue .ThemeConfig "custom_primary"}}{{else}}{{themeValue .ThemeConfig "primary_preset" "#6750a4"}}{{end}}" data-pjax="{{themeValue .ThemeConfig "enable_pjax" "1"}}" data-infinite-scroll="{{themeValue .ThemeConfig "enable_infinite_scroll" "0"}}" data-theme-mode="{{themeValue .ThemeConfig "theme_mode" "auto"}}" style="--cuckoo-card-opacity: {{themeOpacity .ThemeConfig "card_opacity" "0.8"}}; --cuckoo-input-opacity: {{themeOpacity .ThemeConfig "input_opacity" "0.42"}}; --cuckoo-bg-mask-opacity: {{themeOpacity .ThemeConfig "background_mask_opacity" "0.46"}}">
   <div class="background" aria-hidden="true">
     {{if themeValue .ThemeConfig "background_image"}}
       <picture>
