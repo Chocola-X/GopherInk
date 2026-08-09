@@ -1,122 +1,218 @@
-name: Build Beta
+name: Build Beta Test
 
 on:
   push:
     tags:
       - 'v*beta*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: '1.25.x'
 
 jobs:
-  # ==========================================
-  # 1. Linux (全静态，多架构)
-  # ==========================================
   build-linux:
     name: Linux (${{ matrix.goarch }})
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
-        goarch: [amd64, arm64, 386, arm]
+        include:
+          - goarch: amd64
+            platform: linux/amd64
+            goarm: ''
+          - goarch: arm64
+            platform: linux/arm64
+            goarm: ''
+          - goarch: 386
+            platform: linux/386
+            goarm: ''
+          - goarch: arm
+            platform: linux/arm/v7
+            goarm: '7'
+
     steps:
       - name: Checkout main repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up QEMU
-        if: matrix.goarch != 'amd64'
-        uses: docker/setup-qemu-action@v3
+        if: matrix.goarch == 'arm64' || matrix.goarch == 'arm'
+        uses: docker/setup-qemu-action@v4
 
       - name: Clone plugins
+        shell: bash
         run: |
+          set -euxo pipefail
           mkdir -p plugins
+
           for repo in \
             https://github.com/Chocola-X/GopherInk-ServerInfo \
             https://github.com/Chocola-X/GopherInk-CommentNotifier \
             https://github.com/Chocola-X/GopherInk-VistorLogger
           do
-            name=$(basename "$repo")
-            git clone "$repo" "plugins/$name"
+            name="$(basename "$repo")"
+            rm -rf "plugins/$name"
+            git clone --depth 1 "$repo" "plugins/$name"
           done
 
-      - name: Build in Alpine container
+      - name: Build static Linux binary
+        shell: bash
         run: |
+          set -euxo pipefail
+          mkdir -p dist
+
           docker run --rm \
-            --platform linux/${{ matrix.goarch }} \
-            -v ${{ github.workspace }}:/app \
+            --platform "${{ matrix.platform }}" \
+            -v "${{ github.workspace }}:/app" \
             -w /app \
             golang:1.25-alpine \
-            sh -c "
-              apk add --no-cache gcc musl-dev &&
-              CGO_ENABLED=1 GOOS=linux GOARCH=${{ matrix.goarch }} \
-              GOFLAGS='-ldflags=\"-linkmode external -extldflags -static -s -w\"' \
-              go run ./cmd/gopherink-builder -o gopherink
-            "
+            sh -euxc '
+              apk add --no-cache gcc musl-dev
 
-      - name: Package binary
+              # Builder 必须先按当前容器平台编译，不能让目标 GOOS/GOARCH 污染 go run。
+              GOWORK=off GOFLAGS= \
+                go build -trimpath -o /tmp/gopherink-builder ./cmd/gopherink-builder
+
+              CGO_ENABLED=1 \
+              GOOS=linux \
+              GOARCH=${{ matrix.goarch }} \
+              GOARM=${{ matrix.goarm }} \
+              GOFLAGS= \
+                /tmp/gopherink-builder \
+                  -trimpath \
+                  -ldflags="-linkmode external -extldflags=-static -s -w" \
+                  -o "/app/dist/gopherink-linux-${{ matrix.goarch }}"
+            '
+
+      - name: Verify Linux binary
+        shell: bash
         run: |
-          mkdir -p dist
-          cp gopherink dist/gopherink-linux-${{ matrix.goarch }}
+          set -euxo pipefail
+          file "dist/gopherink-linux-${{ matrix.goarch }}"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Package Linux binary
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          PKG="GopherInk-linux-${{ matrix.goarch }}"
+          mkdir -p "package/$PKG" release
+
+          cp "dist/gopherink-linux-${{ matrix.goarch }}" "package/$PKG/gopherink"
+          chmod +x "package/$PKG/gopherink"
+
+          for f in README.md README LICENSE LICENSE.md; do
+            if [ -f "$f" ]; then
+              cp "$f" "package/$PKG/"
+            fi
+          done
+
+          tar -C package -czf "release/$PKG.tar.gz" "$PKG"
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v7
         with:
           name: gopherink-linux-${{ matrix.goarch }}
-          path: dist/gopherink-linux-${{ matrix.goarch }}
+          path: release/GopherInk-linux-${{ matrix.goarch }}.tar.gz
+          if-no-files-found: error
 
-  # ==========================================
-  # 2. macOS (原生编译)
-  # ==========================================
   build-darwin:
     name: macOS (${{ matrix.goarch }})
-    runs-on: macos-latest
     strategy:
+      fail-fast: false
       matrix:
-        goarch: [amd64, arm64]
+        include:
+          - goarch: amd64
+            runner: macos-15-intel
+          - goarch: arm64
+            runner: macos-15
+
+    runs-on: ${{ matrix.runner }}
+
     steps:
       - name: Checkout main repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       - name: Clone plugins
+        shell: bash
         run: |
+          set -euxo pipefail
           mkdir -p plugins
+
           for repo in \
             https://github.com/Chocola-X/GopherInk-ServerInfo \
             https://github.com/Chocola-X/GopherInk-CommentNotifier \
             https://github.com/Chocola-X/GopherInk-VistorLogger
           do
-            name=$(basename "$repo")
-            git clone "$repo" "plugins/$name"
+            name="$(basename "$repo")"
+            rm -rf "plugins/$name"
+            git clone --depth 1 "$repo" "plugins/$name"
           done
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.x'
-
-      - name: Build
-        env:
-          CGO_ENABLED: 1
-          GOOS: darwin
-          GOARCH: ${{ matrix.goarch }}
-          GOFLAGS: '-ldflags=-s -w'
+      - name: Build macOS binary
+        shell: bash
         run: |
-          go run ./cmd/gopherink-builder -o gopherink
+          set -euxo pipefail
+          mkdir -p .tmp dist
 
-      - name: Package binary
+          # 先构建宿主平台可执行的 builder。
+          GOWORK=off GOFLAGS= \
+            go build -trimpath -o .tmp/gopherink-builder ./cmd/gopherink-builder
+
+          CGO_ENABLED=1 \
+          GOOS=darwin \
+          GOARCH=${{ matrix.goarch }} \
+          GOFLAGS= \
+            ./.tmp/gopherink-builder \
+              -trimpath \
+              -ldflags="-s -w" \
+              -o "dist/gopherink-darwin-${{ matrix.goarch }}"
+
+      - name: Verify macOS binary
+        shell: bash
         run: |
-          mkdir -p dist
-          cp gopherink dist/gopherink-darwin-${{ matrix.goarch }}
+          set -euxo pipefail
+          file "dist/gopherink-darwin-${{ matrix.goarch }}"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Package macOS binary
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          PKG="GopherInk-darwin-${{ matrix.goarch }}"
+          mkdir -p "package/$PKG" release
+
+          cp "dist/gopherink-darwin-${{ matrix.goarch }}" "package/$PKG/gopherink"
+          chmod +x "package/$PKG/gopherink"
+
+          for f in README.md README LICENSE LICENSE.md; do
+            if [ -f "$f" ]; then
+              cp "$f" "package/$PKG/"
+            fi
+          done
+
+          tar -C package -czf "release/$PKG.tar.gz" "$PKG"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v7
         with:
           name: gopherink-darwin-${{ matrix.goarch }}
-          path: dist/gopherink-darwin-${{ matrix.goarch }}
+          path: release/GopherInk-darwin-${{ matrix.goarch }}.tar.gz
+          if-no-files-found: error
 
-  # ==========================================
-  # 3. Windows (MinGW 交叉编译)
-  # ==========================================
   build-windows:
     name: Windows (${{ matrix.goarch }})
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         include:
           - goarch: amd64
@@ -125,47 +221,92 @@ jobs:
           - goarch: 386
             cc: i686-w64-mingw32-gcc
             pkg: gcc-mingw-w64-i686
+
     steps:
       - name: Checkout main repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
 
       - name: Clone plugins
+        shell: bash
         run: |
+          set -euxo pipefail
           mkdir -p plugins
+
           for repo in \
             https://github.com/Chocola-X/GopherInk-ServerInfo \
             https://github.com/Chocola-X/GopherInk-CommentNotifier \
             https://github.com/Chocola-X/GopherInk-VistorLogger
           do
-            name=$(basename "$repo")
-            git clone "$repo" "plugins/$name"
+            name="$(basename "$repo")"
+            rm -rf "plugins/$name"
+            git clone --depth 1 "$repo" "plugins/$name"
           done
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.x'
-
       - name: Install MinGW
-        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.pkg }}
-
-      - name: Build
-        env:
-          CGO_ENABLED: 1
-          GOOS: windows
-          GOARCH: ${{ matrix.goarch }}
-          CC: ${{ matrix.cc }}
-          GOFLAGS: '-ldflags="-linkmode external -extldflags -static -s -w"'
+        shell: bash
         run: |
-          go run ./cmd/gopherink-builder -o gopherink.exe
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y "${{ matrix.pkg }}"
 
-      - name: Package binary
+      - name: Build Windows binary
+        shell: bash
         run: |
-          mkdir -p dist
-          cp gopherink.exe dist/gopherink-windows-${{ matrix.goarch }}.exe
+          set -euxo pipefail
+          mkdir -p .tmp dist
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          # 这里不能在 GOOS=windows 的环境里执行 go run builder；
+          # 否则 builder 自己会先被编译成 Windows 程序，Ubuntu 无法执行。
+          GOWORK=off GOFLAGS= \
+            go build -trimpath -o .tmp/gopherink-builder ./cmd/gopherink-builder
+
+          CGO_ENABLED=1 \
+          GOOS=windows \
+          GOARCH=${{ matrix.goarch }} \
+          CC=${{ matrix.cc }} \
+          GOFLAGS= \
+            ./.tmp/gopherink-builder \
+              -trimpath \
+              -ldflags="-linkmode external -extldflags=-static -s -w" \
+              -o "dist/gopherink-windows-${{ matrix.goarch }}.exe"
+
+      - name: Verify Windows binary
+        shell: bash
+        run: |
+          set -euxo pipefail
+          file "dist/gopherink-windows-${{ matrix.goarch }}.exe"
+
+      - name: Package Windows binary
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          PKG="GopherInk-windows-${{ matrix.goarch }}"
+          mkdir -p "package/$PKG" release
+
+          cp "dist/gopherink-windows-${{ matrix.goarch }}.exe" "package/$PKG/gopherink.exe"
+
+          for f in README.md README LICENSE LICENSE.md; do
+            if [ -f "$f" ]; then
+              cp "$f" "package/$PKG/"
+            fi
+          done
+
+          (
+            cd package
+            zip -9 -r "../release/$PKG.zip" "$PKG"
+          )
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
         with:
           name: gopherink-windows-${{ matrix.goarch }}
-          path: dist/gopherink-windows-${{ matrix.goarch }}.exe
+          path: release/GopherInk-windows-${{ matrix.goarch }}.zip
+          if-no-files-found: error
+
