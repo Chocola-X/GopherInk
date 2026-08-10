@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Chocola-X/GopherInk/core/models"
@@ -27,6 +28,9 @@ type wafConfig struct {
 	HSTSEnabled           bool
 	TrustProxy            proxyTrustConfig
 	LogMaxEntries         int
+	BanExtensionEnabled   bool
+	BanExtensionWindow    time.Duration
+	BanExtensionHits      int
 	URLIndexEnabled       bool
 	URLIndexTTL           time.Duration
 	CacheEnabled          bool
@@ -36,6 +40,9 @@ type wafConfig struct {
 	DynamicRateEnabled    bool
 	DynamicRateWindow     time.Duration
 	DynamicRateLimit      int
+	DynamicConcurrency    bool
+	DynamicGlobalLimit    int
+	DynamicPerIPLimit     int
 	StaticRateEnabled     bool
 	StaticRateWindow      time.Duration
 	StaticRateLimit       int
@@ -70,6 +77,7 @@ type wafManager struct {
 	configMu        sync.RWMutex
 	configRefreshMu sync.Mutex
 	rateMu          sync.Mutex
+	concurrencyMu   sync.Mutex
 	banMu           sync.Mutex
 	indexMu         sync.RWMutex
 	indexRefreshMu  sync.Mutex
@@ -80,29 +88,41 @@ type wafManager struct {
 	config          wafConfig
 	configLoaded    time.Time
 
-	rates          map[string]*wafCounter
-	invalids       map[string]*wafCounter
-	attachments    map[string]*wafCounter
-	loginFails     map[string]*wafCounter
-	bans           map[string]time.Time
-	banIndex       sync.Map
-	loginBans      map[string]time.Time
-	publicIndex    map[string]struct{}
-	pluginRoutes   []plugin.Route
-	themeRoutes    []plugin.Route
-	indexLoaded    time.Time
-	cache          map[string]wafCacheEntry
-	cacheBytes     int64
-	cacheFlights   map[string]*wafCacheFlight
-	logOnce        map[string]time.Time
-	logLineCount   int
-	logCountLoaded bool
+	rates           map[string]*wafCounter
+	dynamicInFlight int
+	dynamicByIP     map[string]int
+	invalids        map[string]*wafCounter
+	attachments     map[string]*wafCounter
+	loginFails      map[string]*wafCounter
+	bans            map[string]*wafBan
+	banIndex        sync.Map
+	loginBans       map[string]*wafBan
+	publicIndex     map[string]struct{}
+	pluginRoutes    []plugin.Route
+	themeRoutes     []plugin.Route
+	indexLoaded     time.Time
+	cache           map[string]wafCacheEntry
+	cacheBytes      int64
+	cacheFlights    map[string]*wafCacheFlight
+	logOnce         map[string]time.Time
+	logLineCount    int
+	logCountLoaded  bool
 }
 
 type wafCounter struct {
 	Start time.Time
 	Count int
 }
+
+type wafBan struct {
+	until    atomic.Pointer[time.Time]
+	hitState atomic.Uint64
+	duration time.Duration
+}
+
+const wafBanHitCountBits = 20
+
+const wafBanHitCountMask = 1<<wafBanHitCountBits - 1
 
 type wafCacheEntry struct {
 	Status     int
@@ -124,11 +144,12 @@ func newWAFManager(app *App) *wafManager {
 	return &wafManager{
 		app:          app,
 		rates:        map[string]*wafCounter{},
+		dynamicByIP:  map[string]int{},
 		invalids:     map[string]*wafCounter{},
 		attachments:  map[string]*wafCounter{},
 		loginFails:   map[string]*wafCounter{},
-		bans:         map[string]time.Time{},
-		loginBans:    map[string]time.Time{},
+		bans:         map[string]*wafBan{},
+		loginBans:    map[string]*wafBan{},
 		publicIndex:  map[string]struct{}{},
 		cache:        map[string]wafCacheEntry{},
 		cacheFlights: map[string]*wafCacheFlight{},
@@ -153,7 +174,10 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 		}
 		ip := clientIP(r, cfg.TrustProxy)
 		now := time.Now()
-		if m.isBanned(ip, now) {
+		if banned, extended := m.recordBannedRequest(ip, cfg, now); banned {
+			if extended {
+				m.logEventOnce(cfg, "ban-extended|"+ip, cfg.BanExtensionWindow, "active ban extended for IP %s", ip)
+			}
 			rejectWAF(sw, http.StatusForbidden)
 			return
 		}
@@ -172,6 +196,16 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			m.logEventOnce(cfg, "rate|xmlrpc|"+ip, cfg.XMLRPCRateWindow, "XML-RPC rate limit exceeded for IP %s", ip)
 			rejectWAF(sw, http.StatusTooManyRequests)
 			return
+		}
+		if kind == "dynamic" && cfg.DynamicConcurrency {
+			release, ok := m.acquireDynamic(ip, cfg.DynamicGlobalLimit, cfg.DynamicPerIPLimit)
+			if !ok {
+				m.logEventOnce(cfg, "concurrency|"+ip, time.Minute, "dynamic concurrency limit exceeded for IP %s", ip)
+				sw.Header().Set("Retry-After", "1")
+				rejectWAF(sw, http.StatusTooManyRequests)
+				return
+			}
+			defer release()
 		}
 		if m.app.Plugins.HasActiveHook(plugin.HookWAFCheck) {
 			wafPayload := plugin.WAFPayload{Request: r, IP: ip, Path: r.URL.Path}
@@ -403,6 +437,9 @@ func (m *wafManager) currentConfig(ctx context.Context) wafConfig {
 		HSTSEnabled:           optionBool(defaultString(options["waf_hsts_enabled"], "0")),
 		TrustProxy:            loadProxyTrustConfig(options),
 		LogMaxEntries:         boundedInt(options["waf_log_max_entries"], 1000, 1, 100000),
+		BanExtensionEnabled:   optionBool(defaultString(options["waf_ban_extension_enabled"], "1")),
+		BanExtensionWindow:    durationSeconds(options["waf_ban_extension_window"], 10),
+		BanExtensionHits:      boundedInt(options["waf_ban_extension_hits"], 3, 1, 100000),
 		URLIndexEnabled:       optionBool(defaultString(options["waf_url_index_enabled"], "1")),
 		URLIndexTTL:           durationSeconds(options["waf_url_index_ttl"], 60),
 		CacheEnabled:          optionBool(defaultString(options["waf_cache_enabled"], "1")),
@@ -412,6 +449,9 @@ func (m *wafManager) currentConfig(ctx context.Context) wafConfig {
 		DynamicRateEnabled:    optionBool(defaultString(options["waf_dynamic_rate_enabled"], "1")),
 		DynamicRateWindow:     durationSeconds(options["waf_dynamic_rate_window"], 60),
 		DynamicRateLimit:      boundedInt(options["waf_dynamic_rate_limit"], 300, 1, 100000),
+		DynamicConcurrency:    optionBool(defaultString(options["waf_dynamic_concurrency_enabled"], "1")),
+		DynamicGlobalLimit:    boundedInt(options["waf_dynamic_concurrency_limit"], 16, 1, 1024),
+		DynamicPerIPLimit:     boundedInt(options["waf_dynamic_concurrency_per_ip"], 4, 1, 256),
 		StaticRateEnabled:     optionBool(defaultString(options["waf_static_rate_enabled"], "1")),
 		StaticRateWindow:      durationSeconds(options["waf_static_rate_window"], 60),
 		StaticRateLimit:       boundedInt(options["waf_static_rate_limit"], 1200, 1, 100000),
@@ -637,8 +677,8 @@ func (m *wafManager) resetRuntimeState() {
 	m.rateMu.Unlock()
 	m.banMu.Lock()
 	m.loginFails = map[string]*wafCounter{}
-	m.bans = map[string]time.Time{}
-	m.loginBans = map[string]time.Time{}
+	m.bans = map[string]*wafBan{}
+	m.loginBans = map[string]*wafBan{}
 	m.banMu.Unlock()
 	m.banIndex.Range(func(key, _ any) bool {
 		m.banIndex.Delete(key)
@@ -918,26 +958,104 @@ func (m *wafManager) isBanned(ip string, now time.Time) bool {
 	if !ok {
 		return false
 	}
-	until, ok := value.(time.Time)
+	ban, ok := value.(*wafBan)
 	if !ok {
 		m.banIndex.Delete(ip)
 		return false
 	}
-	if now.After(until) {
-		if m.banIndex.CompareAndDelete(ip, value) {
-			m.banMu.Lock()
-			if current, exists := m.bans[ip]; exists && now.After(current) {
-				delete(m.bans, ip)
-			}
-			m.banMu.Unlock()
-		} else if current, exists := m.banIndex.Load(ip); exists {
-			if currentUntil, valid := current.(time.Time); valid && now.Before(currentUntil) {
-				return true
-			}
-		}
+	active := ban.active(now)
+	if !active {
+		m.removeExpiredBan(ip, ban, now)
+	}
+	return active
+}
+
+func (m *wafManager) recordBannedRequest(ip string, cfg wafConfig, now time.Time) (banned, extended bool) {
+	value, ok := m.banIndex.Load(ip)
+	if !ok {
+		return false, false
+	}
+	ban, ok := value.(*wafBan)
+	if !ok {
+		m.banIndex.Delete(ip)
+		return false, false
+	}
+
+	if !ban.active(now) {
+		m.removeExpiredBan(ip, ban, now)
+		return false, false
+	}
+	extended = ban.recordHit(cfg, now)
+	return true, extended
+}
+
+func newWAFBan(now time.Time, duration time.Duration) *wafBan {
+	ban := &wafBan{duration: duration}
+	until := now.Add(duration)
+	ban.until.Store(&until)
+	return ban
+}
+
+func (ban *wafBan) active(now time.Time) bool {
+	until := ban.until.Load()
+	return until != nil && !now.After(*until)
+}
+
+func (ban *wafBan) recordHit(cfg wafConfig, now time.Time) bool {
+	if !cfg.BanExtensionEnabled || !ban.active(now) {
 		return false
 	}
-	return true
+	nowMillis := now.UnixMilli()
+	windowMillis := cfg.BanExtensionWindow.Milliseconds()
+	for {
+		oldState := ban.hitState.Load()
+		windowStart := int64(oldState >> wafBanHitCountBits)
+		hits := int(oldState & wafBanHitCountMask)
+		if oldState == 0 || nowMillis < windowStart || nowMillis-windowStart >= windowMillis {
+			windowStart = nowMillis
+			hits = 0
+		}
+		hits++
+		extended := hits >= cfg.BanExtensionHits
+		if extended {
+			windowStart = nowMillis
+			hits = 0
+		}
+		newState := uint64(windowStart)<<wafBanHitCountBits | uint64(hits)
+		if !ban.hitState.CompareAndSwap(oldState, newState) {
+			continue
+		}
+		if extended {
+			ban.extend(now)
+		}
+		return extended
+	}
+}
+
+func (ban *wafBan) extend(now time.Time) {
+	next := now.Add(ban.duration)
+	for {
+		current := ban.until.Load()
+		if current != nil && !next.After(*current) {
+			return
+		}
+		if ban.until.CompareAndSwap(current, &next) {
+			return
+		}
+	}
+}
+
+func (m *wafManager) removeExpiredBan(ip string, ban *wafBan, now time.Time) {
+	m.banMu.Lock()
+	defer m.banMu.Unlock()
+	current, exists := m.bans[ip]
+	if !exists || current != ban {
+		return
+	}
+	if !ban.active(now) {
+		delete(m.bans, ip)
+		m.banIndex.CompareAndDelete(ip, ban)
+	}
 }
 
 func (m *wafManager) banIP(ctx context.Context, ip string, duration time.Duration, reason string) error {
@@ -1060,11 +1178,14 @@ func (m *wafManager) recordAttachmentDownload(ip string, cfg wafConfig, now time
 func (m *wafManager) activateBan(ip string, duration time.Duration, maxEntries int, now time.Time) bool {
 	m.banMu.Lock()
 	defer m.banMu.Unlock()
-	if until, ok := m.bans[ip]; ok && now.Before(until) {
-		return false
+	if current, ok := m.bans[ip]; ok {
+		if current.active(now) {
+			return false
+		}
 	}
-	m.bans[ip] = now.Add(duration)
-	m.banIndex.Store(ip, m.bans[ip])
+	ban := newWAFBan(now, duration)
+	m.bans[ip] = ban
+	m.banIndex.Store(ip, ban)
 	m.trimBanMapLocked(now, maxEntries)
 	return true
 }
@@ -1076,15 +1197,21 @@ func (m *wafManager) loginAllowed(ctx context.Context, ip string) bool {
 	}
 	now := time.Now()
 	m.banMu.Lock()
-	defer m.banMu.Unlock()
-	until, ok := m.loginBans[ip]
+	ban, ok := m.loginBans[ip]
 	if !ok {
+		m.banMu.Unlock()
 		return true
 	}
-	if now.After(until) {
+	if !ban.active(now) {
 		delete(m.loginBans, ip)
 		delete(m.loginFails, ip)
+		m.banMu.Unlock()
 		return true
+	}
+	extended := ban.recordHit(cfg, now)
+	m.banMu.Unlock()
+	if extended {
+		m.logEventOnce(cfg, "login-ban-extended|"+ip, cfg.BanExtensionWindow, "active login ban extended for IP %s", ip)
 	}
 	return false
 }
@@ -1107,10 +1234,16 @@ func (m *wafManager) recordLoginFailure(ctx context.Context, ip string) {
 	counter.Count++
 	newlyBanned := false
 	if counter.Count >= cfg.LoginFailures {
-		until, alreadyBanned := m.loginBans[ip]
-		newlyBanned = !alreadyBanned || now.After(until)
-		m.loginBans[ip] = now.Add(cfg.LoginBan)
-		m.trimTimeMapLocked(m.loginBans, now, cfg.StateMaxEntries)
+		ban, alreadyBanned := m.loginBans[ip]
+		active := false
+		if alreadyBanned {
+			active = ban.active(now)
+		}
+		newlyBanned = !active
+		if newlyBanned {
+			m.loginBans[ip] = newWAFBan(now, cfg.LoginBan)
+		}
+		m.trimLoginBanMapLocked(now, cfg.StateMaxEntries)
 	}
 	count := counter.Count
 	m.banMu.Unlock()
@@ -1147,6 +1280,28 @@ func (m *wafManager) allowWindow(store map[string]*wafCounter, key string, windo
 	return counter.Count <= limit
 }
 
+func (m *wafManager) acquireDynamic(ip string, globalLimit, perIPLimit int) (func(), bool) {
+	m.concurrencyMu.Lock()
+	if m.dynamicInFlight >= globalLimit || m.dynamicByIP[ip] >= perIPLimit {
+		m.concurrencyMu.Unlock()
+		return nil, false
+	}
+	m.dynamicInFlight++
+	m.dynamicByIP[ip]++
+	m.concurrencyMu.Unlock()
+
+	return func() {
+		m.concurrencyMu.Lock()
+		m.dynamicInFlight--
+		if m.dynamicByIP[ip] <= 1 {
+			delete(m.dynamicByIP, ip)
+		} else {
+			m.dynamicByIP[ip]--
+		}
+		m.concurrencyMu.Unlock()
+	}, true
+}
+
 func (m *wafManager) trimCounterMapLocked(store map[string]*wafCounter, window time.Duration, now time.Time, max int) {
 	if max <= 0 {
 		max = 100000
@@ -1167,23 +1322,23 @@ func (m *wafManager) trimCounterMapLocked(store map[string]*wafCounter, window t
 	}
 }
 
-func (m *wafManager) trimTimeMapLocked(store map[string]time.Time, now time.Time, max int) {
+func (m *wafManager) trimLoginBanMapLocked(now time.Time, max int) {
 	if max <= 0 {
 		max = 100000
 	}
-	if len(store) <= max {
+	if len(m.loginBans) <= max {
 		return
 	}
-	for key, until := range store {
-		if now.After(until) {
-			delete(store, key)
+	for ip, ban := range m.loginBans {
+		if !ban.active(now) {
+			delete(m.loginBans, ip)
 		}
 	}
-	for key := range store {
-		if len(store) <= max {
+	for ip := range m.loginBans {
+		if len(m.loginBans) <= max {
 			return
 		}
-		delete(store, key)
+		delete(m.loginBans, ip)
 	}
 }
 
@@ -1194,18 +1349,19 @@ func (m *wafManager) trimBanMapLocked(now time.Time, max int) {
 	if len(m.bans) <= max {
 		return
 	}
-	for ip, until := range m.bans {
-		if now.After(until) {
+	for ip, ban := range m.bans {
+		if !ban.active(now) {
 			delete(m.bans, ip)
-			m.banIndex.Delete(ip)
+			m.banIndex.CompareAndDelete(ip, ban)
 		}
 	}
 	for ip := range m.bans {
 		if len(m.bans) <= max {
 			return
 		}
+		ban := m.bans[ip]
 		delete(m.bans, ip)
-		m.banIndex.Delete(ip)
+		m.banIndex.CompareAndDelete(ip, ban)
 	}
 }
 

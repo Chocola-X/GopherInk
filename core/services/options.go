@@ -156,6 +156,9 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 		"waf_trust_proxy_headers":       "0",
 		"waf_trust_proxy_mode":          "allowlist",
 		"waf_trust_proxy_ips":           "",
+		"waf_ban_extension_enabled":     "1",
+		"waf_ban_extension_window":      "10",
+		"waf_ban_extension_hits":        "3",
 		"waf_url_index_enabled":         "1",
 		"waf_url_index_ttl":             "60",
 		"waf_cache_enabled":             "1",
@@ -198,6 +201,9 @@ func (s *OptionService) EnsureDefaults(ctx context.Context) error {
 		"active_plugins":                `["sitemap","virtual-files"]`,
 		"schema_version":                "1",
 	}
+	defaults["waf_dynamic_concurrency_enabled"] = "1"
+	defaults["waf_dynamic_concurrency_limit"] = "16"
+	defaults["waf_dynamic_concurrency_per_ip"] = "4"
 	for key, value := range defaults {
 		current, err := s.Get(ctx, key)
 		if err != nil {

@@ -1,6 +1,12 @@
 package i18n
 
 var zhCN = map[string]string{
+	"Active Ban Extension":                                                              "活跃封禁续期",
+	"Extend bans when blocked IPs keep requesting":                                      "被封禁 IP 持续请求时延长封禁",
+	"Blocked-request counting window (seconds)":                                         "封禁期间请求统计窗口（秒）",
+	"Blocked requests required to extend ban":                                           "延长封禁所需的拦截请求数",
+	"The IP is extended by its original ban duration; default 3 requests in 10 seconds": "按该 IP 原封禁时长续期；默认 10 秒内 3 次请求",
+
 	"Already have account":                   "已有账户",
 	"Auto off":                               "自动关闭",
 	"Backend Personalization":                "后台个性化",
@@ -121,6 +127,8 @@ var zhCN = map[string]string{
 	"Public page cache maximum entries":                                     "公开页缓存最大条目数",
 	"Dynamic request rate-limit window":                                     "动态请求限流窗口",
 	"Dynamic request rate-limit count":                                      "动态请求限流次数",
+	"Dynamic request global concurrency limit":                              "动态请求全局并发上限",
+	"Dynamic request per-IP concurrency limit":                              "动态请求单 IP 并发上限",
 	"Static resource rate-limit window":                                     "静态资源限流窗口",
 	"Static resource rate-limit count":                                      "静态资源限流次数",
 	"Attachment resource rate-limit window":                                 "附件资源限流窗口",
@@ -355,6 +363,7 @@ var zhCN = map[string]string{
 	"Documents":                                                  "文档",
 	"Drafts":                                                     "草稿",
 	"Dynamic Request Rate Limit":                                 "动态请求限流",
+	"Dynamic Request Concurrency":                                "动态请求并发限制",
 	"Edit":                                                       "编辑",
 	"Edit Draft":                                                 "编辑草稿",
 	"Edit attachment":                                            "编辑附件",
@@ -372,6 +381,7 @@ var zhCN = map[string]string{
 	"Enable autosave for post and page drafts":               "启用文章和页面草稿自动保存",
 	"Enable basic anti-spam checks":                          "启用基础反垃圾处理",
 	"Enable dynamic request IP rate limit":                   "启用动态请求 IP 限流",
+	"Enable dynamic request concurrency limit":               "启用动态请求并发限制",
 	"Enable login failure ban":                               "启用登录失败封禁",
 	"Enable missing path count ban":                          "启用不存在路径统计封禁",
 	"Enable post and page snapshots":                         "启用文章和页面快照",
@@ -379,6 +389,8 @@ var zhCN = map[string]string{
 	"Enable public dynamic page cache":                       "启用公开动态页面缓存",
 	"Enable separate XML-RPC rate limit":                     "启用 XML-RPC 独立限流",
 	"Enable separate search request rate limit":              "启用搜索请求独立限流",
+	"Maximum concurrent dynamic requests":                    "动态请求最大并发数",
+	"Maximum concurrent dynamic requests per IP":             "单 IP 动态请求最大并发数",
 	"Enabled":               "已启用",
 	"Enter GopherInk admin": "进入 GopherInk 管理后台",
 	"Enter avatar service URL, not an email address; leave blank for Gravatar; must include {hash}, optional {size}": "这里填写头像服务地址，不是邮箱地址；留空使用 Gravatar；必须包含 {hash}，可选 {size}",

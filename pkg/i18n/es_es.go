@@ -1,6 +1,12 @@
 package i18n
 
 var esES = map[string]string{
+	"Active Ban Extension":                                                              "Extensión de bloqueo activo",
+	"Extend bans when blocked IPs keep requesting":                                      "Extender el bloqueo si la IP bloqueada continúa solicitando",
+	"Blocked-request counting window (seconds)":                                         "Ventana de solicitudes bloqueadas (segundos)",
+	"Blocked requests required to extend ban":                                           "Solicitudes bloqueadas necesarias para extender el bloqueo",
+	"The IP is extended by its original ban duration; default 3 requests in 10 seconds": "La IP se extiende por la duración original del bloqueo; valor predeterminado: 3 solicitudes en 10 segundos",
+
 	"Already have account":                   "Ya tienes cuenta",
 	"Auto off":                               "Apagado automático",
 	"Backend Personalization":                "Personalización del panel",
@@ -121,6 +127,8 @@ var esES = map[string]string{
 	"Public page cache maximum entries":                                     "Entradas máximas de caché de páginas públicas",
 	"Dynamic request rate-limit window":                                     "Ventana de límite de solicitudes dinámicas",
 	"Dynamic request rate-limit count":                                      "Recuento de límite de solicitudes dinámicas",
+	"Dynamic request global concurrency limit":                              "Límite global de concurrencia de solicitudes dinámicas",
+	"Dynamic request per-IP concurrency limit":                              "Límite de concurrencia por IP de solicitudes dinámicas",
 	"Static resource rate-limit window":                                     "Ventana de límite de recursos estáticos",
 	"Static resource rate-limit count":                                      "Recuento de límite de recursos estáticos",
 	"Attachment resource rate-limit window":                                 "Ventana de límite de recursos de adjuntos",
@@ -355,6 +363,7 @@ var esES = map[string]string{
 	"Documents":                                                  "Documentos",
 	"Drafts":                                                     "Borradores",
 	"Dynamic Request Rate Limit":                                 "Límite de tasa de solicitudes dinámicas",
+	"Dynamic Request Concurrency":                                "Concurrencia de solicitudes dinámicas",
 	"Edit":                                                       "Editar",
 	"Edit Draft":                                                 "Editar borrador",
 	"Edit attachment":                                            "Editar adjunto",
@@ -372,6 +381,7 @@ var esES = map[string]string{
 	"Enable autosave for post and page drafts":               "Activar autoguardado para borradores de artículos y páginas",
 	"Enable basic anti-spam checks":                          "Activar verificaciones antispam básicas",
 	"Enable dynamic request IP rate limit":                   "Activar límite de tasa IP de solicitudes dinámicas",
+	"Enable dynamic request concurrency limit":               "Activar límite de concurrencia de solicitudes dinámicas",
 	"Enable login failure ban":                               "Activar prohibición por fallos de inicio de sesión",
 	"Enable missing path count ban":                          "Activar prohibición por conteo de rutas no existentes",
 	"Enable post and page snapshots":                         "Activar instantáneas de artículos y páginas",
@@ -379,6 +389,8 @@ var esES = map[string]string{
 	"Enable public dynamic page cache":                       "Activar caché de páginas dinámicas públicas",
 	"Enable separate XML-RPC rate limit":                     "Activar límite de tasa XML-RPC independiente",
 	"Enable separate search request rate limit":              "Activar límite de tasa de búsquedas independiente",
+	"Maximum concurrent dynamic requests":                    "Máximo de solicitudes dinámicas simultáneas",
+	"Maximum concurrent dynamic requests per IP":             "Máximo de solicitudes dinámicas simultáneas por IP",
 	"Enabled":               "Activado",
 	"Enter GopherInk admin": "Entrar al panel de GopherInk",
 	"Enter avatar service URL, not an email address; leave blank for Gravatar; must include {hash}, optional {size}": "Introduce la URL del servicio de avatares, no un correo electrónico; en blanco usa Gravatar; debe incluir {hash}, {size} opcional",

@@ -2856,9 +2856,11 @@ func wafTab(r *http.Request) string {
 func wafOptionKeys() []string {
 	return []string{
 		"waf_enabled", "waf_hsts_enabled", "waf_trust_proxy_headers", "waf_trust_proxy_mode", "waf_trust_proxy_ips", "waf_state_max_entries", "waf_log_max_entries",
+		"waf_ban_extension_enabled", "waf_ban_extension_window", "waf_ban_extension_hits",
 		"waf_url_index_enabled", "waf_url_index_ttl",
 		"waf_cache_enabled", "waf_cache_ttl", "waf_cache_max_entries", "waf_cache_max_body_kb", "waf_cache_max_memory_mb",
 		"waf_dynamic_rate_enabled", "waf_dynamic_rate_window", "waf_dynamic_rate_limit",
+		"waf_dynamic_concurrency_enabled", "waf_dynamic_concurrency_limit", "waf_dynamic_concurrency_per_ip",
 		"waf_static_rate_enabled", "waf_static_rate_window", "waf_static_rate_limit",
 		"waf_upload_rate_enabled", "waf_upload_rate_window", "waf_upload_rate_limit",
 		"waf_attachment_ban_enabled", "waf_attachment_ban_window", "waf_attachment_ban_limit", "waf_attachment_ban_seconds",
@@ -2871,7 +2873,7 @@ func wafOptionKeys() []string {
 
 func validateWAFOptions(r *http.Request) error {
 	boolKeys := []string{
-		"waf_enabled", "waf_hsts_enabled", "waf_trust_proxy_headers", "waf_url_index_enabled", "waf_cache_enabled", "waf_dynamic_rate_enabled",
+		"waf_enabled", "waf_hsts_enabled", "waf_trust_proxy_headers", "waf_ban_extension_enabled", "waf_url_index_enabled", "waf_cache_enabled", "waf_dynamic_rate_enabled", "waf_dynamic_concurrency_enabled",
 		"waf_static_rate_enabled", "waf_upload_rate_enabled", "waf_attachment_ban_enabled",
 		"waf_invalid_path_enabled", "waf_search_rate_enabled", "waf_xmlrpc_rate_enabled", "waf_login_ban_enabled",
 	}
@@ -2895,12 +2897,16 @@ func validateWAFOptions(r *http.Request) error {
 		{"waf_url_index_ttl", "URL index refresh seconds", 1, 86400},
 		{"waf_state_max_entries", "WAF state maximum entries", 1000, 1000000},
 		{"waf_log_max_entries", "Maximum WAF log entries", 1, 100000},
+		{"waf_ban_extension_window", "Active ban extension window", 1, 86400},
+		{"waf_ban_extension_hits", "Banned request extension count", 1, 100000},
 		{"waf_cache_ttl", "Public page cache TTL", 1, 86400},
 		{"waf_cache_max_entries", "Public page cache maximum entries", 1, 100000},
 		{"waf_cache_max_body_kb", "Maximum cached response size", 16, 16384},
 		{"waf_cache_max_memory_mb", "Public page cache memory limit", 1, 1024},
 		{"waf_dynamic_rate_window", "Dynamic request rate-limit window", 1, 86400},
 		{"waf_dynamic_rate_limit", "Dynamic request rate-limit count", 1, 100000},
+		{"waf_dynamic_concurrency_limit", "Dynamic request global concurrency limit", 1, 1024},
+		{"waf_dynamic_concurrency_per_ip", "Dynamic request per-IP concurrency limit", 1, 256},
 		{"waf_static_rate_window", "Static resource rate-limit window", 1, 86400},
 		{"waf_static_rate_limit", "Static resource rate-limit count", 1, 100000},
 		{"waf_upload_rate_window", "Attachment resource rate-limit window", 1, 86400},
@@ -2942,19 +2948,21 @@ func wafFormValue(r *http.Request, key string) string {
 
 func wafBoolOptionSet() map[string]bool {
 	return map[string]bool{
-		"waf_enabled":                true,
-		"waf_hsts_enabled":           true,
-		"waf_trust_proxy_headers":    true,
-		"waf_url_index_enabled":      true,
-		"waf_cache_enabled":          true,
-		"waf_dynamic_rate_enabled":   true,
-		"waf_static_rate_enabled":    true,
-		"waf_upload_rate_enabled":    true,
-		"waf_attachment_ban_enabled": true,
-		"waf_invalid_path_enabled":   true,
-		"waf_search_rate_enabled":    true,
-		"waf_xmlrpc_rate_enabled":    true,
-		"waf_login_ban_enabled":      true,
+		"waf_enabled":                     true,
+		"waf_hsts_enabled":                true,
+		"waf_trust_proxy_headers":         true,
+		"waf_ban_extension_enabled":       true,
+		"waf_url_index_enabled":           true,
+		"waf_cache_enabled":               true,
+		"waf_dynamic_rate_enabled":        true,
+		"waf_dynamic_concurrency_enabled": true,
+		"waf_static_rate_enabled":         true,
+		"waf_upload_rate_enabled":         true,
+		"waf_attachment_ban_enabled":      true,
+		"waf_invalid_path_enabled":        true,
+		"waf_search_rate_enabled":         true,
+		"waf_xmlrpc_rate_enabled":         true,
+		"waf_login_ban_enabled":           true,
 	}
 }
 

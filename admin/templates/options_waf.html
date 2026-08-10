@@ -31,6 +31,16 @@
     <mdui-text-field name="waf_log_max_entries" label="{{T "Maximum WAF log entries"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_log_max_entries"}}" helper="{{T "When exceeded, only newest records are kept; default 1000"}}"></mdui-text-field>
   </fieldset>
 
+  <fieldset class="fieldset waf-ban-settings">
+    <legend>{{T "Active Ban Extension"}}</legend>
+    <div class="comment-option-row waf-ban-toggle">
+      <mdui-checkbox name="waf_ban_extension_enabled" value="1" {{if eq (index .Options "waf_ban_extension_enabled") "1"}}checked{{end}}>{{T "Extend bans when blocked IPs keep requesting"}}</mdui-checkbox>
+      <input type="hidden" name="waf_ban_extension_enabled" value="0">
+    </div>
+    <mdui-text-field name="waf_ban_extension_window" label="{{T "Blocked-request counting window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_ban_extension_window"}}"></mdui-text-field>
+    <mdui-text-field name="waf_ban_extension_hits" label="{{T "Blocked requests required to extend ban"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_ban_extension_hits"}}" helper="{{T "The IP is extended by its original ban duration; default 3 requests in 10 seconds"}}"></mdui-text-field>
+  </fieldset>
+
   <fieldset class="fieldset">
     <legend>{{T "Security Headers"}}</legend>
     <div class="comment-option-row">
@@ -81,6 +91,16 @@
     </div>
     <mdui-text-field name="waf_dynamic_rate_window" label="{{T "Time window (seconds)"}}" type="number" min="1" max="86400" step="1" value="{{index .Options "waf_dynamic_rate_window"}}"></mdui-text-field>
     <mdui-text-field name="waf_dynamic_rate_limit" label="{{T "Allowed dynamic requests per window"}}" type="number" min="1" max="100000" step="1" value="{{index .Options "waf_dynamic_rate_limit"}}"></mdui-text-field>
+  </fieldset>
+
+  <fieldset class="fieldset">
+    <legend>{{T "Dynamic Request Concurrency"}}</legend>
+    <div class="comment-option-row">
+      <mdui-checkbox name="waf_dynamic_concurrency_enabled" value="1" {{if eq (index .Options "waf_dynamic_concurrency_enabled") "1"}}checked{{end}}>{{T "Enable dynamic request concurrency limit"}}</mdui-checkbox>
+      <input type="hidden" name="waf_dynamic_concurrency_enabled" value="0">
+    </div>
+    <mdui-text-field name="waf_dynamic_concurrency_limit" label="{{T "Maximum concurrent dynamic requests"}}" type="number" min="1" max="1024" step="1" value="{{index .Options "waf_dynamic_concurrency_limit"}}"></mdui-text-field>
+    <mdui-text-field name="waf_dynamic_concurrency_per_ip" label="{{T "Maximum concurrent dynamic requests per IP"}}" type="number" min="1" max="256" step="1" value="{{index .Options "waf_dynamic_concurrency_per_ip"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">

@@ -1062,6 +1062,8 @@ WAF 提供独立开关、分类限流、封禁、缓存、URL 索引和反向代
 | `waf_trust_proxy_headers` | 0 | 信任反向代理转发头 |
 | `waf_trust_proxy_mode` | allowlist | 代理信任模式（allowlist/denylist） |
 | `waf_trust_proxy_ips` | — | 代理 IP/CIDR 列表 |
+| `waf_ban_extension_enabled` | 1 | 被封禁 IP 持续请求时自动续期 |
+| `waf_ban_extension_window` / `waf_ban_extension_hits` | 10 / 3 | 封禁期间续期统计窗口/命中次数 |
 | `waf_cache_enabled` | 1 | 页面缓存开关 |
 | `waf_cache_ttl` | 30 | 缓存 TTL（秒） |
 | `waf_cache_max_entries` | 512 | 最大缓存条目 |
@@ -1069,6 +1071,8 @@ WAF 提供独立开关、分类限流、封禁、缓存、URL 索引和反向代
 | `waf_url_index_ttl` | 60 | 索引 TTL（秒） |
 | `waf_dynamic_rate_enabled` | 1 | 动态请求限流开关 |
 | `waf_dynamic_rate_window` / `waf_dynamic_rate_limit` | 60 / 300 | 动态请求窗口/次数 |
+| `waf_dynamic_concurrency_enabled` | 1 | 动态请求非阻塞并发准入开关 |
+| `waf_dynamic_concurrency_limit` / `waf_dynamic_concurrency_per_ip` | 16 / 4 | 全局/单 IP 动态请求在途上限 |
 | `waf_static_rate_enabled` | 1 | 静态请求限流开关 |
 | `waf_static_rate_window` / `waf_static_rate_limit` | 60 / 1200 | 静态请求窗口/次数 |
 | `waf_upload_rate_enabled` | 1 | 上传请求限流开关 |

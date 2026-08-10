@@ -130,7 +130,9 @@ func serve(cfg config) error {
 		Handler:           handler,
 		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
 		ReadHeaderTimeout: 5 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       15 * time.Second,
 		MaxHeaderBytes:    64 << 10,
 	}
 	shutdownContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

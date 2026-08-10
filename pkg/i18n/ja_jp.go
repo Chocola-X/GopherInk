@@ -1,6 +1,12 @@
 package i18n
 
 var jaJP = map[string]string{
+	"Active Ban Extension":                                                              "有効な禁止の延長",
+	"Extend bans when blocked IPs keep requesting":                                      "禁止済み IP がリクエストを続けた場合に禁止を延長",
+	"Blocked-request counting window (seconds)":                                         "禁止中リクエストの集計時間（秒）",
+	"Blocked requests required to extend ban":                                           "禁止延長に必要なブロック済みリクエスト数",
+	"The IP is extended by its original ban duration; default 3 requests in 10 seconds": "その IP の元の禁止期間だけ延長します。既定値は 10 秒間に 3 リクエストです",
+
 	"Already have account":                   "アカウントをお持ちの方",
 	"Auto off":                               "自動オフ",
 	"Backend Personalization":                "管理画面のカスタマイズ",
@@ -121,6 +127,8 @@ var jaJP = map[string]string{
 	"Public page cache maximum entries":                                     "公開ページキャッシュ最大件数",
 	"Dynamic request rate-limit window":                                     "動的リクエストレート制限ウィンドウ",
 	"Dynamic request rate-limit count":                                      "動的リクエストレート制限回数",
+	"Dynamic request global concurrency limit":                              "動的リクエストのグローバル同時実行上限",
+	"Dynamic request per-IP concurrency limit":                              "動的リクエストの IP 別同時実行上限",
 	"Static resource rate-limit window":                                     "静的リソースレート制限ウィンドウ",
 	"Static resource rate-limit count":                                      "静的リソースレート制限回数",
 	"Attachment resource rate-limit window":                                 "添付リソースレート制限ウィンドウ",
@@ -355,6 +363,7 @@ var jaJP = map[string]string{
 	"Documents":                                                  "ドキュメント",
 	"Drafts":                                                     "下書き",
 	"Dynamic Request Rate Limit":                                 "動的リクエストレート制限",
+	"Dynamic Request Concurrency":                                "動的リクエスト同時実行制限",
 	"Edit":                                                       "編集",
 	"Edit Draft":                                                 "下書きを編集",
 	"Edit attachment":                                            "添付ファイルを編集",
@@ -372,6 +381,7 @@ var jaJP = map[string]string{
 	"Enable autosave for post and page drafts":               "記事とページの下書き自動保存を有効化",
 	"Enable basic anti-spam checks":                          "基本的なスパムチェックを有効化",
 	"Enable dynamic request IP rate limit":                   "動的リクエスト IP レート制限を有効化",
+	"Enable dynamic request concurrency limit":               "動的リクエスト同時実行制限を有効化",
 	"Enable login failure ban":                               "ログイン失敗禁止を有効化",
 	"Enable missing path count ban":                          "存在しないパス統計禁止を有効化",
 	"Enable post and page snapshots":                         "記事とページのスナップショットを有効化",
@@ -379,6 +389,8 @@ var jaJP = map[string]string{
 	"Enable public dynamic page cache":                       "公開動的ページキャッシュを有効化",
 	"Enable separate XML-RPC rate limit":                     "XML-RPC 個別レート制限を有効化",
 	"Enable separate search request rate limit":              "検索リクエスト個別レート制限を有効化",
+	"Maximum concurrent dynamic requests":                    "動的リクエストの最大同時実行数",
+	"Maximum concurrent dynamic requests per IP":             "IP ごとの動的リクエスト最大同時実行数",
 	"Enabled":               "有効",
 	"Enter GopherInk admin": "GopherInk 管理画面に入る",
 	"Enter avatar service URL, not an email address; leave blank for Gravatar; must include {hash}, optional {size}": "アバターサービス URL を入力してください（メールアドレスではありません）。空白時は Gravatar を使用します。{hash} は必須、{size} はオプションです",

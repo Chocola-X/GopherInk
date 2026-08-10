@@ -1,6 +1,12 @@
 package i18n
 
 var zhTW = map[string]string{
+	"Active Ban Extension":                                                              "作用中封禁續期",
+	"Extend bans when blocked IPs keep requesting":                                      "被封禁 IP 持續請求時延長封禁",
+	"Blocked-request counting window (seconds)":                                         "封禁期間請求統計窗口（秒）",
+	"Blocked requests required to extend ban":                                           "延長封禁所需的攔截請求數",
+	"The IP is extended by its original ban duration; default 3 requests in 10 seconds": "按該 IP 原封禁時長續期；預設 10 秒內 3 次請求",
+
 	"Already have account":                   "已有帳戶",
 	"Auto off":                               "自動關閉",
 	"Backend Personalization":                "後台個人化",
@@ -121,6 +127,8 @@ var zhTW = map[string]string{
 	"Public page cache maximum entries":                                     "公開頁快取最大項目數",
 	"Dynamic request rate-limit window":                                     "動態請求限流窗口",
 	"Dynamic request rate-limit count":                                      "動態請求限流次數",
+	"Dynamic request global concurrency limit":                              "動態請求全域並發上限",
+	"Dynamic request per-IP concurrency limit":                              "動態請求單 IP 並發上限",
 	"Static resource rate-limit window":                                     "靜態資源限流窗口",
 	"Static resource rate-limit count":                                      "靜態資源限流次數",
 	"Attachment resource rate-limit window":                                 "附件資源限流窗口",
@@ -355,6 +363,7 @@ var zhTW = map[string]string{
 	"Documents":                                                  "文件",
 	"Drafts":                                                     "草稿",
 	"Dynamic Request Rate Limit":                                 "動態請求限流",
+	"Dynamic Request Concurrency":                                "動態請求並發限制",
 	"Edit":                                                       "編輯",
 	"Edit Draft":                                                 "編輯草稿",
 	"Edit attachment":                                            "編輯附件",
@@ -372,6 +381,7 @@ var zhTW = map[string]string{
 	"Enable autosave for post and page drafts":               "啟用文章和頁面草稿自動儲存",
 	"Enable basic anti-spam checks":                          "啟用基礎反垃圾處理",
 	"Enable dynamic request IP rate limit":                   "啟用動態請求 IP 限流",
+	"Enable dynamic request concurrency limit":               "啟用動態請求並發限制",
 	"Enable login failure ban":                               "啟用登入失敗封禁",
 	"Enable missing path count ban":                          "啟用不存在路徑統計封禁",
 	"Enable post and page snapshots":                         "啟用文章和頁面快照",
@@ -379,6 +389,8 @@ var zhTW = map[string]string{
 	"Enable public dynamic page cache":                       "啟用公開動態頁面快取",
 	"Enable separate XML-RPC rate limit":                     "啟用 XML-RPC 獨立限流",
 	"Enable separate search request rate limit":              "啟用搜尋請求獨立限流",
+	"Maximum concurrent dynamic requests":                    "動態請求最大並發數",
+	"Maximum concurrent dynamic requests per IP":             "單 IP 動態請求最大並發數",
 	"Enabled":               "已啟用",
 	"Enter GopherInk admin": "進入 GopherInk 管理後台",
 	"Enter avatar service URL, not an email address; leave blank for Gravatar; must include {hash}, optional {size}": "這裡填寫頭像服務網址，不是電子郵件地址；留空使用 Gravatar；必須包含 {hash}，可選 {size}",
