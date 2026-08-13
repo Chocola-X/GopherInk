@@ -2838,7 +2838,7 @@ func (a *App) adminOptionsWAF(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if a.WAF != nil {
-			a.WAF.resetRuntimeState()
+			a.WAF.reloadSettings()
 		}
 		a.flashRedirect(w, r, r.URL.Path, http.StatusSeeOther, flashNotice{Type: "success", Message: "Settings saved."})
 	default:
@@ -2855,7 +2855,7 @@ func wafTab(r *http.Request) string {
 
 func wafOptionKeys() []string {
 	return []string{
-		"waf_enabled", "waf_hsts_enabled", "waf_trust_proxy_headers", "waf_trust_proxy_mode", "waf_trust_proxy_ips", "waf_state_max_entries", "waf_log_max_entries",
+		"waf_enabled", "waf_hsts_enabled", "waf_deployment_mode", "waf_trust_proxy_ips", "waf_static_blacklist", "waf_state_max_entries", "waf_log_max_entries",
 		"waf_ban_extension_enabled", "waf_ban_extension_window", "waf_ban_extension_hits",
 		"waf_url_index_enabled", "waf_url_index_ttl",
 		"waf_cache_enabled", "waf_cache_ttl", "waf_cache_max_entries", "waf_cache_max_body_kb", "waf_cache_max_memory_mb",
@@ -2873,7 +2873,7 @@ func wafOptionKeys() []string {
 
 func validateWAFOptions(r *http.Request) error {
 	boolKeys := []string{
-		"waf_enabled", "waf_hsts_enabled", "waf_trust_proxy_headers", "waf_ban_extension_enabled", "waf_url_index_enabled", "waf_cache_enabled", "waf_dynamic_rate_enabled", "waf_dynamic_concurrency_enabled",
+		"waf_enabled", "waf_hsts_enabled", "waf_ban_extension_enabled", "waf_url_index_enabled", "waf_cache_enabled", "waf_dynamic_rate_enabled", "waf_dynamic_concurrency_enabled",
 		"waf_static_rate_enabled", "waf_upload_rate_enabled", "waf_attachment_ban_enabled",
 		"waf_invalid_path_enabled", "waf_search_rate_enabled", "waf_xmlrpc_rate_enabled", "waf_login_ban_enabled",
 	}
@@ -2882,11 +2882,18 @@ func validateWAFOptions(r *http.Request) error {
 			return fmt.Errorf("WAF switch value is invalid")
 		}
 	}
-	if mode := strings.TrimSpace(r.FormValue("waf_trust_proxy_mode")); mode != "allowlist" && mode != "denylist" {
-		return fmt.Errorf("proxy IP trust mode is invalid")
+	mode := strings.TrimSpace(r.FormValue("waf_deployment_mode"))
+	if mode != "bare" && mode != "proxy" {
+		return fmt.Errorf("deployment mode is invalid")
 	}
 	if err := validateIPRuleLines(r.FormValue("waf_trust_proxy_ips")); err != nil {
 		return fmt.Errorf("proxy IP address list is invalid: %w", err)
+	}
+	if mode == "proxy" && !hasIPRuleLine(r.FormValue("waf_trust_proxy_ips")) {
+		return fmt.Errorf("trusted proxy IP list is required in reverse proxy mode")
+	}
+	if err := validateIPRuleLines(r.FormValue("waf_static_blacklist")); err != nil {
+		return fmt.Errorf("static blacklist is invalid: %w", err)
 	}
 	ranges := []struct {
 		key   string
@@ -2950,7 +2957,6 @@ func wafBoolOptionSet() map[string]bool {
 	return map[string]bool{
 		"waf_enabled":                     true,
 		"waf_hsts_enabled":                true,
-		"waf_trust_proxy_headers":         true,
 		"waf_ban_extension_enabled":       true,
 		"waf_url_index_enabled":           true,
 		"waf_cache_enabled":               true,
@@ -11204,33 +11210,30 @@ func commentReplyURL(r *http.Request, id int64) string {
 	return r.URL.Path + "?" + q.Encode() + "#comment-form"
 }
 
-type proxyTrustConfig struct {
-	Enabled bool
+type clientIPConfig struct {
 	Mode    string
 	IPRules string
 }
 
-func loadProxyTrustConfig(options map[string]string) proxyTrustConfig {
-	mode := strings.TrimSpace(defaultString(options["waf_trust_proxy_mode"], "allowlist"))
-	if mode != "allowlist" && mode != "denylist" {
-		mode = "allowlist"
+func loadClientIPConfig(options map[string]string) clientIPConfig {
+	mode := strings.TrimSpace(defaultString(options["waf_deployment_mode"], "bare"))
+	if mode != "bare" && mode != "proxy" {
+		mode = "bare"
 	}
-	return proxyTrustConfig{
-		Enabled: optionBool(defaultString(options["waf_trust_proxy_headers"], "0")),
+	return clientIPConfig{
 		Mode:    mode,
 		IPRules: options["waf_trust_proxy_ips"],
 	}
 }
 
 func (a *App) clientIP(r *http.Request) string {
-	return clientIP(r, proxyTrustConfig{
-		Enabled: optionBool(a.option(r.Context(), "waf_trust_proxy_headers", "0")),
-		Mode:    a.option(r.Context(), "waf_trust_proxy_mode", "allowlist"),
-		IPRules: a.option(r.Context(), "waf_trust_proxy_ips", ""),
-	})
+	if a.WAF == nil {
+		return remoteIP(r)
+	}
+	return clientIP(r, a.WAF.currentConfig(r.Context()).ClientIP)
 }
 
-func clientIP(r *http.Request, trust proxyTrustConfig) string {
+func clientIP(r *http.Request, trust clientIPConfig) string {
 	remote := remoteIP(r)
 	if shouldTrustProxyHeaders(remote, trust) {
 		for _, header := range []string{"X-Forwarded-For", "X-Real-IP"} {
@@ -11251,20 +11254,17 @@ func remoteIP(r *http.Request) string {
 		host = parsedHost
 	}
 	host = strings.Trim(host, "[]")
+	if parsed := net.ParseIP(host); parsed != nil {
+		return parsed.String()
+	}
 	return host
 }
 
-func shouldTrustProxyHeaders(remote string, trust proxyTrustConfig) bool {
-	if !trust.Enabled {
+func shouldTrustProxyHeaders(remote string, trust clientIPConfig) bool {
+	if trust.Mode != "proxy" {
 		return false
 	}
-	matched := ipMatchesRuleLines(remote, trust.IPRules)
-	switch strings.TrimSpace(trust.Mode) {
-	case "denylist":
-		return !matched
-	default:
-		return matched
-	}
+	return ipMatchesRuleLines(remote, trust.IPRules)
 }
 
 func ipMatchesRuleLines(value, rules string) bool {
@@ -11308,6 +11308,16 @@ func validateIPRuleLines(rules string) error {
 		}
 	}
 	return nil
+}
+
+func hasIPRuleLine(rules string) bool {
+	for _, line := range strings.Split(rules, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			return true
+		}
+	}
+	return false
 }
 
 func sanitizeFilename(name string) string {

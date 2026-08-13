@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/netip"
 	neturl "net/url"
@@ -21,12 +22,13 @@ import (
 	"github.com/Chocola-X/GopherInk/core/models"
 	"github.com/Chocola-X/GopherInk/core/plugin"
 	"github.com/Chocola-X/GopherInk/core/services"
+	"github.com/Chocola-X/GopherInk/pkg/connfilter"
 )
 
 type wafConfig struct {
 	Enabled               bool
 	HSTSEnabled           bool
-	TrustProxy            proxyTrustConfig
+	ClientIP              clientIPConfig
 	LogMaxEntries         int
 	BanExtensionEnabled   bool
 	BanExtensionWindow    time.Duration
@@ -69,6 +71,8 @@ type wafConfig struct {
 	LoginBan              time.Duration
 	PublicCacheMaxEntries int
 	StateMaxEntries       int
+	StaticBlacklist       []netip.Prefix
+	StaticBlacklistMatch  *prefixMatcher
 }
 
 type wafManager struct {
@@ -107,6 +111,7 @@ type wafManager struct {
 	logOnce         map[string]time.Time
 	logLineCount    int
 	logCountLoaded  bool
+	blacklist       *ipBlacklist
 }
 
 type wafCounter struct {
@@ -141,7 +146,7 @@ type wafCacheFlight struct {
 const themeNotFoundCacheKey = "GET __gopherink_theme_404__"
 
 func newWAFManager(app *App) *wafManager {
-	return &wafManager{
+	m := &wafManager{
 		app:          app,
 		rates:        map[string]*wafCounter{},
 		dynamicByIP:  map[string]int{},
@@ -155,6 +160,204 @@ func newWAFManager(app *App) *wafManager {
 		cacheFlights: map[string]*wafCacheFlight{},
 		logOnce:      map[string]time.Time{},
 	}
+	m.blacklist = &ipBlacklist{waf: m}
+	return m
+}
+
+type ipBlacklist struct {
+	waf      *wafManager
+	snapshot atomic.Pointer[blacklistSnapshot]
+	listener atomic.Pointer[connfilter.FilteringListener]
+}
+
+type blacklistSnapshot struct {
+	Active          bool
+	Static          *prefixMatcher
+	Extension       bool
+	ExtensionWindow time.Duration
+	ExtensionHits   int
+}
+
+type prefixMatcher struct {
+	rules    []netip.Prefix
+	exact    map[netip.Addr]struct{}
+	prefixes []netip.Prefix
+}
+
+func (m *prefixMatcher) contains(addr netip.Addr) bool {
+	if m == nil {
+		return false
+	}
+	if _, ok := m.exact[addr]; ok {
+		return true
+	}
+	for _, prefix := range m.prefixes {
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *ipBlacklist) Check(ip net.IP, now time.Time) connfilter.HitResult {
+	return b.check(ip, now, false)
+}
+
+func (b *ipBlacklist) CheckAndRecordHit(ip net.IP, now time.Time) connfilter.HitResult {
+	return b.check(ip, now, true)
+}
+
+func (b *ipBlacklist) check(ip net.IP, now time.Time, recordHit bool) connfilter.HitResult {
+	snapshot := b.snapshot.Load()
+	if snapshot == nil || !snapshot.Active {
+		return connfilter.HitResult{}
+	}
+	key := normalizedIP(ip)
+	if addr, ok := netip.AddrFromSlice(ip); ok {
+		if snapshot.Static.contains(addr.Unmap()) {
+			return connfilter.HitResult{Blocked: true, Reason: "static", IP: key}
+		}
+	}
+	if v, ok := b.waf.banIndex.Load(key); ok {
+		ban, ok := v.(*wafBan)
+		if !ok {
+			return connfilter.HitResult{}
+		}
+		if !ban.active(now) {
+			return connfilter.HitResult{}
+		}
+		extended := false
+		if recordHit {
+			extended = ban.recordHit(wafConfig{
+				BanExtensionEnabled: snapshot.Extension,
+				BanExtensionWindow:  snapshot.ExtensionWindow,
+				BanExtensionHits:    snapshot.ExtensionHits,
+			}, now)
+		}
+		if extended {
+			cfg := b.waf.currentConfig(context.Background())
+			b.waf.logEventOnce(cfg, "ban-extended|"+key, cfg.BanExtensionWindow, "active ban extended for IP %s (listener)", key)
+		}
+		return connfilter.HitResult{Blocked: true, Extended: extended, Reason: "dynamic", IP: key}
+	}
+	return connfilter.HitResult{}
+}
+
+func (m *wafManager) Blacklist() connfilter.IPBlacklist {
+	m.currentConfig(context.Background())
+	return m.blacklist
+}
+
+func (m *wafManager) AttachConnectionFilter(listener *connfilter.FilteringListener) {
+	if m.blacklist != nil {
+		m.currentConfig(context.Background())
+		m.blacklist.listener.Store(listener)
+		listener.CloseBlocked()
+	}
+}
+
+func (m *wafManager) publishConnectionPolicy(cfg wafConfig) {
+	if m.blacklist == nil {
+		return
+	}
+	snapshot := &blacklistSnapshot{
+		Active:          cfg.Enabled && cfg.ClientIP.Mode == "bare",
+		Static:          cfg.StaticBlacklistMatch,
+		Extension:       cfg.BanExtensionEnabled,
+		ExtensionWindow: cfg.BanExtensionWindow,
+		ExtensionHits:   cfg.BanExtensionHits,
+	}
+	previous := m.blacklist.snapshot.Load()
+	m.blacklist.snapshot.Store(snapshot)
+	if connectionPolicyChanged(previous, snapshot) {
+		if listener := m.blacklist.listener.Load(); listener != nil {
+			listener.CloseBlocked()
+		}
+	}
+}
+
+func connectionPolicyChanged(previous, current *blacklistSnapshot) bool {
+	if previous == nil || previous.Active != current.Active {
+		return true
+	}
+	previousRules := prefixMatcherRules(previous.Static)
+	currentRules := prefixMatcherRules(current.Static)
+	if len(previousRules) != len(currentRules) {
+		return true
+	}
+	for index := range currentRules {
+		if previousRules[index] != currentRules[index] {
+			return true
+		}
+	}
+	return false
+}
+
+func prefixMatcherRules(matcher *prefixMatcher) []netip.Prefix {
+	if matcher == nil {
+		return nil
+	}
+	return matcher.rules
+}
+
+func newPrefixMatcher(prefixes []netip.Prefix) *prefixMatcher {
+	matcher := &prefixMatcher{
+		rules: prefixes,
+		exact: make(map[netip.Addr]struct{}),
+	}
+	for _, prefix := range prefixes {
+		if prefix.Bits() == prefix.Addr().BitLen() {
+			matcher.exact[prefix.Addr()] = struct{}{}
+			continue
+		}
+		matcher.prefixes = append(matcher.prefixes, prefix)
+	}
+	return matcher
+}
+
+func parseStaticBlacklist(text string) []netip.Prefix {
+	var prefixes []netip.Prefix
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.Contains(line, "/") {
+			if p, err := netip.ParsePrefix(line); err == nil {
+				prefixes = append(prefixes, normalizedPrefix(p))
+			}
+			continue
+		}
+		if addr, err := netip.ParseAddr(line); err == nil {
+			addr = addr.Unmap()
+			prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+		}
+	}
+	return prefixes
+}
+
+func normalizedPrefix(prefix netip.Prefix) netip.Prefix {
+	addr := prefix.Addr()
+	bits := prefix.Bits()
+	if addr.Is4In6() && bits >= 96 {
+		return netip.PrefixFrom(addr.Unmap(), bits-96).Masked()
+	}
+	return prefix.Masked()
+}
+
+func staticBlacklistContains(matcher *prefixMatcher, value string) bool {
+	addr, err := netip.ParseAddr(strings.TrimSpace(value))
+	if err != nil {
+		return false
+	}
+	return matcher.contains(addr.Unmap())
+}
+
+func normalizedIP(ip net.IP) string {
+	if addr, ok := netip.AddrFromSlice(ip); ok {
+		return addr.Unmap().String()
+	}
+	return ip.String()
 }
 
 func (m *wafManager) wrap(next http.Handler) http.Handler {
@@ -165,6 +368,11 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			next.ServeHTTP(sw, r)
 			return
 		}
+		ip := clientIP(r, cfg.ClientIP)
+		if staticBlacklistContains(cfg.StaticBlacklistMatch, ip) {
+			rejectWAF(sw, http.StatusForbidden)
+			return
+		}
 		if m.authenticatedAdminBackendRequest(r) {
 			next.ServeHTTP(sw, r)
 			if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -172,7 +380,6 @@ func (m *wafManager) wrap(next http.Handler) http.Handler {
 			}
 			return
 		}
-		ip := clientIP(r, cfg.TrustProxy)
 		now := time.Now()
 		if banned, extended := m.recordBannedRequest(ip, cfg, now); banned {
 			if extended {
@@ -432,10 +639,11 @@ func (m *wafManager) currentConfig(ctx context.Context) wafConfig {
 	if err != nil {
 		options = map[string]string{}
 	}
+	staticBlacklist := parseStaticBlacklist(options["waf_static_blacklist"])
 	cfg = wafConfig{
 		Enabled:               optionBool(defaultString(options["waf_enabled"], "1")),
 		HSTSEnabled:           optionBool(defaultString(options["waf_hsts_enabled"], "0")),
-		TrustProxy:            loadProxyTrustConfig(options),
+		ClientIP:              loadClientIPConfig(options),
 		LogMaxEntries:         boundedInt(options["waf_log_max_entries"], 1000, 1, 100000),
 		BanExtensionEnabled:   optionBool(defaultString(options["waf_ban_extension_enabled"], "1")),
 		BanExtensionWindow:    durationSeconds(options["waf_ban_extension_window"], 10),
@@ -478,12 +686,15 @@ func (m *wafManager) currentConfig(ctx context.Context) wafConfig {
 		LoginBan:              durationSeconds(options["waf_login_ban_seconds"], 900),
 		PublicCacheMaxEntries: boundedInt(options["waf_cache_max_entries"], 512, 1, 100000),
 		StateMaxEntries:       boundedInt(options["waf_state_max_entries"], 100000, 1000, 1000000),
+		StaticBlacklist:       staticBlacklist,
+		StaticBlacklistMatch:  newPrefixMatcher(staticBlacklist),
 	}
 
 	m.configMu.Lock()
 	m.config = cfg
 	m.configLoaded = now
 	m.configMu.Unlock()
+	m.publishConnectionPolicy(cfg)
 	return cfg
 }
 
@@ -668,22 +879,13 @@ func (m *wafManager) invalidatePublicData() {
 	m.configMu.Unlock()
 }
 
-func (m *wafManager) resetRuntimeState() {
+func (m *wafManager) reloadSettings() {
 	m.app.invalidateThemeData()
 	m.rateMu.Lock()
 	m.rates = map[string]*wafCounter{}
 	m.invalids = map[string]*wafCounter{}
 	m.attachments = map[string]*wafCounter{}
 	m.rateMu.Unlock()
-	m.banMu.Lock()
-	m.loginFails = map[string]*wafCounter{}
-	m.bans = map[string]*wafBan{}
-	m.loginBans = map[string]*wafBan{}
-	m.banMu.Unlock()
-	m.banIndex.Range(func(key, _ any) bool {
-		m.banIndex.Delete(key)
-		return true
-	})
 	m.indexMu.Lock()
 	m.publicIndex = map[string]struct{}{}
 	m.pluginRoutes = nil
@@ -700,6 +902,7 @@ func (m *wafManager) resetRuntimeState() {
 	m.configMu.Lock()
 	m.configLoaded = time.Time{}
 	m.configMu.Unlock()
+	m.currentConfig(context.Background())
 }
 
 func (m *wafManager) logPath() string {
@@ -1059,10 +1262,11 @@ func (m *wafManager) removeExpiredBan(ip string, ban *wafBan, now time.Time) {
 }
 
 func (m *wafManager) banIP(ctx context.Context, ip string, duration time.Duration, reason string) error {
-	ip = strings.TrimSpace(ip)
-	if _, err := netip.ParseAddr(ip); err != nil {
+	parsed, err := netip.ParseAddr(strings.TrimSpace(ip))
+	if err != nil {
 		return fmt.Errorf("invalid IP address: %w", err)
 	}
+	ip = parsed.Unmap().String()
 	if duration <= 0 {
 		return fmt.Errorf("ban duration must be positive")
 	}
@@ -1080,10 +1284,11 @@ func (m *wafManager) banIP(ctx context.Context, ip string, duration time.Duratio
 }
 
 func (m *wafManager) unbanIP(ctx context.Context, ip string) error {
-	ip = strings.TrimSpace(ip)
-	if _, err := netip.ParseAddr(ip); err != nil {
+	parsed, err := netip.ParseAddr(strings.TrimSpace(ip))
+	if err != nil {
 		return fmt.Errorf("invalid IP address: %w", err)
 	}
+	ip = parsed.Unmap().String()
 	cfg := m.currentConfig(ctx)
 	m.banMu.Lock()
 	delete(m.bans, ip)
@@ -1125,7 +1330,11 @@ func (a *App) pluginIsIPBanned(ctx context.Context, ip string) bool {
 	if a.WAF == nil {
 		return false
 	}
-	return a.WAF.isBanned(strings.TrimSpace(ip), time.Now())
+	parsed, err := netip.ParseAddr(strings.TrimSpace(ip))
+	if err != nil {
+		return false
+	}
+	return a.WAF.isBanned(parsed.Unmap().String(), time.Now())
 }
 
 func (a *App) pluginIsURLAllowed(ctx context.Context, pathValue string) bool {
@@ -1177,9 +1386,9 @@ func (m *wafManager) recordAttachmentDownload(ip string, cfg wafConfig, now time
 
 func (m *wafManager) activateBan(ip string, duration time.Duration, maxEntries int, now time.Time) bool {
 	m.banMu.Lock()
-	defer m.banMu.Unlock()
 	if current, ok := m.bans[ip]; ok {
 		if current.active(now) {
+			m.banMu.Unlock()
 			return false
 		}
 	}
@@ -1187,6 +1396,12 @@ func (m *wafManager) activateBan(ip string, duration time.Duration, maxEntries i
 	m.bans[ip] = ban
 	m.banIndex.Store(ip, ban)
 	m.trimBanMapLocked(now, maxEntries)
+	m.banMu.Unlock()
+	if snapshot := m.blacklist.snapshot.Load(); snapshot != nil && snapshot.Active {
+		if listener := m.blacklist.listener.Load(); listener != nil {
+			listener.CloseIP(ip)
+		}
+	}
 	return true
 }
 

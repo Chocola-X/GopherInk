@@ -50,16 +50,19 @@
   </fieldset>
 
   <fieldset class="fieldset waf-proxy-settings">
-    <legend>{{T "Reverse Proxy IP Trust"}}</legend>
-    <div class="comment-option-row">
-      <mdui-checkbox name="waf_trust_proxy_headers" value="1" {{if eq (index .Options "waf_trust_proxy_headers") "1"}}checked{{end}}>{{T "Trust X-Forwarded-For / X-Real-IP"}}</mdui-checkbox>
-      <input type="hidden" name="waf_trust_proxy_headers" value="0">
-    </div>
-    <mdui-select name="waf_trust_proxy_mode" label="{{T "Match mode"}}" value="{{index .Options "waf_trust_proxy_mode"}}">
-      <mdui-menu-item value="allowlist">{{T "Allowlist mode"}}</mdui-menu-item>
-      <mdui-menu-item value="denylist">{{T "Denylist mode"}}</mdui-menu-item>
+    <legend>{{T "Deployment and Client IP"}}</legend>
+    <mdui-select name="waf_deployment_mode" label="{{T "Deployment mode"}}" value="{{index .Options "waf_deployment_mode"}}" helper="{{T "Bare deployment drops banned direct client connections; reverse proxy deployment trusts forwarding headers only from the proxy allowlist"}}">
+      <mdui-menu-item value="bare">{{T "Bare deployment (direct public access)"}}</mdui-menu-item>
+      <mdui-menu-item value="proxy">{{T "Behind reverse proxy (Cloudflare / Nginx)"}}</mdui-menu-item>
     </mdui-select>
-    <mdui-text-field class="full-span" name="waf_trust_proxy_ips" label="{{T "Proxy IP list"}}" rows="5" value="{{index .Options "waf_trust_proxy_ips"}}" helper="{{T "One IP or CIDR per line; allowlist trusts matching sources, denylist does not trust matching sources"}}"></mdui-text-field>
+    <div class="full-span" data-schema-show-field="waf_deployment_mode" data-schema-show-value="proxy" data-schema-required="1">
+      <mdui-text-field name="waf_trust_proxy_ips" label="{{T "Trusted reverse proxy IPs/CIDRs"}}" rows="5" value="{{index .Options "waf_trust_proxy_ips"}}" helper="{{T "Required in reverse proxy mode; only matching direct proxy sources may supply X-Forwarded-For / X-Real-IP"}}"></mdui-text-field>
+    </div>
+  </fieldset>
+
+  <fieldset class="fieldset">
+    <legend>{{T "Static IP Blacklist"}}</legend>
+    <mdui-text-field class="full-span" name="waf_static_blacklist" label="{{T "Static blacklist IPs/CIDRs"}}" rows="5" value="{{index .Options "waf_static_blacklist"}}" helper="{{T "One IP or CIDR per line; changes apply immediately. Bare deployment also closes matching TCP connections before further HTTP requests"}}"></mdui-text-field>
   </fieldset>
 
   <fieldset class="fieldset">

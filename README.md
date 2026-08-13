@@ -19,7 +19,7 @@
 - **修订版本** — 发布内容更新前自动保存旧版本快照，也支持手动保存快照，可随时回滚
 - **插件/主题系统** — 钩子驱动的插件架构（80+ 个预定义钩子点），支持主题配置、自定义字段、模板函数扩展
 - **兼容性 API** — XML-RPC（MetaWeblog/WordPress/Blogger）、Pingback、Trackback、RSD
-- **WAF 安全防护** — 内置 Web 应用防火墙，IP 限速、登录暴力破解防护、无效路径封禁、页面缓存、安全响应头、反向代理 IP 信任
+- **WAF 安全防护** — 内置 Web 应用防火墙，IP 限速、登录暴力破解防护、无效路径封禁、页面缓存、安全响应头、裸部署/反向代理模式
 - **图片处理** — 上传自动转 WebP（无损/有损可选）、缩略图生成、GIF 动画转 WebP
 - **安全认证** — CSRF 令牌、HMAC-SHA256 Cookie 会话、登录限速、SSRF 防护、上传安全校验、评论反垃圾与评论守卫
 - **命令行应急恢复** — 无需启动网站即可列出用户并按 ID 或用户名重置密码，重置后自动撤销该账户的现有登录会话
@@ -159,7 +159,7 @@ server {
 
 这里有意使用 `X-Forwarded-For $remote_addr` 覆盖客户端传入的同名请求头。单层 Nginx 直接面向公网时，不要改成 `$proxy_add_x_forwarded_for`，否则应用信任 Nginx 后，攻击者可能通过伪造转发头影响 WAF 的客户端 IP 判断。若 Nginx 前面还有可信 CDN 或负载均衡器，应先用 Nginx 的 Real IP 模块限定可信上游并还原 `$remote_addr`，再沿用上述代理头配置；上面的 `$binary_remote_addr` 限流键也会随之使用还原后的访客 IP。
 
-示例中的速率是适合小型博客的保守起点，不是固定标准。主题静态资源不计入动态额度，`/uploads/` 使用独立额度；上线后应结合正常访问峰值调整 `rate`、`burst` 和 `limit_conn`。应用内 WAF 在识别封禁 IP 前仍需接受并解析 HTTP 请求，只有 Nginx/CDN/防火墙入口限流才能阻止高频请求持续占用 Go 进程 CPU。
+示例中的速率是适合小型博客的保守起点，不是固定标准。主题静态资源不计入动态额度，`/uploads/` 使用独立额度；上线后应结合正常访问峰值调整 `rate`、`burst` 和 `limit_conn`。裸部署模式会在连接层关闭已封禁来源，反向代理模式则必须解析可信转发头后才能识别访客；Nginx/CDN/防火墙入口限流仍是阻止未知或分散来源高频请求占用 Go 进程 CPU 的关键防线。
 
 启用配置前检查语法并重新加载 Nginx：
 
@@ -171,7 +171,7 @@ sudo systemctl reload nginx
 最后在 GopherInk 后台完成以下设置：
 
 1. 在“基本设置”中把站点 URL（`base_url`）设为 `https://blog.example.com`，并启用 Secure Cookie（`cookie_secure`）。
-2. 在“WAF -> 设置 -> 反向代理 IP 信任”中启用信任，选择白名单模式，只填写 `127.0.0.1/32`。只有 Nginx 和 GopherInk 通过 IPv6 回环通信时才需要额外填写 `::1/128`。
+2. 在“WAF -> 设置 -> 部署模式与访客 IP”中选择“反向代理后部署（Cloudflare / Nginx）”，可信代理白名单只填写 `127.0.0.1/32`。只有 Nginx 和 GopherInk 通过 IPv6 回环通信时才需要额外填写 `::1/128`。
 3. 确认证书续期和 HTTPS 长期稳定后，可在上面的 HTTPS `server` 中增加 `add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;`。Nginx 终止 TLS 时，GopherInk 收到的是内部 HTTP 请求，后台的 HSTS 开关不会替代代理层的 HSTS 响应头。
 
 如果 Nginx 与 GopherInk 不在同一台服务器，应让 GopherInk 监听内网 IP，把 `--allow-cidr` 和 WAF 代理白名单改为 Nginx 的实际内网 IP/CIDR，并使用防火墙阻止其他来源直接访问 GopherInk 端口。更多启动配置与安全边界见 [安装与配置](docs/installation-and-configuration.md#基础-url-和反向代理) 和 [安全与 WAF](docs/security-and-waf.md)。
@@ -865,14 +865,14 @@ GopherInk 内置 Web 应用防火墙（WAF），提供多层安全防护。已�
 | 附件下载滥用 | 60s 内 120 次 | 600s |
 | 无效路径扫描 | 60s 内 20 次 | 600s |
 
-### 反向代理 IP 信任
+### 部署模式与访客 IP
 
 | 模式 | 说明 |
 |------|------|
-| `allowlist` | 直接连接 IP 匹配地址组时才信任头（推荐） |
-| `denylist` | 直接连接 IP 不匹配地址组时信任头 |
+| `bare` | 裸部署，使用 TCP 直接来源地址并启用连接层封禁，默认 |
+| `proxy` | Cloudflare/Nginx 等反向代理后部署，只信任代理白名单提供的转发头 |
 
-地址组一行一个 IPv4、IPv6 或 CIDR。公网可访问时应使用 allowlist 并填写真实代理出口地址，避免伪造转发头。
+代理白名单一行一个 IPv4、IPv6 或 CIDR。反向代理模式应填写真实直接代理出口地址，并禁止公网绕过代理访问后端。
 
 ### 安全响应头
 
@@ -1053,15 +1053,15 @@ GopherInk 提供 80+ 项站点配置，均可在后台管理界面修改。以�
 
 ### WAF
 
-WAF 提供独立开关、分类限流、封禁、缓存、URL 索引和反向代理信任等 30+ 项配置，均可在后台 WAF 设置页修改。主要配置分类：
+WAF 提供独立开关、分类限流、封禁、缓存、URL 索引，以及统一的裸部署/反向代理部署模式，均可在后台 WAF 设置页修改。主要配置分类：
 
 | 选项 | 默认值 | 说明 |
 |------|--------|------|
 | `waf_enabled` | 1 | WAF 总开关 |
 | `waf_hsts_enabled` | 0 | HSTS 开关 |
-| `waf_trust_proxy_headers` | 0 | 信任反向代理转发头 |
-| `waf_trust_proxy_mode` | allowlist | 代理信任模式（allowlist/denylist） |
-| `waf_trust_proxy_ips` | — | 代理 IP/CIDR 列表 |
+| `waf_deployment_mode` | bare | 部署模式：`bare` 裸部署或 `proxy` 反向代理后部署 |
+| `waf_trust_proxy_ips` | — | 反向代理模式下允许提供转发头的代理 IP/CIDR 白名单 |
+| `waf_static_blacklist` | — | 即时生效的访客 IP/CIDR 黑名单 |
 | `waf_ban_extension_enabled` | 1 | 被封禁 IP 持续请求时自动续期 |
 | `waf_ban_extension_window` / `waf_ban_extension_hits` | 10 / 3 | 封禁期间续期统计窗口/命中次数 |
 | `waf_cache_enabled` | 1 | 页面缓存开关 |
@@ -1109,9 +1109,9 @@ WAF 提供独立开关、分类限流、封禁、缓存、URL 索引和反向代
 | SSRF 防护 | HTTP 客户端默认禁止访问私有 IP（loopback/private/link-local 等），DNS 解析后二次校验 |
 | 上传安全 | 扩展名白名单、MIME 校验、危险文件检测 |
 | 评论反垃圾 | IP 黑名单、停用词、频率限制、蜜罐字段、Referer 检查、评论守卫 |
-| WAF 防火墙 | 多层限速、IP 封禁、URL 索引、页面缓存、安全响应头、反向代理 IP 信任 |
+| WAF 防火墙 | 多层限速、IP 封禁、连接层关闭、URL 索引、页面缓存、安全响应头、裸部署/反向代理模式 |
 | WAF 日志 | 事件写入 `data/waf.log`，后台可查看和清空 |
-| 反向代理信任 | 支持 allowlist/denylist 模式，只信任指定代理来源的 `X-Forwarded-For` / `X-Real-IP` |
+| 部署模式与访客 IP | 支持裸部署和反向代理后部署，只信任指定代理来源的 `X-Forwarded-For` / `X-Real-IP` |
 
 ## 国际化
 

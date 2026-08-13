@@ -235,11 +235,10 @@ printf 'new-strong-password\n' | ./gopherink user reset-password --id 1 --passwo
 
 `base_url` 用于固定链接、订阅、Sitemap、Pingback 等绝对 URL。生产环境应填写浏览器实际访问的 HTTPS 地址，避免生成 `localhost` 或错误协议链接。
 
-反向代理环境中的客户端 IP 信任是独立安全设置：
+后台 WAF 的“部署模式与访客 IP”提供两个互斥模式：
 
-- 未启用信任时，以直接连接地址为准。
-- 启用后可选择白名单或黑名单模式，并逐行填写 IP/CIDR。
-- 只有满足信任规则的代理来源才能影响 `X-Forwarded-For` / `X-Real-IP` 解析。
+- 裸部署（默认）：以 TCP 直接来源地址为准，完全忽略 `X-Forwarded-For` / `X-Real-IP`，并对封禁 IP 启用连接层关闭。
+- 反向代理后部署（Cloudflare/Nginx）：逐行填写可信代理 IP/CIDR 白名单；只有 TCP 直接来源命中白名单时，转发头才能影响访客 IP 解析。
 
 不要无条件信任来自公网的转发头，否则攻击者可以伪造 IP 绕过限流和登录封禁。详细规则见 [安全与 WAF](security-and-waf.md)。
 

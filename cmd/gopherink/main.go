@@ -22,6 +22,7 @@ import (
 	"github.com/Chocola-X/GopherInk/core/models"
 	"github.com/Chocola-X/GopherInk/core/plugin"
 	"github.com/Chocola-X/GopherInk/core/services"
+	"github.com/Chocola-X/GopherInk/pkg/connfilter"
 	"github.com/Chocola-X/GopherInk/pkg/memoryguard"
 
 	_ "github.com/lib/pq"
@@ -142,7 +143,17 @@ func serve(cfg config) error {
 	if err := startMemoryGuard(runtimeContext, options, cancelRuntime); err != nil {
 		return err
 	}
-	return serveHTTPServer(runtimeContext, server, cfg)
+	l, err := net.Listen("tcp", cfg.Addr)
+	if err != nil {
+		return err
+	}
+	if app.WAF != nil {
+		filtered := connfilter.New(l, app.WAF.Blacklist())
+		app.WAF.AttachConnectionFilter(filtered)
+		l = filtered
+		log.Printf("WAF: connection filter active; deployment mode changes and IP blacklist updates apply without restart")
+	}
+	return serveHTTPServer(runtimeContext, server, cfg, l)
 }
 
 func shouldCreateDefaultAdmin(userCount int, cfg config) bool {
@@ -152,14 +163,14 @@ func shouldCreateDefaultAdmin(userCount int, cfg config) bool {
 	return !cfg.WebInstall || cfg.AdminPasswordExplicit
 }
 
-func serveHTTPServer(ctx context.Context, server *http.Server, cfg config) error {
+func serveHTTPServer(ctx context.Context, server *http.Server, cfg config, l net.Listener) error {
 	serveErrors := make(chan error, 1)
 	go func() {
 		if cfg.TLSEnabled {
-			serveErrors <- server.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+			serveErrors <- server.ServeTLS(l, cfg.TLSCertFile, cfg.TLSKeyFile)
 			return
 		}
-		serveErrors <- server.ListenAndServe()
+		serveErrors <- server.Serve(l)
 	}()
 
 	select {

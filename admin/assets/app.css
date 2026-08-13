@@ -723,6 +723,15 @@ mdui-select::part(text-field__container) {
   grid-column: 1 / -1;
 }
 
+.fieldset > [data-schema-show-field][hidden] {
+  display: none;
+}
+
+.fieldset > [data-schema-show-field] mdui-text-field,
+.fieldset > [data-schema-show-field] mdui-select {
+  width: 100%;
+}
+
 .fieldset legend {
   padding: 0 6px;
   color: rgb(var(--mdui-color-on-surface-variant));
