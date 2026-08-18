@@ -24,11 +24,12 @@
     const configured = body.dataset.themeMode || "auto";
     const stored = localStorage.getItem("cuckoo-brightness");
     const next = mode || stored || configured;
+    const root = document.documentElement;
+    root.classList.remove("mdui-theme-auto", "mdui-theme-dark", "mdui-theme-light");
+    root.classList.add("mdui-theme-" + next);
     const dark = next === "dark" || (next === "auto" && preferDark());
-    body.classList.toggle("mdui-theme-layout-dark", dark);
-    document.documentElement.classList.toggle("mdui-theme-dark", dark);
-    document.documentElement.classList.toggle("mdui-theme-light", !dark);
-    document.querySelector(".brightness")?.replaceChildren(icon(dark ? "brightness-2" : "brightness-5"));
+    const btn = document.querySelector(".brightness");
+    if (btn) btn.icon = dark ? "brightness_2" : "brightness_5";
   }
 
   function icon(name) {
@@ -38,15 +39,68 @@
   }
 
   function openDrawer() {
-    body.classList.add("drawer-open");
+    const drawer = document.querySelector("mdui-navigation-drawer.drawer");
+    if (drawer) drawer.open = true;
   }
 
   function closeDrawer() {
-    body.classList.remove("drawer-open");
+    const drawer = document.querySelector("mdui-navigation-drawer.drawer");
+    if (drawer) drawer.open = false;
   }
 
   function refreshBackTop() {
     document.querySelector(".top")?.classList.toggle("is-visible", window.scrollY > 20);
+  }
+
+  function smoothScrollTo(targetY) {
+    const damping = 0.6;
+    const stiffness = 800;
+    const startY = window.scrollY;
+    const distance = targetY - startY;
+    if (Math.abs(distance) < 1) return;
+    const omega = Math.sqrt(stiffness);
+    const omegaD = omega * Math.sqrt(1 - damping * damping);
+    const startTime = performance.now();
+    function step(now) {
+      const t = (now - startTime) / 1000;
+      const envelope = Math.exp(-damping * omega * t);
+      const x = envelope * (Math.cos(omegaD * t) + (damping * omega / omegaD) * Math.sin(omegaD * t));
+      window.scrollTo(0, startY + distance * (1 - x));
+      if (Math.abs(x) > 0.0001) requestAnimationFrame(step);
+      else window.scrollTo(0, targetY);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function springAnimate(from, to, damping, stiffness, onUpdate) {
+    return new Promise((resolve) => {
+      const distance = to - from;
+      if (Math.abs(distance) < 0.001) { onUpdate(to); resolve(); return; }
+      const omega = Math.sqrt(stiffness);
+      const startTime = performance.now();
+      function step(now) {
+        const t = (now - startTime) / 1000;
+        let progress;
+        if (damping >= 1) {
+          const e = Math.exp(-omega * t);
+          progress = 1 - e * (1 + omega * t);
+        } else {
+          const omegaD = omega * Math.sqrt(1 - damping * damping);
+          const envelope = Math.exp(-damping * omega * t);
+          const x = envelope * (Math.cos(omegaD * t) + (damping * omega / omegaD) * Math.sin(omegaD * t));
+          progress = 1 - x;
+        }
+        onUpdate(from + distance * progress);
+        const remaining = to - (from + distance * progress);
+        if (Math.abs(remaining) > 0.005 * Math.abs(distance) + 0.0005) {
+          requestAnimationFrame(step);
+        } else {
+          onUpdate(to);
+          resolve();
+        }
+      }
+      requestAnimationFrame(step);
+    });
   }
 
   function slugify(text, index, seen) {
@@ -60,11 +114,15 @@
     return used ? base + "-" + used : base;
   }
 
+  let tocObserver = null;
+  let tocClickHandler = null;
+
   function initTOC() {
     const toc = document.querySelector("#toc .toc");
     const content = document.querySelector(".post-content");
     const card = document.querySelector("#toc");
     if (!toc || !content || !card) return;
+    let tocScrollAnim = null;
     const headings = Array.from(content.querySelectorAll("h1, h2, h3, h4"));
     if (!headings.length) {
       card.remove();
@@ -74,23 +132,74 @@
     headings.forEach((heading, index) => {
       if (!heading.id) heading.id = slugify(heading.textContent, index, seen);
     });
-    if (window.tocbot) {
-      tocbot.init({
-        tocSelector: "#toc .toc",
-        contentSelector: ".post-content",
-        headingSelector: "h1, h2, h3, h4",
-        scrollSmooth: true,
-        scrollSmoothOffset: -70,
-        headingsOffset: -70,
-        collapseDepth: 0,
-        orderedList: true,
+    toc.innerHTML = "";
+    const items = [];
+    headings.forEach((heading) => {
+      const item = document.createElement("mdui-list-item");
+      item.setAttribute("rounded", "");
+      item.setAttribute("href", "#" + heading.id);
+      const level = parseInt(heading.tagName[1]) - 1;
+      if (level > 0) item.dataset.level = String(level);
+      item.textContent = heading.textContent;
+      toc.appendChild(item);
+      items.push({ item, heading });
+    });
+    tocClickHandler = (e) => {
+      const item = e.target.closest("mdui-list-item[href]");
+      if (!item || !toc.contains(item)) return;
+      e.preventDefault();
+      const id = item.getAttribute("href").slice(1);
+      const target = document.getElementById(id);
+      if (target) {
+        const top = target.getBoundingClientRect().top + window.scrollY - 70;
+        smoothScrollTo(top);
+      }
+    };
+    toc.addEventListener("click", tocClickHandler);
+    tocObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const { target, isIntersecting } = entry;
+        if (isIntersecting) target.dataset.tocVisible = "1";
+        else delete target.dataset.tocVisible;
       });
-    }
+      let activeHeading = null;
+      for (const h of headings) {
+        if (h.dataset.tocVisible) { activeHeading = h; break; }
+      }
+      if (!activeHeading) {
+        for (const h of headings) {
+          const rect = h.getBoundingClientRect();
+          if (rect.top < 80) activeHeading = h;
+        }
+      }
+      items.forEach(({ item, heading }) => {
+        if (heading === activeHeading) item.setAttribute("active", "");
+        else item.removeAttribute("active");
+      });
+      const activeEntry = items.find(({ heading }) => heading === activeHeading);
+      if (activeEntry) {
+        const tocRect = toc.getBoundingClientRect();
+        const itemRect = activeEntry.item.getBoundingClientRect();
+        const margin = 40;
+        if (itemRect.top < tocRect.top + margin || itemRect.bottom > tocRect.bottom - margin) {
+          const targetScrollTop = toc.scrollTop + (itemRect.top - tocRect.top) - (toc.clientHeight / 2) + (itemRect.height / 2);
+          if (!tocScrollAnim || tocScrollAnim.done) {
+            tocScrollAnim = springAnimate(toc.scrollTop, targetScrollTop, 0.9, 140, (y) => { toc.scrollTop = y; });
+          } else {
+            toc.scrollTop = targetScrollTop;
+          }
+        }
+      }
+    }, { rootMargin: "-70px 0px -80% 0px", threshold: 0 });
+    headings.forEach((h) => tocObserver.observe(h));
   }
 
   function destroyTOC() {
-    if (window.tocbot) {
-      try { tocbot.destroy(); } catch (e) { /* ignore */ }
+    if (tocObserver) { tocObserver.disconnect(); tocObserver = null; }
+    const toc = document.querySelector("#toc .toc");
+    if (toc && tocClickHandler) {
+      toc.removeEventListener("click", tocClickHandler);
+      tocClickHandler = null;
     }
   }
 
@@ -459,9 +568,12 @@
 
   function shouldPjax(link) {
     if (body.dataset.pjax !== "1") return false;
-    if (!link || link.target || link.hasAttribute("download")) return false;
-    if (link.closest(".post-content-code-copy")) return false;
-    const url = new URL(link.href, window.location.href);
+    if (!link) return false;
+    const href = link.getAttribute ? link.getAttribute("href") : null;
+    if (!href) return false;
+    if (link.hasAttribute("target") || link.hasAttribute("download")) return false;
+    if (link.closest && link.closest(".post-content-code-copy")) return false;
+    const url = new URL(href, window.location.href);
     if (url.origin !== window.location.origin) return false;
     if (url.pathname.startsWith("/admin") || url.pathname.startsWith("/uploads")) return false;
     if (url.pathname.startsWith("/theme/") || url.pathname === "/comment") return false;
@@ -476,9 +588,9 @@
     if (!nextContainer || !currentContainer) return false;
     currentContainer.replaceWith(nextContainer);
 
-    const nextToolbar = doc.querySelector(".mdui-toolbar");
-    const currentToolbar = document.querySelector(".mdui-toolbar");
-    if (nextToolbar && currentToolbar) currentToolbar.replaceWith(nextToolbar);
+    const nextSearch = doc.querySelector(".appbar-search");
+    const currentSearch = document.querySelector(".appbar-search");
+    if (nextSearch && currentSearch) currentSearch.replaceWith(nextSearch);
 
     const nextBody = doc.body;
     body.dataset.pjax = nextBody.dataset.pjax || body.dataset.pjax;
@@ -495,6 +607,15 @@
       if (!response.ok) throw new Error(response.statusText);
       const html = await response.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
+      const currentContainer = document.querySelector("#pjax-container");
+      if (currentContainer) {
+        await springAnimate(0, 1, 1, 1600, (v) => {
+          currentContainer.style.opacity = String(1 - v);
+          currentContainer.style.transform = `translateY(${-v * 12}px)`;
+        });
+      }
+      const parsedUrl = new URL(url, window.location.href);
+      const hashTarget = parsedUrl.hash && parsedUrl.hash.length > 1 ? parsedUrl.hash.slice(1) : "";
       window.scrollTo(0, 0);
       if (!replaceFromDocument(doc)) {
         window.location.href = url;
@@ -502,6 +623,24 @@
       }
       if (push) history.pushState({ pjax: true }, "", url);
       afterLoad();
+      const newContainer = document.querySelector("#pjax-container");
+      if (newContainer) {
+        newContainer.style.opacity = "0";
+        newContainer.style.transform = "translateY(12px)";
+        await springAnimate(0, 1, 0.8, 380, (v) => {
+          newContainer.style.opacity = String(v);
+          newContainer.style.transform = `translateY(${(1 - v) * 12}px)`;
+        });
+        newContainer.style.opacity = "";
+        newContainer.style.transform = "";
+      }
+      if (hashTarget) {
+        const targetEl = document.getElementById(hashTarget);
+        if (targetEl) {
+          const top = targetEl.getBoundingClientRect().top + window.scrollY - 70;
+          smoothScrollTo(top);
+        }
+      }
     } catch (err) {
       window.location.href = url;
     } finally {
@@ -578,7 +717,7 @@
         openDrawer();
         return;
       }
-      if (target.closest(".drawer-overlay") || target.closest(".drawer-list a")) {
+      if (target.closest("mdui-navigation-drawer a") || target.closest("mdui-navigation-drawer mdui-list-item[href]")) {
         closeDrawer();
       }
       if (target.closest(".top")) {
@@ -588,7 +727,9 @@
       }
       if (target.closest(".brightness")) {
         event.preventDefault();
-        const dark = !body.classList.contains("mdui-theme-layout-dark");
+        const root = document.documentElement;
+        const isDark = root.classList.contains("mdui-theme-dark") || (root.classList.contains("mdui-theme-auto") && preferDark());
+        const dark = !isDark;
         localStorage.setItem("cuckoo-brightness", dark ? "dark" : "light");
         applyTheme(dark ? "dark" : "light");
         return;
@@ -635,11 +776,27 @@
         return;
       }
 
-      const link = target.closest("a");
+      const link = target.closest("a, mdui-list-item[href], mdui-card[href], mdui-button[href], mdui-button-icon[href], mdui-fab[href], mdui-chip[href]");
+      if (link) {
+        const href = link.getAttribute("href");
+        if (href) {
+          const url = new URL(href, window.location.href);
+          if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash && url.hash.length > 1) {
+            const targetEl = document.getElementById(url.hash.slice(1));
+            if (targetEl) {
+              event.preventDefault();
+              const top = targetEl.getBoundingClientRect().top + window.scrollY - 70;
+              smoothScrollTo(top);
+              history.replaceState(null, "", url.hash);
+              return;
+            }
+          }
+        }
+      }
       if (!shouldPjax(link)) return;
       event.preventDefault();
       closeDrawer();
-      loadPage(link.href, true);
+      loadPage(new URL(link.getAttribute("href"), window.location.href).href, true);
     });
 
     document.addEventListener("keydown", (event) => {

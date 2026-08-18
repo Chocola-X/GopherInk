@@ -18,3 +18,8 @@ plugins/*
 themes/
 !themes/default/
 !themes/default/**
+.arts/
+.codeartsdoer/
+/gopherink.exe
+/gopherink-builder.exe
+/llms-full.txt

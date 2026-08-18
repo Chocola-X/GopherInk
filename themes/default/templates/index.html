@@ -1,6 +1,6 @@
 {{define "content"}}
 {{if .ArchiveTitle}}
-<section class="mdui-card archive-card">
+<section class="archive-card">
   <h1 class="archive-title">{{.ArchiveTitle}}</h1>
 </section>
 {{end}}
@@ -17,34 +17,34 @@
   {{if and (not $cover) (ne $fallbackNoCover "1")}}{{$cover = $defaultCover}}{{end}}
   {{$cover = assetURL $cover}}
   {{if eq $articleType "daily"}}
-  <article class="mdui-card index-card-daily mdui-hoverable post">
+  <article class="index-card-daily post">
     <div class="index-icon"><mdui-icon name="chat_bubble"></mdui-icon></div>
-    <div class="mdui-card-primary daily-primary">
-      <a class="daily-permalink" href="{{contentURL .}}" aria-label="{{T "View post"}}: {{.Title}}" title="{{.Title}}"><span class="mdui-card-primary-subtitle">{{date .Created}} ｜ {{T "Views"}}: {{$views}}</span></a>
+    <div class="daily-primary">
+      <a class="daily-permalink" href="{{contentURL .}}" aria-label="{{T "View post"}}: {{.Title}}" title="{{.Title}}"><span class="daily-subtitle">{{date .Created}} ｜ {{T "Views"}}: {{$views}}</span></a>
     </div>
-    <div class="mdui-card-content daily-content">{{excerpt .Text 320}}</div>
+    <div class="daily-content">{{excerpt .Text 320}}</div>
   </article>
   {{else if or (eq $articleType "normal") (not $cover)}}
   <a class="post index-normal" href="{{contentURL .}}">
-    <article class="mdui-card index-card-normal mdui-hoverable">
-      <div class="mdui-card-primary index-primary-normal">
-        <h2 class="mdui-card-primary-title">{{.Title}}</h2>
-        <div class="mdui-card-primary-subtitle">{{date .Created}} ｜ {{T "Views"}}: {{$views}} ｜ {{.CommentsNum}} {{T "comments"}}</div>
+    <article class="index-card-normal">
+      <div class="index-primary-normal">
+        <h2 class="index-title-normal">{{.Title}}</h2>
+        <div class="index-subtitle-normal">{{date .Created}} ｜ {{T "Views"}}: {{$views}} ｜ {{.CommentsNum}} {{T "comments"}}</div>
         {{if $remark}}<mdui-chip class="index-chip-normal">{{$remark}}</mdui-chip>{{end}}
       </div>
     </article>
   </a>
   {{else}}
   <a class="post" href="{{contentURL .}}">
-    <article class="mdui-card index-card mdui-hoverable">
+    <article class="index-card">
       <div class="index-img-media">
         <div class="index-img" style="background-image: url('{{$cover}}')"></div>
         <div class="index-card-filter"></div>
-        <div class="mdui-card-media-covered">
-          <div class="mdui-card-primary index-primary">
-            <h2 class="mdui-card-primary-title">{{.Title}}</h2>
-            <div class="mdui-card-primary-subtitle index-info">{{date .Created}} ｜ {{T "Views"}}: {{$views}} ｜ {{.CommentsNum}} {{T "comments"}}</div>
-            <p class="mdui-card-primary-subtitle index-subtitle">{{excerpt .Text 150}}</p>
+        <div class="index-media-covered">
+          <div class="index-primary">
+            <h2 class="index-title">{{.Title}}</h2>
+            <div class="index-info">{{date .Created}} ｜ {{T "Views"}}: {{$views}} ｜ {{.CommentsNum}} {{T "comments"}}</div>
+            <p class="index-excerpt">{{excerpt .Text 150}}</p>
           </div>
         </div>
       </div>
@@ -52,7 +52,7 @@
   </a>
   {{end}}
   {{else}}
-  <section class="mdui-card page-card">
+  <section class="page-card">
     <div class="archive-title">{{T "No posts yet"}}</div>
   </section>
   {{end}}
@@ -60,11 +60,11 @@
 {{with .Pagination}}
 {{if gt .TotalPages 1}}
 <nav class="pagination">
-  {{if .HasPrev}}<a href="{{.PrevURL}}"><mdui-icon name="chevron_left"></mdui-icon>{{T "Previous"}}</a>{{else}}<span>{{T "Previous"}}</span>{{end}}
-  <strong>{{.Page}} / {{.TotalPages}}</strong>
-  {{if .HasNext}}<a class="next" href="{{.NextURL}}">{{T "Next"}}<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span>{{T "Next"}}</span>{{end}}
+  {{if .HasPrev}}<a href="{{.PrevURL}}" class="pagination-prev"><mdui-icon name="chevron_left"></mdui-icon>{{T "Previous"}}</a>{{else}}<span class="pagination-disabled">{{T "Previous"}}</span>{{end}}
+  <strong class="pagination-count">{{.Page}} / {{.TotalPages}}</strong>
+  {{if .HasNext}}<a class="pagination-next next" href="{{.NextURL}}">{{T "Next"}}<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span class="pagination-disabled">{{T "Next"}}</span>{{end}}
 </nav>
-{{if .HasNext}}<a class="changePage changePage-load" href="{{.NextURL}}" aria-live="polite">{{T "Load More"}}</a>{{else}}<div class="changePage">{{T "No more posts"}}</div>{{end}}
+{{if .HasNext}}<mdui-button class="changePage changePage-load" variant="tonal" href="{{.NextURL}}" aria-live="polite">{{T "Load More"}}</mdui-button>{{else}}<mdui-button class="changePage" variant="text" disabled>{{T "No more posts"}}</mdui-button>{{end}}
 {{end}}
 {{end}}
 {{end}}
