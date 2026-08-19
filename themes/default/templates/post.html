@@ -1,9 +1,9 @@
 {{define "comment_item"}}
-<article id="{{.Anchor}}" class="{{if eq .Level 0}}mdui-card comment-card comment-parent{{else}}comment-child comment-level-{{.Level}}{{end}}" data-comment-item data-comment-id="{{.COID}}" data-comment-author="{{.Author}}">
+<article id="{{.Anchor}}" class="{{if eq .Level 0}}comment-card comment-parent{{else}}comment-child comment-level-{{.Level}}{{end}}" data-comment-item data-comment-id="{{.COID}}" data-comment-author="{{.Author}}">
   <header class="comment-header{{if not .AvatarURL}} comment-header-no-avatar{{end}}">
     {{if .AvatarURL}}
     <span class="comment-avatar-box">
-      <img class="comment-avatar" src="{{.AvatarURL}}" alt="">
+      <mdui-avatar class="comment-avatar" src="{{.AvatarURL}}" label="{{.Author}}"></mdui-avatar>
       {{range .Enrichment.Badges}}<span class="comment-avatar-badge {{if eq .Tone "owner"}}comment-avatar-badge-owner{{else}}comment-avatar-badge-friend{{end}}" title="{{.Label}}" aria-label="{{.Label}}"><mdui-icon name="{{.Icon}}"></mdui-icon></span>{{end}}
     </span>
     {{end}}
@@ -41,7 +41,7 @@
     {{range .FriendLinks}}
     <a class="friend-link" href="{{.URL}}" target="_blank" rel="noopener noreferrer">
       <article class="friend-link-card">
-        {{if .AvatarURL}}<img class="friend-link-avatar" src="{{.AvatarURL}}" alt="" loading="lazy" referrerpolicy="no-referrer">{{end}}
+        {{if .AvatarURL}}<mdui-avatar class="friend-link-avatar" src="{{.AvatarURL}}" label="{{.Name}}" loading="lazy" referrerpolicy="no-referrer"></mdui-avatar>{{end}}
         <div class="friend-link-copy">
           <strong>{{.Name}}</strong>
           <span>{{.Description}}</span>
@@ -50,24 +50,24 @@
       </article>
     </a>
     {{else}}
-    <div class="mdui-card friend-links-empty">{{T "No friend links have been added yet."}}</div>
+    <div class="friend-links-empty">{{T "No friend links have been added yet."}}</div>
     {{end}}
   </div>
   {{if .Post.Text}}
-  <article class="mdui-card post-card friend-page-content">
+  <article class="post-card friend-page-content">
     <div class="post-content mdui-prose">{{.ContentHTML}}</div>
   </article>
   {{end}}
 </section>
 {{else}}
-<article class="mdui-card post-card">
+<article class="post-card">
   <header class="post-card-media{{if not $cover}} post-card-media-normal{{end}}">
     {{if $cover}}<div class="index-img" style="background-image: url('{{$cover}}')"></div>{{end}}
     <div class="index-card-filter"></div>
-    <div class="mdui-card-media-covered">
-      <div class="mdui-card-primary">
-        <h1 class="mdui-card-primary-title">{{.Post.Title}}</h1>
-        <div class="mdui-card-primary-subtitle">
+    <div class="post-media-covered">
+      <div class="post-primary">
+        <h1 class="post-title">{{.Post.Title}}</h1>
+        <div class="post-subtitle">
           {{date .Post.Created}} | {{T "Reading time"}}: {{readingTimeI18n .Lang .Post.Text}} | {{T "Views"}}: <span data-view-count>{{$views}}</span> | {{T "Categories"}}:
           {{range $idx, $cat := .Categories}}{{if $idx}}, {{end}}<a href="{{metaURL $cat}}">{{$cat.Name}}</a>{{else}}{{T "Uncategorized"}}{{end}}
           | {{T "Tags"}}:
@@ -95,25 +95,25 @@
   {{end}}
 </article>
 <div class="post-actions" data-post-cid="{{.Post.CID}}" data-csrf="{{.CSRF}}">
-  <button class="post-like-btn" type="button" data-like-btn aria-label="{{T "Like"}}">
-    <mdui-icon name="favorite_border"></mdui-icon>
+  <mdui-button class="post-like-btn" variant="text" type="button" data-like-btn aria-label="{{T "Like"}}">
+    <mdui-icon slot="icon" name="favorite_border"></mdui-icon>
     <span class="post-like-count" data-like-count>{{$likes}}</span>
-  </button>
+  </mdui-button>
 </div>
 {{end}}
 {{if not .PasswordRequired}}
 {{if or .PrevPost.CID .NextPost.CID}}
-<nav class="mdui-card post-neighbors-card">
+<nav class="post-neighbors-card">
   <div class="post-neighbors">
-    {{if .PrevPost.CID}}<a href="{{contentURL .PrevPost}}"><mdui-icon name="chevron_left"></mdui-icon>{{.PrevPost.Title}}</a>{{else}}<span></span>{{end}}
-    {{if .NextPost.CID}}<a href="{{contentURL .NextPost}}">{{.NextPost.Title}}<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span></span>{{end}}
+    {{if .PrevPost.CID}}<a href="{{contentURL .PrevPost}}" class="post-neighbor-prev"><mdui-icon name="chevron_left"></mdui-icon>{{.PrevPost.Title}}</a>{{else}}<span></span>{{end}}
+    {{if .NextPost.CID}}<a href="{{contentURL .NextPost}}" class="post-neighbor-next">{{.NextPost.Title}}<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span></span>{{end}}
   </div>
 </nav>
 {{end}}
 {{if .RelatedPosts}}
-<section class="mdui-card post-related">
+<section class="post-related">
   <h2>{{T "Related Posts"}}</h2>
-  <div class="sidebar-list">{{range .RelatedPosts}}<a href="{{contentURL .}}">{{.Title}}</a>{{end}}</div>
+  <mdui-list class="sidebar-list">{{range .RelatedPosts}}<mdui-list-item href="{{contentURL .}}">{{.Title}}</mdui-list-item>{{end}}</mdui-list>
 </section>
 {{end}}
 {{if eq .Post.AllowComment "1"}}
@@ -121,20 +121,20 @@
   <h2 class="comment-title">{{T "Comments"}}</h2>
   {{if .CommentOK}}<div class="notice-card">{{if .CommentPending}}{{T "Comment submitted and waiting for moderation."}}{{else}}{{T "Comment submitted."}}{{end}}</div>{{end}}
   {{if .CommentError}}<div class="notice-card notice-error">{{.CommentErrorMessage}}</div>{{end}}
-  <form id="{{.CommentRespondID}}" class="mdui-card comment-respond{{if .CommentFormAvatar.Enabled}} has-avatar{{end}}" method="post" action="{{.CommentAction}}"{{if .CommentGuardEnabled}} data-comment-guard-endpoint="{{.CommentGuardEndpoint}}"{{end}}>
+  <form id="{{.CommentRespondID}}" class="comment-respond" method="post" action="{{.CommentAction}}"{{if .CommentGuardEnabled}} data-comment-guard-endpoint="{{.CommentGuardEndpoint}}"{{end}}>
     <input type="hidden" name="_csrf" value="{{.CommentCSRF}}">
     <input type="hidden" name="cid" value="{{.Post.CID}}">
     <input type="hidden" name="parent" value="{{.ReplyTo}}">
     {{if and .CommentGuardEnabled (not .CommentIdentity.LoggedIn)}}<input type="hidden" name="_comment_guard" value="">{{end}}
     <input class="hp-field" type="text" name="website" tabindex="-1" autocomplete="off">
-    {{if .CommentFormAvatar.Enabled}}
-    <div class="comment-form-avatar-wrap">
-      <img class="comment-form-avatar" src="{{if .CommentIdentity.AvatarURL}}{{.CommentIdentity.AvatarURL}}{{else}}{{.CommentFormAvatar.DefaultURL}}{{end}}" alt="{{T "Comment avatar preview"}}" referrerpolicy="no-referrer" {{if not .CommentIdentity.LoggedIn}}data-comment-avatar-preview data-avatar-template="{{.CommentFormAvatar.Template}}" data-avatar-default="{{.CommentFormAvatar.DefaultURL}}"{{end}}>
-    </div>
-    {{end}}
     <div class="comment-respond-head">
+      {{if .CommentFormAvatar.Enabled}}
+      <div class="comment-form-avatar-wrap">
+        <mdui-avatar class="comment-form-avatar" src="{{if .CommentIdentity.AvatarURL}}{{.CommentIdentity.AvatarURL}}{{else}}{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{.CommentFormAvatar.DefaultURL}}{{end}}{{end}}" label="{{T "Comment avatar preview"}}" referrerpolicy="no-referrer" {{if not .CommentIdentity.LoggedIn}}data-comment-avatar-preview data-avatar-template="{{.CommentFormAvatar.Template}}" data-avatar-default="{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{.CommentFormAvatar.DefaultURL}}{{end}}"{{end}}></mdui-avatar>
+      </div>
+      {{end}}
       <strong class="comment-respond-title">{{T "Leave a Comment"}}</strong>
-      <mdui-button-icon type="button" class="comment-cancel-reply" title="{{T "Cancel reply"}}" hidden><mdui-icon name="close"></mdui-icon></mdui-button-icon>
+      <mdui-button-icon type="button" class="comment-cancel-reply" icon="close" title="{{T "Cancel reply"}}" hidden></mdui-button-icon>
     </div>
     {{if .CommentIdentity.LoggedIn}}
     <div class="comment-current-user">

@@ -28,14 +28,14 @@
   <link rel="stylesheet" href="/theme/default/material-icons.css">
   <link rel="stylesheet" href="/theme/default/mdui.css">
   <link rel="stylesheet" href="/theme/default/atom-one-dark.min.css">
-  <link rel="stylesheet" href="/theme/default/tocbot.min.css">
+
   <link rel="stylesheet" href="/theme/default/fancybox.min.css">
   <link rel="stylesheet" href="/theme/default/theme.css">
   <script src="/theme/default/mdui.global.js"></script>
   <script type="module" src="/theme/default/mdui-icons.js"></script>
   {{.FrontendHead}}
 </head>
-<body class="{{if eq (themeValue .ThemeConfig "theme_mode" "auto") "dark"}}mdui-theme-layout-dark{{end}}" data-primary="{{if themeValue .ThemeConfig "custom_primary"}}{{themeValue .ThemeConfig "custom_primary"}}{{else}}{{themeValue .ThemeConfig "primary_preset" "#6750a4"}}{{end}}" data-pjax="{{themeValue .ThemeConfig "enable_pjax" "1"}}" data-infinite-scroll="{{themeValue .ThemeConfig "enable_infinite_scroll" "0"}}" data-theme-mode="{{themeValue .ThemeConfig "theme_mode" "auto"}}" style="--cuckoo-card-opacity: {{themeOpacity .ThemeConfig "card_opacity" "0.8"}}; --cuckoo-input-opacity: {{themeOpacity .ThemeConfig "input_opacity" "0.42"}}; --cuckoo-bg-mask-opacity: {{themeOpacity .ThemeConfig "background_mask_opacity" "0.46"}}">
+<body data-primary="{{if themeValue .ThemeConfig "custom_primary"}}{{themeValue .ThemeConfig "custom_primary"}}{{else}}{{themeValue .ThemeConfig "primary_preset" "#6750a4"}}{{end}}" data-pjax="{{themeValue .ThemeConfig "enable_pjax" "1"}}" data-infinite-scroll="{{themeValue .ThemeConfig "enable_infinite_scroll" "0"}}" data-theme-mode="{{themeValue .ThemeConfig "theme_mode" "auto"}}" style="--cuckoo-card-opacity: {{themeOpacity .ThemeConfig "card_opacity" "0.8"}}; --cuckoo-input-opacity: {{themeOpacity .ThemeConfig "input_opacity" "0.42"}}; --cuckoo-bg-mask-opacity: {{themeOpacity .ThemeConfig "background_mask_opacity" "0.46"}}">
   <div class="background" aria-hidden="true">
     {{if themeValue .ThemeConfig "background_image"}}
       <picture>
@@ -47,102 +47,107 @@
   </div>
   <div class="pjax-progress" aria-hidden="true"></div>
 
-  <header class="mdui-appbar appbar">
-    <div class="mdui-toolbar">
-      <button class="mdui-btn mdui-btn-icon drawer-toggle" type="button" aria-label="{{T "Menu"}}"><mdui-icon name="menu"></mdui-icon></button>
-      <a href="/" class="mdui-typo-title appbar-title">{{index .Site "site_title"}}</a>
-      <div class="mdui-toolbar-spacer"></div>
+  <mdui-top-app-bar class="appbar" scroll-behavior="elevate">
+      <mdui-button-icon class="drawer-toggle" icon="menu" aria-label="{{T "Menu"}}"></mdui-button-icon>
+      <mdui-top-app-bar-title class="appbar-title"><a href="/" class="appbar-title-link">{{index .Site "site_title"}}</a></mdui-top-app-bar-title>
+      <div class="appbar-spacer"></div>
       <form class="appbar-search" action="/search" method="get" role="search">
         <button class="appbar-search-icon" type="submit" aria-label="{{T "Search"}}" title="{{T "Search"}}"><mdui-icon name="search"></mdui-icon></button>
         <input name="q" value="{{.Keywords}}" placeholder="{{T "Search"}}" autocomplete="off">
         <button class="appbar-search-close" type="button" aria-label="{{T "Close search"}}" title="{{T "Close search"}}"><mdui-icon name="close"></mdui-icon></button>
       </form>
-      <button class="mdui-btn mdui-btn-icon brightness" type="button" aria-label="{{T "Toggle color mode"}}" title="{{T "Toggle color mode"}}"><mdui-icon name="brightness_5"></mdui-icon></button>
-      <a class="mdui-btn mdui-btn-icon" href="/feed.xml" aria-label="Feed" title="Feed"><mdui-icon name="rss_feed"></mdui-icon></a>
-    </div>
-  </header>
+      <mdui-tooltip content="{{T "Toggle color mode"}}" placement="bottom">
+        <mdui-button-icon class="brightness" icon="brightness_5" aria-label="{{T "Toggle color mode"}}"></mdui-button-icon>
+      </mdui-tooltip>
+      <mdui-tooltip content="Feed" placement="bottom">
+        <mdui-button-icon class="appbar-feed" icon="rss_feed" href="/feed.xml" aria-label="Feed"></mdui-button-icon>
+      </mdui-tooltip>
+    </mdui-top-app-bar>
 
-  <div class="drawer-overlay" aria-hidden="true"></div>
-  <aside class="mdui-drawer drawer" aria-label="{{T "Site navigation"}}">
-    <div class="drawer-img"><img src="{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{emailAvatarURL (themeValue .ThemeConfig "profile_email" .ProfileEmail) 128}}{{end}}" alt=""></div>
-    <div class="drawer-contact">
-      <strong>{{themeValue .ThemeConfig "display_name" (index .Site "site_title")}}</strong>
-      <span>{{themeValue .ThemeConfig "bio" (index .Site "site_description")}}</span>
-    </div>
-    <div class="drawer-divider"></div>
-    <nav class="drawer-list">
-      <a href="/"><mdui-icon name="home"></mdui-icon><span>{{T "Home"}}</span></a>
-      <details class="drawer-collapse">
-        <summary><mdui-icon name="article"></mdui-icon><span>{{T "Pages"}}</span></summary>
-        <div>
-          {{range .Pages}}<a href="{{contentURL .}}"><span>{{.Title}}</span></a>{{else}}<span class="drawer-empty">{{T "No pages"}}</span>{{end}}
-        </div>
-      </details>
-      <details class="drawer-collapse">
-        <summary><mdui-icon name="calendar_month"></mdui-icon><span>{{T "Archives by Date"}}</span></summary>
-        <div>
-          {{range .Archives}}<a href="{{.URL}}"><span>{{.Title}} ({{.Count}})</span></a>{{else}}<span class="drawer-empty">{{T "No archives"}}</span>{{end}}
-        </div>
-      </details>
-      <details class="drawer-collapse">
-        <summary><mdui-icon name="category"></mdui-icon><span>{{T "Categories"}}</span></summary>
-        <div>
-          {{range .AllCategories}}<a href="{{metaURL .}}"><span>{{.Name}} ({{.Count}})</span></a>{{else}}<span class="drawer-empty">{{T "No categories"}}</span>{{end}}
-        </div>
-      </details>
-      <a href="/feed.xml"><mdui-icon name="rss_feed"></mdui-icon><span>{{T "Subscribe"}}</span></a>
-    </nav>
-    <div class="drawer-bottom">Powered by <a href="https://gopherink.nekopara.uk" target="_blank" rel="noopener noreferrer">GopherInk</a></div>
-  </aside>
+    <mdui-navigation-drawer class="drawer" modal close-on-esc close-on-overlay-click aria-label="{{T "Site navigation"}}">
+      <div class="drawer-img"><mdui-avatar class="drawer-avatar" src="{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{emailAvatarURL (themeValue .ThemeConfig "profile_email" .ProfileEmail) 128}}{{end}}" label="{{themeValue .ThemeConfig "display_name" (index .Site "site_title")}}"></mdui-avatar></div>
+      <div class="drawer-contact">
+        <strong>{{themeValue .ThemeConfig "display_name" (index .Site "site_title")}}</strong>
+        <span>{{themeValue .ThemeConfig "bio" (index .Site "site_description")}}</span>
+      </div>
+      <mdui-divider class="drawer-divider"></mdui-divider>
+      <mdui-list class="drawer-list">
+        <mdui-list-item class="drawer-item" icon="home" href="/">{{T "Home"}}</mdui-list-item>
+        <mdui-collapse accordion>
+          <mdui-collapse-item>
+            <mdui-list-item slot="header" icon="article" end-icon="expand_more">{{T "Pages"}}</mdui-list-item>
+            <mdui-list class="drawer-sublist">
+              {{range .Pages}}<mdui-list-item class="drawer-subitem" href="{{contentURL .}}">{{.Title}}</mdui-list-item>{{else}}<mdui-list-item class="drawer-empty" nonclickable>{{T "No pages"}}</mdui-list-item>{{end}}
+            </mdui-list>
+          </mdui-collapse-item>
+          <mdui-collapse-item>
+            <mdui-list-item slot="header" icon="calendar_month" end-icon="expand_more">{{T "Archives by Date"}}</mdui-list-item>
+            <mdui-list class="drawer-sublist">
+              {{range .Archives}}<mdui-list-item class="drawer-subitem" href="{{.URL}}">{{.Title}} ({{.Count}})</mdui-list-item>{{else}}<mdui-list-item class="drawer-empty" nonclickable>{{T "No archives"}}</mdui-list-item>{{end}}
+            </mdui-list>
+          </mdui-collapse-item>
+          <mdui-collapse-item>
+            <mdui-list-item slot="header" icon="category" end-icon="expand_more">{{T "Categories"}}</mdui-list-item>
+            <mdui-list class="drawer-sublist">
+              {{range .AllCategories}}<mdui-list-item class="drawer-subitem" href="{{metaURL .}}">{{.Name}} ({{.Count}})</mdui-list-item>{{else}}<mdui-list-item class="drawer-empty" nonclickable>{{T "No categories"}}</mdui-list-item>{{end}}
+            </mdui-list>
+          </mdui-collapse-item>
+        </mdui-collapse>
+        <mdui-list-item class="drawer-item" icon="rss_feed" href="/feed.xml">{{T "Subscribe"}}</mdui-list-item>
+      </mdui-list>
+      <div class="drawer-bottom">Powered by <a href="https://gopherink.nekopara.uk" target="_blank" rel="noopener noreferrer">GopherInk</a></div>
+    </mdui-navigation-drawer>
 
-  <div id="pjax-container" class="index-container">
-    <main class="mdui-col-md-8">{{template "content" .}}</main>
-    <aside class="mdui-col-md-4 site-sidebar">
-      {{if eq (themeValue .ThemeConfig "show_profile" "1") "1"}}
-      <section class="mdui-card mdui-hoverable sidebar-info">
-        <div class="sidebar-info-img">
-          <div class="sidebar-info-bg"{{with assetURL (themeValue .ThemeConfig "sidebar_image")}} style="--sidebar-bg-image: url('{{.}}')"{{end}}></div>
-          <img class="sidebar-avatar" src="{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{emailAvatarURL (themeValue .ThemeConfig "profile_email" .ProfileEmail) 160}}{{end}}" alt="">
-        </div>
-        <div class="sidebar-info-body">
-          <div class="sidebar-info-name">{{themeValue .ThemeConfig "display_name" (index .Site "site_title")}}</div>
-          <div class="sidebar-info-desc">{{themeValue .ThemeConfig "bio" (index .Site "site_description")}}</div>
-        </div>
-      </section>
-      {{end}}
-      <section class="mdui-card mdui-hoverable sidebar-module">
-        <h3 class="sidebar-module-title">{{T "Pages"}}</h3>
-        <div class="sidebar-list">{{range .Pages}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">{{T "No pages"}}</span>{{end}}</div>
-      </section>
-      <section class="mdui-card mdui-hoverable sidebar-module">
-        <h3 class="sidebar-module-title">{{T "Latest Posts"}}</h3>
-        <div class="sidebar-list">{{range .RecentPosts}}<a href="{{contentURL .}}">{{.Title}}</a>{{else}}<span class="muted">{{T "No posts yet"}}</span>{{end}}</div>
-      </section>
-      {{if eq (themeValue .ThemeConfig "show_recent_comments" "1") "1"}}
-      <section class="mdui-card mdui-hoverable sidebar-module">
-        <h3 class="sidebar-module-title">{{T "Recent Comments"}}</h3>
-        <div class="sidebar-list">{{range .RecentComments}}<a href="{{commentURL .}}">{{.Author}}: {{excerpt .Text 28}}</a>{{else}}<span class="muted">{{T "No replies"}}</span>{{end}}</div>
-      </section>
-      {{end}}
-      {{if eq (themeValue .ThemeConfig "show_tag_cloud" "1") "1"}}
-      <section class="mdui-card mdui-hoverable sidebar-module">
-        <h3 class="sidebar-module-title">{{T "Tag Cloud"}}</h3>
-        <div class="sidebar-tag">{{range .Tags}}<a href="{{metaURL .}}"><span>{{.Name}}</span></a>{{else}}<span class="muted">{{T "No tags"}}</span>{{end}}</div>
-      </section>
-      {{end}}
-      {{if and .Post (eq (themeValue .ThemeConfig "enable_toc" "1") "1") (ne (fieldString .Fields "catalog") "0")}}
-      <section class="mdui-card mdui-hoverable sidebar-module toc-card" id="toc">
-        <h3 class="sidebar-module-title">{{T "Table of Contents"}}</h3>
-        <nav class="toc"></nav>
-      </section>
-      {{end}}
-    </aside>
-  </div>
 
-  <button class="top" type="button" aria-label="{{T "Back to top"}}"><mdui-icon name="arrow_upward"></mdui-icon></button>
-  <footer>{{with themeValue .ThemeConfig "footer_html"}}{{safeHTML .}}{{else}}Powered by <a href="https://gopherink.nekopara.uk" target="_blank" rel="noopener noreferrer">GopherInk</a>{{end}}</footer>
+      <div id="pjax-container" class="index-container">
+        <main class="index-main">{{template "content" .}}</main>
+        <aside class="site-sidebar">
+          {{if eq (themeValue .ThemeConfig "show_profile" "1") "1"}}
+          <section class="sidebar-info">
+            <div class="sidebar-info-img">
+              <div class="sidebar-info-bg"{{with assetURL (themeValue .ThemeConfig "sidebar_image")}} style="--sidebar-bg-image: url('{{.}}')"{{end}}></div>
+              <mdui-avatar class="sidebar-avatar" src="{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{emailAvatarURL (themeValue .ThemeConfig "profile_email" .ProfileEmail) 160}}{{end}}" label="{{themeValue .ThemeConfig "display_name" (index .Site "site_title")}}"></mdui-avatar>
+            </div>
+            <div class="sidebar-info-body">
+              <div class="sidebar-info-name">{{themeValue .ThemeConfig "display_name" (index .Site "site_title")}}</div>
+              <div class="sidebar-info-desc">{{themeValue .ThemeConfig "bio" (index .Site "site_description")}}</div>
+            </div>
+          </section>
+          {{end}}
+          <section class="sidebar-module">
+            <h3 class="sidebar-module-title">{{T "Pages"}}</h3>
+            <mdui-list class="sidebar-list">{{range .Pages}}<mdui-list-item href="{{contentURL .}}">{{.Title}}</mdui-list-item>{{else}}<span class="muted">{{T "No pages"}}</span>{{end}}</mdui-list>
+          </section>
+          <section class="sidebar-module">
+            <h3 class="sidebar-module-title">{{T "Latest Posts"}}</h3>
+            <mdui-list class="sidebar-list">{{range .RecentPosts}}<mdui-list-item href="{{contentURL .}}">{{.Title}}</mdui-list-item>{{else}}<span class="muted">{{T "No posts yet"}}</span>{{end}}</mdui-list>
+          </section>
+          {{if eq (themeValue .ThemeConfig "show_recent_comments" "1") "1"}}
+          <section class="sidebar-module">
+            <h3 class="sidebar-module-title">{{T "Recent Comments"}}</h3>
+            <mdui-list class="sidebar-list">{{range .RecentComments}}<mdui-list-item href="{{commentURL .}}">{{.Author}}: {{excerpt .Text 28}}</mdui-list-item>{{else}}<span class="muted">{{T "No replies"}}</span>{{end}}</mdui-list>
+          </section>
+          {{end}}
+          {{if eq (themeValue .ThemeConfig "show_tag_cloud" "1") "1"}}
+          <section class="sidebar-module">
+            <h3 class="sidebar-module-title">{{T "Tag Cloud"}}</h3>
+            <div class="sidebar-tag">{{range .Tags}}<mdui-chip href="{{metaURL .}}">{{.Name}}</mdui-chip>{{else}}<span class="muted">{{T "No tags"}}</span>{{end}}</div>
+          </section>
+          {{end}}
+          {{if and .Post (eq (themeValue .ThemeConfig "enable_toc" "1") "1") (ne (fieldString .Fields "catalog") "0")}}
+          <section class="sidebar-module toc-card" id="toc">
+            <h3 class="sidebar-module-title">{{T "Table of Contents"}}</h3>
+            <mdui-list class="toc"></mdui-list>
+          </section>
+          {{end}}
+        </aside>
+      </div>
+      <footer>{{with themeValue .ThemeConfig "footer_html"}}{{safeHTML .}}{{else}}Powered by <a href="https://gopherink.nekopara.uk" target="_blank" rel="noopener noreferrer">GopherInk</a>{{end}}</footer>
+
+
+  <mdui-fab class="top" icon="arrow_upward" aria-label="{{T "Back to top"}}"></mdui-fab>
   <script src="/theme/default/highlight.min.js"></script>
-  <script src="/theme/default/tocbot.min.js"></script>
+
   <script src="/theme/default/fancybox.umd.min.js"></script>
   <script src="/theme/default/app.js"></script>
   {{.FrontendFooter}}
