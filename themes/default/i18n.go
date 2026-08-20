@@ -113,6 +113,7 @@ var defaultThemeZhCN = map[string]string{
 	"Load More":              "加载更多",
 	"No more posts":          "没有更多文章",
 	"No posts yet":           "还没有文章",
+	"Nothing yet":            "暂无",
 	"No pages":               "没有页面",
 	"No categories":          "没有分类",
 	"No tags":                "没有标签",

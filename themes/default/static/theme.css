@@ -460,11 +460,6 @@ footer a:focus-visible {
   transform: scale(1.05);
 }
 
-.index-card:hover .index-card-filter {
-  backdrop-filter: blur(7px);
-  -webkit-backdrop-filter: blur(7px);
-}
-
 .index-primary,
 .post-primary {
   padding: 24px;
@@ -506,11 +501,6 @@ footer a:focus-visible {
 }
 
 @media (min-width: 1024px) {
-  .index-card-filter {
-    backdrop-filter: blur(0px);
-    -webkit-backdrop-filter: blur(0px);
-  }
-
   .index-info {
     margin-bottom: 16px;
     transition: all 0.2s ease;
@@ -668,6 +658,10 @@ body[data-infinite-scroll="1"] .pagination {
   font-size: 14px;
 }
 
+.sidebar-list .sidebar-empty {
+  color: rgb(var(--mdui-color-on-surface-variant));
+}
+
 .sidebar-list mdui-list-item::part(text) {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -679,6 +673,21 @@ body[data-infinite-scroll="1"] .pagination {
   flex-wrap: wrap;
   gap: 8px;
   padding: 14px 14px 4px;
+}
+
+.sidebar-tag mdui-chip {
+  color: rgb(var(--mdui-color-on-secondary-container));
+  background-color: rgb(var(--mdui-color-secondary-container));
+  border-color: transparent;
+}
+
+.sidebar-tag mdui-chip:hover,
+.sidebar-tag mdui-chip:focus-visible {
+  box-shadow: 0 2px 6px rgba(var(--mdui-color-shadow), 0.18);
+}
+
+.sidebar-tag .sidebar-empty {
+  color: rgb(var(--mdui-color-on-surface-variant));
 }
 
 

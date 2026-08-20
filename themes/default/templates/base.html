@@ -116,22 +116,22 @@
           {{end}}
           <section class="sidebar-module">
             <h3 class="sidebar-module-title">{{T "Pages"}}</h3>
-            <mdui-list class="sidebar-list">{{range .Pages}}<mdui-list-item href="{{contentURL .}}">{{.Title}}</mdui-list-item>{{else}}<span class="muted">{{T "No pages"}}</span>{{end}}</mdui-list>
+            <mdui-list class="sidebar-list">{{range .Pages}}<mdui-list-item href="{{contentURL .}}">{{.Title}}</mdui-list-item>{{else}}<mdui-list-item class="sidebar-empty" nonclickable>{{T "Nothing yet"}}</mdui-list-item>{{end}}</mdui-list>
           </section>
           <section class="sidebar-module">
             <h3 class="sidebar-module-title">{{T "Latest Posts"}}</h3>
-            <mdui-list class="sidebar-list">{{range .RecentPosts}}<mdui-list-item href="{{contentURL .}}">{{.Title}}</mdui-list-item>{{else}}<span class="muted">{{T "No posts yet"}}</span>{{end}}</mdui-list>
+            <mdui-list class="sidebar-list">{{range .RecentPosts}}<mdui-list-item href="{{contentURL .}}">{{.Title}}</mdui-list-item>{{else}}<mdui-list-item class="sidebar-empty" nonclickable>{{T "Nothing yet"}}</mdui-list-item>{{end}}</mdui-list>
           </section>
           {{if eq (themeValue .ThemeConfig "show_recent_comments" "1") "1"}}
           <section class="sidebar-module">
             <h3 class="sidebar-module-title">{{T "Recent Comments"}}</h3>
-            <mdui-list class="sidebar-list">{{range .RecentComments}}<mdui-list-item href="{{commentURL .}}">{{.Author}}: {{excerpt .Text 28}}</mdui-list-item>{{else}}<span class="muted">{{T "No replies"}}</span>{{end}}</mdui-list>
+            <mdui-list class="sidebar-list">{{range .RecentComments}}<mdui-list-item href="{{commentURL .}}">{{.Author}}: {{excerpt .Text 28}}</mdui-list-item>{{else}}<mdui-list-item class="sidebar-empty" nonclickable>{{T "Nothing yet"}}</mdui-list-item>{{end}}</mdui-list>
           </section>
           {{end}}
           {{if eq (themeValue .ThemeConfig "show_tag_cloud" "1") "1"}}
           <section class="sidebar-module">
             <h3 class="sidebar-module-title">{{T "Tag Cloud"}}</h3>
-            <div class="sidebar-tag">{{range .Tags}}<mdui-chip href="{{metaURL .}}">{{.Name}}</mdui-chip>{{else}}<span class="muted">{{T "No tags"}}</span>{{end}}</div>
+            <div class="sidebar-tag">{{range .Tags}}<mdui-chip href="{{metaURL .}}">{{.Name}}</mdui-chip>{{else}}<span class="sidebar-empty">{{T "Nothing yet"}}</span>{{end}}</div>
           </section>
           {{end}}
           {{if and .Post (eq (themeValue .ThemeConfig "enable_toc" "1") "1") (ne (fieldString .Fields "catalog") "0")}}

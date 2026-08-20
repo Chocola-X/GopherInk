@@ -72,6 +72,31 @@
     requestAnimationFrame(step);
   }
 
+  function appbarOffset() {
+    const appbar = document.querySelector("mdui-top-app-bar.appbar");
+    return Math.max(0, appbar?.getBoundingClientRect().height || 64) + 6;
+  }
+
+  function hashTarget(hash) {
+    if (!hash || hash.length < 2) return null;
+    let id = hash.slice(1);
+    try {
+      id = decodeURIComponent(id);
+    } catch (err) {
+      return null;
+    }
+    return document.getElementById(id) || document.getElementsByName(id)[0] || null;
+  }
+
+  function scrollToHash(hash, smooth = false) {
+    const target = hashTarget(hash);
+    if (!target) return false;
+    const top = Math.max(0, target.getBoundingClientRect().top + window.scrollY - appbarOffset());
+    if (smooth) smoothScrollTo(top);
+    else window.scrollTo(0, top);
+    return true;
+  }
+
   function springAnimate(from, to, damping, stiffness, onUpdate) {
     return new Promise((resolve) => {
       const distance = to - from;
@@ -295,9 +320,8 @@
         });
         if (!response.ok) throw new Error(response.status === 403 ? "评论校验已失效，请重新提交。" : "评论提交失败，请稍后重试。");
         const targetUrl = new URL(response.url || window.location.href, window.location.href);
-        targetUrl.hash = "";
+        targetUrl.hash = "comments";
         await loadPage(targetUrl.toString(), true);
-        document.getElementById("comments")?.scrollIntoView({ block: "start" });
       } catch (error) {
         showCommentSubmitError(form, error instanceof Error ? error.message : "评论提交失败，请稍后重试。");
       } finally {
@@ -615,7 +639,6 @@
         });
       }
       const parsedUrl = new URL(url, window.location.href);
-      const hashTarget = parsedUrl.hash && parsedUrl.hash.length > 1 ? parsedUrl.hash.slice(1) : "";
       window.scrollTo(0, 0);
       if (!replaceFromDocument(doc)) {
         window.location.href = url;
@@ -634,13 +657,7 @@
         newContainer.style.opacity = "";
         newContainer.style.transform = "";
       }
-      if (hashTarget) {
-        const targetEl = document.getElementById(hashTarget);
-        if (targetEl) {
-          const top = targetEl.getBoundingClientRect().top + window.scrollY - 70;
-          smoothScrollTo(top);
-        }
-      }
+      scrollToHash(parsedUrl.hash);
     } catch (err) {
       window.location.href = url;
     } finally {
@@ -782,12 +799,10 @@
         if (href) {
           const url = new URL(href, window.location.href);
           if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash && url.hash.length > 1) {
-            const targetEl = document.getElementById(url.hash.slice(1));
-            if (targetEl) {
+            if (hashTarget(url.hash)) {
               event.preventDefault();
-              const top = targetEl.getBoundingClientRect().top + window.scrollY - 70;
-              smoothScrollTo(top);
-              history.replaceState(null, "", url.hash);
+              scrollToHash(url.hash, true);
+              history.pushState(null, "", url);
               return;
             }
           }
@@ -919,4 +934,5 @@
   setAccent();
   bindGlobalEvents();
   afterLoad();
+  requestAnimationFrame(() => scrollToHash(window.location.hash));
 })();
