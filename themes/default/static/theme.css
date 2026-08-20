@@ -1544,10 +1544,15 @@ mdui-fab.top {
   right: 24px;
   bottom: 24px;
   z-index: 55;
+  border-radius: 50%;
   opacity: 0;
   transform: translateY(12px);
   pointer-events: none;
   transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+mdui-fab.top::part(button) {
+  border-radius: 50%;
 }
 
 mdui-fab.top.is-visible {
