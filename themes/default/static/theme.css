@@ -575,7 +575,7 @@ footer a:focus-visible {
   pointer-events: none;
 }
 
-body[data-infinite-scroll="1"] .pagination {
+body[data-infinite-scroll="1"] .post-pagination {
   display: none;
 }
 

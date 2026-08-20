@@ -6309,6 +6309,7 @@ func (a *App) commentView(r *http.Request, post models.Content, comment models.C
 	return commentView{
 		Comment:    comment,
 		Level:      level,
+		CanReply:   post.AllowComment == "1",
 		BodyHTML:   a.renderCommentText(r, comment),
 		AuthorHTML: a.commentAuthorHTML(r, comment),
 		AvatarURL:  a.commentAvatarURL(r.Context(), comment, 48),
@@ -7641,6 +7642,7 @@ type archiveLink struct {
 type commentView struct {
 	models.Comment
 	Level         int
+	CanReply      bool
 	Children      []commentView
 	ParentAuthor  string
 	ParentAnchor  string
@@ -8538,6 +8540,7 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 			return
 		}
 	}
+	commentPageIndexes := make(map[int64]map[int64]int)
 	funcs := template.FuncMap{
 		"date": func(ts int64) string { return a.formatDate(r.Context(), ts, "post_date_format") },
 		"T":    func(key string) string { return themeText(theme, lang, key) },
@@ -8558,7 +8561,12 @@ func (a *App) renderThemeStatus(w http.ResponseWriter, r *http.Request, page str
 			return false
 		},
 		"commentURL": func(c models.Comment) string {
-			return a.commentURL(r.Context(), c)
+			pages, ok := commentPageIndexes[c.CID]
+			if !ok {
+				pages, _ = a.commentPageIndex(r.Context(), c.CID)
+				commentPageIndexes[c.CID] = pages
+			}
+			return a.commentURLWithPage(r.Context(), c, pages[c.COID])
 		},
 		"commentDate": func(ts int64) string {
 			layout := a.option(r.Context(), "comment_date_format", "2006-01-02 15:04")
@@ -9358,12 +9366,17 @@ func (a *App) metaURL(ctx context.Context, m models.Meta) string {
 }
 
 func (a *App) commentURL(ctx context.Context, comment models.Comment) string {
-	url := "#comment-" + strconv.FormatInt(comment.COID, 10)
+	pages, _ := a.commentPageIndex(ctx, comment.CID)
+	return a.commentURLWithPage(ctx, comment, pages[comment.COID])
+}
+
+func (a *App) commentURLWithPage(ctx context.Context, comment models.Comment, page int) string {
+	url := commentAnchorURL("", page, comment.COID)
 	var publicContent plugin.PublicContent
 	if comment.CID > 0 {
 		if content, err := a.Contents.ByID(ctx, comment.CID); err == nil && (content.Type == models.ContentTypePost || content.Type == models.ContentTypePage) {
 			publicContent = a.contentToPublic(content)
-			url = a.contentURL(ctx, content) + "#comment-" + strconv.FormatInt(comment.COID, 10)
+			url = commentAnchorURL(a.contentURL(ctx, content), page, comment.COID)
 		}
 	}
 	payload := plugin.CommentPermalinkPayload{Comment: a.commentToPublic(comment), Content: publicContent, URL: url}
@@ -9373,6 +9386,63 @@ func (a *App) commentURL(ctx context.Context, comment models.Comment) string {
 		}
 	}
 	return url
+}
+
+func (a *App) commentPageIndex(ctx context.Context, cid int64) (map[int64]int, error) {
+	pages := make(map[int64]int)
+	if cid <= 0 {
+		return pages, nil
+	}
+	pageSize := optionInt(a.option(ctx, "comments_page_size", "20"), 20)
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	comments, err := a.Comments.ListForContent(ctx, cid, a.option(ctx, "comments_order", "ASC"), 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]models.Comment, len(comments))
+	for _, comment := range comments {
+		byID[comment.COID] = comment
+	}
+	rootPages := make(map[int64]int)
+	for i, root := range topLevelComments(comments) {
+		rootPages[root.COID] = i/pageSize + 1
+	}
+	for _, comment := range comments {
+		root := comment
+		seen := map[int64]bool{root.COID: true}
+		for root.Parent > 0 {
+			parent, ok := byID[root.Parent]
+			if !ok || seen[parent.COID] {
+				break
+			}
+			root = parent
+			seen[root.COID] = true
+		}
+		if page, ok := rootPages[root.COID]; ok {
+			pages[comment.COID] = page
+		}
+	}
+	return pages, nil
+}
+
+func commentAnchorURL(raw string, page int, coid int64) string {
+	anchor := "comment-" + strconv.FormatInt(coid, 10)
+	if raw == "" {
+		return "#" + anchor
+	}
+	parsed, err := neturl.Parse(raw)
+	if err != nil {
+		return raw + "#" + anchor
+	}
+	if page > 0 {
+		query := parsed.Query()
+		query.Set("comments_page", strconv.Itoa(page))
+		parsed.RawQuery = query.Encode()
+	}
+	parsed.Fragment = anchor
+	return parsed.String()
 }
 
 func (a *App) pageDirectory(ctx context.Context, c models.Content) string {

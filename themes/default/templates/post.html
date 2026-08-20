@@ -15,7 +15,7 @@
       <span class="comment-date">{{commentDate .Created}}</span>
     </div>
   </header>
-  <a class="comment-reply" href="{{.ReplyURL}}" data-comment-reply data-parent-id="{{.COID}}" data-parent-author="{{.Author}}">{{T "Reply"}}</a>
+  {{if .CanReply}}<a class="comment-reply" href="{{.ReplyURL}}" data-comment-reply data-parent-id="{{.COID}}" data-parent-author="{{.Author}}">{{T "Reply"}}</a>{{end}}
   <div class="comment-content">{{if .ParentAuthor}}<a class="comment-reply-name" href="#{{.ParentAnchor}}">@{{.ParentAuthor}}</a> {{end}}{{.BodyHTML}}</div>
   <div class="comment-reply-slot" data-comment-reply-slot></div>
   {{if .Children}}<div class="comment-children">{{range .Children}}{{template "comment_item" .}}{{end}}</div>{{end}}
@@ -116,11 +116,12 @@
   <mdui-list class="sidebar-list">{{range .RelatedPosts}}<mdui-list-item href="{{contentURL .}}">{{.Title}}</mdui-list-item>{{end}}</mdui-list>
 </section>
 {{end}}
-{{if eq .Post.AllowComment "1"}}
+{{if or (eq .Post.AllowComment "1") .Comments}}
 <section id="comments" class="comments-wrap">
   <h2 class="comment-title">{{T "Comments"}}</h2>
   {{if .CommentOK}}<div class="notice-card">{{if .CommentPending}}{{T "Comment submitted and waiting for moderation."}}{{else}}{{T "Comment submitted."}}{{end}}</div>{{end}}
   {{if .CommentError}}<div class="notice-card notice-error">{{.CommentErrorMessage}}</div>{{end}}
+  {{if eq .Post.AllowComment "1"}}
   <form id="{{.CommentRespondID}}" class="comment-respond" method="post" action="{{.CommentAction}}"{{if .CommentGuardEnabled}} data-comment-guard-endpoint="{{.CommentGuardEndpoint}}"{{end}}>
     <input type="hidden" name="_csrf" value="{{.CommentCSRF}}">
     <input type="hidden" name="cid" value="{{.Post.CID}}">
@@ -153,6 +154,7 @@
     <img class="comment-bg-image" src="{{$commentBgImg}}" alt="">
     {{end}}
   </form>
+  {{end}}
   <div class="comment-list">
     {{range .Comments}}{{template "comment_item" .}}
     {{else}}

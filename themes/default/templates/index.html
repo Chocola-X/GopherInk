@@ -59,7 +59,7 @@
 </section>
 {{with .Pagination}}
 {{if gt .TotalPages 1}}
-<nav class="pagination">
+<nav class="pagination post-pagination">
   {{if .HasPrev}}<a href="{{.PrevURL}}" class="pagination-prev"><mdui-icon name="chevron_left"></mdui-icon>{{T "Previous"}}</a>{{else}}<span class="pagination-disabled">{{T "Previous"}}</span>{{end}}
   <strong class="pagination-count">{{.Page}} / {{.TotalPages}}</strong>
   {{if .HasNext}}<a class="pagination-next next" href="{{.NextURL}}">{{T "Next"}}<mdui-icon name="chevron_right"></mdui-icon></a>{{else}}<span class="pagination-disabled">{{T "Next"}}</span>{{end}}
