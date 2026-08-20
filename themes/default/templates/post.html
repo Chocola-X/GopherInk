@@ -122,18 +122,18 @@
   {{if .CommentOK}}<div class="notice-card">{{if .CommentPending}}{{T "Comment submitted and waiting for moderation."}}{{else}}{{T "Comment submitted."}}{{end}}</div>{{end}}
   {{if .CommentError}}<div class="notice-card notice-error">{{.CommentErrorMessage}}</div>{{end}}
   {{if eq .Post.AllowComment "1"}}
-  <form id="{{.CommentRespondID}}" class="comment-respond" method="post" action="{{.CommentAction}}"{{if .CommentGuardEnabled}} data-comment-guard-endpoint="{{.CommentGuardEndpoint}}"{{end}}>
+  <form id="{{.CommentRespondID}}" class="comment-respond{{if .CommentFormAvatar.Enabled}} has-avatar{{end}}" method="post" action="{{.CommentAction}}"{{if .CommentGuardEnabled}} data-comment-guard-endpoint="{{.CommentGuardEndpoint}}"{{end}}>
     <input type="hidden" name="_csrf" value="{{.CommentCSRF}}">
     <input type="hidden" name="cid" value="{{.Post.CID}}">
     <input type="hidden" name="parent" value="{{.ReplyTo}}">
     {{if and .CommentGuardEnabled (not .CommentIdentity.LoggedIn)}}<input type="hidden" name="_comment_guard" value="">{{end}}
     <input class="hp-field" type="text" name="website" tabindex="-1" autocomplete="off">
+    {{if .CommentFormAvatar.Enabled}}
+    <div class="comment-form-avatar-wrap">
+      <mdui-avatar class="comment-form-avatar" src="{{if .CommentIdentity.AvatarURL}}{{.CommentIdentity.AvatarURL}}{{else}}{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{.CommentFormAvatar.DefaultURL}}{{end}}{{end}}" label="{{T "Comment avatar preview"}}" referrerpolicy="no-referrer" {{if not .CommentIdentity.LoggedIn}}data-comment-avatar-preview data-avatar-template="{{.CommentFormAvatar.Template}}" data-avatar-default="{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{.CommentFormAvatar.DefaultURL}}{{end}}"{{end}}></mdui-avatar>
+    </div>
+    {{end}}
     <div class="comment-respond-head">
-      {{if .CommentFormAvatar.Enabled}}
-      <div class="comment-form-avatar-wrap">
-        <mdui-avatar class="comment-form-avatar" src="{{if .CommentIdentity.AvatarURL}}{{.CommentIdentity.AvatarURL}}{{else}}{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{.CommentFormAvatar.DefaultURL}}{{end}}{{end}}" label="{{T "Comment avatar preview"}}" referrerpolicy="no-referrer" {{if not .CommentIdentity.LoggedIn}}data-comment-avatar-preview data-avatar-template="{{.CommentFormAvatar.Template}}" data-avatar-default="{{with assetURL (themeValue .ThemeConfig "profile_avatar")}}{{.}}{{else}}{{.CommentFormAvatar.DefaultURL}}{{end}}"{{end}}></mdui-avatar>
-      </div>
-      {{end}}
       <strong class="comment-respond-title">{{T "Leave a Comment"}}</strong>
       <mdui-button-icon type="button" class="comment-cancel-reply" icon="close" title="{{T "Cancel reply"}}" hidden></mdui-button-icon>
     </div>

@@ -1391,9 +1391,14 @@ body[data-infinite-scroll="1"] .post-pagination {
 .comment-respond {
   position: relative;
   margin-top: 20px;
-  padding: 24px;
+  padding: 16px;
   overflow: visible;
   isolation: isolate;
+}
+
+.comment-respond.has-avatar {
+  margin-top: 58px;
+  padding-top: 48px;
 }
 
 .comment-respond.is-replying {
@@ -1401,19 +1406,29 @@ body[data-infinite-scroll="1"] .post-pagination {
   margin: 16px 0 2px;
   box-sizing: border-box;
   border-top: 1px solid rgba(var(--mdui-color-secondary), 0.24);
-  border-radius: 12px;
+  border-radius: 5px;
   background: rgba(var(--mdui-color-secondary-container), calc(var(--cuckoo-card-opacity) * 0.72));
   box-shadow: none;
 }
 
+.comment-respond.is-replying.has-avatar {
+  margin-top: 58px;
+}
+
 .comment-form-avatar-wrap {
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  z-index: 2;
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 80px;
+  height: 80px;
   place-items: center;
+  border: 4px solid rgba(var(--mdui-color-surface), 0.96);
   border-radius: 50%;
-  overflow: hidden;
-  flex-shrink: 0;
+  background: rgb(var(--mdui-color-surface-container));
+  box-shadow: 0 3px 10px rgba(var(--mdui-color-shadow), 0.2);
+  transform: translateX(-50%);
 }
 
 .comment-form-avatar {
@@ -1423,15 +1438,15 @@ body[data-infinite-scroll="1"] .post-pagination {
 
 .comment-respond-head {
   display: flex;
+  min-height: 40px;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
+  justify-content: space-between;
+  margin-bottom: 10px;
 }
 
 .comment-respond-title {
-  flex: 1;
   color: rgb(var(--mdui-color-on-surface));
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -1456,7 +1471,7 @@ body[data-infinite-scroll="1"] .post-pagination {
   opacity: 0.82;
 }
 
-.comment-respond > :not(.comment-bg-image) {
+.comment-respond > :not(.comment-bg-image):not(.comment-form-avatar-wrap) {
   position: relative;
   z-index: 1;
 }
@@ -1464,8 +1479,8 @@ body[data-infinite-scroll="1"] .post-pagination {
 .comment-web {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .comment-current-user {
@@ -1473,10 +1488,7 @@ body[data-infinite-scroll="1"] .post-pagination {
   align-items: center;
   gap: 12px;
   min-height: 50px;
-  margin-bottom: 16px;
-  padding: 0 16px;
-  border-radius: 12px;
-  background: rgba(var(--mdui-color-secondary-container), 0.5);
+  margin-bottom: 12px;
   color: rgb(var(--mdui-color-on-surface));
 }
 
@@ -1487,7 +1499,7 @@ body[data-infinite-scroll="1"] .post-pagination {
 .comment-form-button {
   display: flex;
   justify-content: flex-end;
-  padding-top: 16px;
+  padding-top: 12px;
 }
 
 .hp-field {
