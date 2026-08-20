@@ -4,6 +4,10 @@
   const color = body.dataset.primary || "#6750a4";
   let infiniteObserver = null;
   let pageAppendPending = false;
+  let historyEntrySequence = 0;
+  let activeHistoryEntryID = "";
+  // Server responses only contain the first list page, so PJAX history keeps appended list DOM in memory.
+  const listHistoryStates = new Map();
 
   function setAccent() {
     document.documentElement.style.setProperty("--cuckoo-accent", color);
@@ -590,6 +594,91 @@
     window.setTimeout(() => progress.classList.remove("is-done"), 280);
   }
 
+  async function animateContainerOut(container) {
+    if (!container) return;
+    await springAnimate(0, 1, 1, 1600, (value) => {
+      container.style.opacity = String(1 - value);
+      container.style.transform = `translateY(${-value * 12}px)`;
+    });
+  }
+
+  async function animateContainerIn(container) {
+    if (!container) return;
+    container.style.opacity = "0";
+    container.style.transform = "translateY(12px)";
+    await springAnimate(0, 1, 0.8, 380, (value) => {
+      container.style.opacity = String(value);
+      container.style.transform = `translateY(${(1 - value) * 12}px)`;
+    });
+    container.style.opacity = "";
+    container.style.transform = "";
+  }
+
+  function nextHistoryEntryID() {
+    historyEntrySequence += 1;
+    return `${Date.now().toString(36)}-${historyEntrySequence.toString(36)}`;
+  }
+
+  function initializeHistoryEntry() {
+    const state = history.state && typeof history.state === "object" ? history.state : {};
+    activeHistoryEntryID = state.pjaxEntryID || nextHistoryEntryID();
+    history.replaceState({ ...state, pjaxEntryID: activeHistoryEntryID }, "", window.location.href);
+  }
+
+  function pushHistoryEntry(url) {
+    activeHistoryEntryID = nextHistoryEntryID();
+    history.pushState({ pjax: true, pjaxEntryID: activeHistoryEntryID }, "", url);
+  }
+
+  function saveListHistoryState(entryID = activeHistoryEntryID) {
+    const container = document.querySelector("#pjax-container");
+    if (!entryID || !container?.querySelector(".article")) return;
+    listHistoryStates.set(entryID, {
+      containerHTML: container.outerHTML,
+      searchHTML: document.querySelector(".appbar-search")?.outerHTML || "",
+      title: document.title,
+      scrollY: window.scrollY,
+      bodyData: {
+        pjax: body.dataset.pjax || "0",
+        infiniteScroll: body.dataset.infiniteScroll || "0",
+        themeMode: body.dataset.themeMode || "auto",
+      },
+    });
+  }
+
+  function elementFromHTML(html) {
+    const template = document.createElement("template");
+    template.innerHTML = String(html || "").trim();
+    return template.content.firstElementChild;
+  }
+
+  async function restoreListHistoryState(state) {
+    const currentContainer = document.querySelector("#pjax-container");
+    const restoredContainer = elementFromHTML(state?.containerHTML);
+    if (!currentContainer || !restoredContainer?.querySelector(".article")) return false;
+    showProgress();
+    try {
+      await animateContainerOut(currentContainer);
+      currentContainer.replaceWith(restoredContainer);
+
+      const currentSearch = document.querySelector(".appbar-search");
+      const restoredSearch = elementFromHTML(state.searchHTML);
+      if (currentSearch && restoredSearch) currentSearch.replaceWith(restoredSearch);
+
+      body.dataset.pjax = state.bodyData.pjax;
+      body.dataset.infiniteScroll = state.bodyData.infiniteScroll;
+      body.dataset.themeMode = state.bodyData.themeMode;
+      document.title = state.title;
+      window.scrollTo(0, state.scrollY);
+      afterLoad();
+      await animateContainerIn(restoredContainer);
+      window.scrollTo(0, state.scrollY);
+      return true;
+    } finally {
+      hideProgress();
+    }
+  }
+
   function shouldPjax(link) {
     if (body.dataset.pjax !== "1") return false;
     if (!link) return false;
@@ -625,6 +714,7 @@
   }
 
   async function loadPage(url, push) {
+    if (push) saveListHistoryState();
     showProgress();
     try {
       const response = await fetch(url, { headers: { "X-PJAX": "true" } });
@@ -632,31 +722,17 @@
       const html = await response.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
       const currentContainer = document.querySelector("#pjax-container");
-      if (currentContainer) {
-        await springAnimate(0, 1, 1, 1600, (v) => {
-          currentContainer.style.opacity = String(1 - v);
-          currentContainer.style.transform = `translateY(${-v * 12}px)`;
-        });
-      }
+      await animateContainerOut(currentContainer);
       const parsedUrl = new URL(url, window.location.href);
       window.scrollTo(0, 0);
       if (!replaceFromDocument(doc)) {
         window.location.href = url;
         return;
       }
-      if (push) history.pushState({ pjax: true }, "", url);
+      if (push) pushHistoryEntry(url);
       afterLoad();
       const newContainer = document.querySelector("#pjax-container");
-      if (newContainer) {
-        newContainer.style.opacity = "0";
-        newContainer.style.transform = "translateY(12px)";
-        await springAnimate(0, 1, 0.8, 380, (v) => {
-          newContainer.style.opacity = String(v);
-          newContainer.style.transform = `translateY(${(1 - v) * 12}px)`;
-        });
-        newContainer.style.opacity = "";
-        newContainer.style.transform = "";
-      }
+      await animateContainerIn(newContainer);
       scrollToHash(parsedUrl.hash);
     } catch (err) {
       window.location.href = url;
@@ -805,8 +881,9 @@
           if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash && url.hash.length > 1) {
             if (hashTarget(url.hash)) {
               event.preventDefault();
+              saveListHistoryState();
               scrollToHash(url.hash, true);
-              history.pushState(null, "", url);
+              pushHistoryEntry(url);
               return;
             }
           }
@@ -835,7 +912,17 @@
       refreshBackTop();
     }, { passive: true });
 
-    window.addEventListener("popstate", () => loadPage(window.location.href, false));
+    window.addEventListener("popstate", async (event) => {
+      saveListHistoryState();
+      const state = event.state && typeof event.state === "object" ? event.state : {};
+      activeHistoryEntryID = state.pjaxEntryID || nextHistoryEntryID();
+      if (!state.pjaxEntryID) {
+        history.replaceState({ ...state, pjaxEntryID: activeHistoryEntryID }, "", window.location.href);
+      }
+      const listState = listHistoryStates.get(activeHistoryEntryID);
+      if (listState && await restoreListHistoryState(listState)) return;
+      await loadPage(window.location.href, false);
+    });
     window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => applyTheme());
   }
 
@@ -936,6 +1023,7 @@
   }
 
   setAccent();
+  initializeHistoryEntry();
   bindGlobalEvents();
   afterLoad();
   requestAnimationFrame(() => scrollToHash(window.location.hash));
