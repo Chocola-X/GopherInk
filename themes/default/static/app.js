@@ -667,33 +667,37 @@
 
   async function appendNextPage(link) {
     if (pageAppendPending) return;
+    const href = link.getAttribute("href");
+    if (!href) return;
+    const nextPageURL = new URL(href, window.location.href).href;
     pageAppendPending = true;
     const originalLabel = link.textContent;
     link.classList.add("is-loading");
     link.textContent = "加载中...";
     showProgress();
     try {
-      const response = await fetch(link.href, { headers: { "X-PJAX": "true" } });
+      const response = await fetch(nextPageURL, { headers: { "X-PJAX": "true" } });
       if (!response.ok) throw new Error(response.statusText);
       const html = await response.text();
       const doc = new DOMParser().parseFromString(html, "text/html");
       const currentArticle = document.querySelector(".article");
       const nextPosts = doc.querySelectorAll(".article .post");
       if (!currentArticle || !nextPosts.length) {
-        await loadPage(link.href, true);
+        await loadPage(nextPageURL, true);
         return;
       }
       nextPosts.forEach((post) => currentArticle.appendChild(post));
       const nextLoad = doc.querySelector(".changePage-load");
       const currentLoad = document.querySelector(".changePage-load");
-      if (nextLoad && currentLoad) {
-        currentLoad.href = nextLoad.href;
+      const nextHref = nextLoad?.getAttribute("href");
+      if (nextHref && currentLoad) {
+        currentLoad.setAttribute("href", nextHref);
       } else {
         const end = doc.querySelector(".changePage:not(.changePage-load)");
         currentLoad?.replaceWith(end || document.createTextNode(""));
       }
     } catch (err) {
-      window.location.href = link.href;
+      window.location.href = nextPageURL;
     } finally {
       if (link.isConnected) {
         link.classList.remove("is-loading");
